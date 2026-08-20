@@ -1,5 +1,9 @@
+using System;
+using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Media.Imaging;
 using TNDrop.Core;
+using TNDrop.Services;
 
 // UseWindowsForms is on (for the tray NotifyIcon), so DataFormats/IDataObject are ambiguous
 // between the WPF and WinForms flavours. Drag-drop routed events hand us the WPF ones: pin them.
@@ -18,6 +22,20 @@ namespace TNDrop.Platform;
 /// </summary>
 public static class DragDropTarget
 {
+    private const string Module = "DragDropTarget";
+
+    /// <summary>
+    /// Minimum gap between two "failed to read a drag format" log lines. DragOver fires
+    /// continuously (many times a second) for as long as the drag stays over the shelf, and
+    /// <see cref="HasAcceptablePayload"/> re-reads the payload on every one of those calls -- a
+    /// drag source whose OLE data object throws (a flaky/slow app, a network-backed file) would
+    /// otherwise spam one Warn line per frame for the whole hover. This throttles it to roughly
+    /// one line per drag session instead of trying to track "session" as an explicit concept.
+    /// </summary>
+    private static readonly TimeSpan ReadFailureLogInterval = TimeSpan.FromSeconds(2);
+
+    private static long _lastReadFailureLogTicks;
+
     /// <summary>
     /// True when the payload carries TNDrop's own <see cref="DragDropSource.CardIdFormat"/> marker,
     /// i.e. this is a card the user dragged OUT of the shelf (whether or not it lands back on it).
@@ -25,7 +43,7 @@ public static class DragDropTarget
     /// would re-add the very card the user just dragged, an add-on-every-drag loop.
     /// </summary>
     public static bool IsSelfDrag(IDataObject? data) =>
-        data is not null && data.GetDataPresent(DragDropSource.CardIdFormat);
+        data is not null && GetDataPresent(data, DragDropSource.CardIdFormat);
 
     /// <summary>
     /// True when <paramref name="data"/> is a genuine external drop the shelf can turn into a
@@ -37,9 +55,9 @@ public static class DragDropTarget
     public static bool HasAcceptablePayload(IDataObject? data) =>
         data is not null
         && !IsSelfDrag(data)
-        && (data.GetDataPresent(DataFormats.FileDrop)
-            || data.GetDataPresent(DataFormats.Bitmap)
-            || data.GetDataPresent(DataFormats.UnicodeText));
+        && (GetDataPresent(data, DataFormats.FileDrop)
+            || GetDataPresent(data, DataFormats.Bitmap)
+            || GetDataPresent(data, DataFormats.UnicodeText));
 
     /// <summary>
     /// Builds the <see cref="CapturedClip"/> a drop should become, or null when there is nothing
@@ -61,21 +79,21 @@ public static class DragDropTarget
             return null;
         }
 
-        if (data.GetDataPresent(DataFormats.FileDrop)
-            && data.GetData(DataFormats.FileDrop) is string[] paths
+        if (GetDataPresent(data, DataFormats.FileDrop)
+            && GetData(data, DataFormats.FileDrop) is string[] paths
             && paths.Length > 0)
         {
             return new CapturedClip { Kind = ClipKind.Files, Files = paths };
         }
 
-        if (data.GetDataPresent(DataFormats.Bitmap)
-            && data.GetData(DataFormats.Bitmap) is BitmapSource image)
+        if (GetDataPresent(data, DataFormats.Bitmap)
+            && GetData(data, DataFormats.Bitmap) is BitmapSource image)
         {
             return new CapturedClip { Kind = ClipKind.Image, Image = FreezeIfNeeded(image) };
         }
 
-        if (data.GetDataPresent(DataFormats.UnicodeText)
-            && data.GetData(DataFormats.UnicodeText) is string text
+        if (GetDataPresent(data, DataFormats.UnicodeText)
+            && GetData(data, DataFormats.UnicodeText) is string text
             && !string.IsNullOrWhiteSpace(text))
         {
             return new CapturedClip
@@ -104,5 +122,57 @@ public static class DragDropTarget
         }
 
         return source;
+    }
+
+    /// <summary>
+    /// <see cref="IDataObject.GetDataPresent(string)"/>, defended against a flaky drag source.
+    /// A COM/OLE call into another process's data object can fail transiently (the same class of
+    /// external error <see cref="ClipboardIo"/> retries for the clipboard) -- but unlike a
+    /// clipboard read, a drag payload is not worth retrying: DragOver will simply ask again a few
+    /// milliseconds later on its own. A throw here is treated the same as "format absent".
+    /// </summary>
+    private static bool GetDataPresent(IDataObject data, string format)
+    {
+        try
+        {
+            return data.GetDataPresent(format);
+        }
+        catch (ExternalException ex)
+        {
+            LogReadFailure(format, ex);
+            return false;
+        }
+    }
+
+    /// <summary><see cref="IDataObject.GetData(string)"/>, defended the same way as <see cref="GetDataPresent"/>.</summary>
+    private static object? GetData(IDataObject data, string format)
+    {
+        try
+        {
+            return data.GetData(format);
+        }
+        catch (ExternalException ex)
+        {
+            LogReadFailure(format, ex);
+            return null;
+        }
+    }
+
+    private static void LogReadFailure(string format, Exception ex)
+    {
+        var nowTicks = DateTime.UtcNow.Ticks;
+        var lastTicks = Interlocked.Read(ref _lastReadFailureLogTicks);
+
+        if (lastTicks != 0
+            && new DateTime(nowTicks, DateTimeKind.Utc) - new DateTime(lastTicks, DateTimeKind.Utc) < ReadFailureLogInterval)
+        {
+            return;
+        }
+
+        // Best-effort throttle, not exact: a race here just means an occasional extra line, never
+        // a missing one -- fine for a log line, not worth a lock.
+        Interlocked.Exchange(ref _lastReadFailureLogTicks, nowTicks);
+        FileLogger.Instance?.Warn(Module,
+            $"reading drag payload format '{format}' failed, treating it as absent: {ex.Message}");
     }
 }

@@ -375,6 +375,16 @@ public partial class ShelfWindow : Window
         _pointerInside = false;
         _retractTimer.Stop();
 
+        // Same failure mode for the drag-over flag: Hide() can happen mid-drag-over (ApplySettings
+        // runs on a DPI/monitor change, HoverEnabledChanged toggles off, etc.) without a DragLeave
+        // ever reaching the window -- OLE only delivers DragLeave for a drag that actually left
+        // the drop target's screen area, not for the target disappearing out from under it. Left
+        // set, _isDragOver would keep IsPointerInside permanently true exactly like _pointerInside
+        // above, and the accept-border would still be showing the next time the shelf slides in
+        // even though nothing is being dragged anymore.
+        _isDragOver = false;
+        Panel.BorderBrush = DropIdleBorderBrush;
+
         // Whatever temporarily allowed real activation for the search box (see
         // OnSearchBoxPreviewMouseLeftButtonDown) must not survive the shelf going away, or the
         // *next* slide-in would start pre-activated instead of NOACTIVATE. Idempotent if the
