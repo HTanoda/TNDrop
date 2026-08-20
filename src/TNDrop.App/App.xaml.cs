@@ -261,18 +261,36 @@ public partial class App : System.Windows.Application
     /// user once that succeeds -- flash the edge and play the capture cue. A dedup no-op (the
     /// same text copied twice in a row) yields neither.
     /// </summary>
-    private void OnClipboardCaptured(object? sender, CapturedClip clip)
+    private void OnClipboardCaptured(object? sender, CapturedClip clip) => NotifyManualCapture(clip);
+
+    /// <summary>
+    /// Single entry point for a capture that did not arrive via the clipboard-change
+    /// notification -- currently: a drop onto the shelf from another app (Task 13). Routes
+    /// through the very same <see cref="CapturePipeline"/> as a real clipboard capture, so
+    /// dedup/stacking/persistence behave identically, and reuses the same success confirmation
+    /// (indicator flash + capture sound) instead of a second copy of that logic drifting out of
+    /// sync with <see cref="OnClipboardCaptured"/>.
+    /// <para>Static, following the same "reach the running App instance via
+    /// <see cref="System.Windows.Application.Current"/>" pattern ShelfWindow already uses for
+    /// <c>App.Store</c> / <c>App.Indicator</c> / <c>App.Sounds</c>; returns false harmlessly
+    /// (rather than throwing) when called before startup finishes or from a test host with no
+    /// live App instance.</para>
+    /// </summary>
+    public static bool NotifyManualCapture(CapturedClip clip)
     {
-        if (_pipeline is null || Indicator is null)
+        if (System.Windows.Application.Current is not App app || app._pipeline is null || Indicator is null)
         {
-            return;
+            return false;
         }
 
-        if (_pipeline.Process(clip))
+        if (!app._pipeline.Process(clip))
         {
-            Indicator.Flash(Settings.IndicatorStyle, Settings.Edge);
-            Sounds.PlayCapture();
+            return false;
         }
+
+        Indicator.Flash(Settings.IndicatorStyle, Settings.Edge);
+        Sounds.PlayCapture();
+        return true;
     }
 
     private void OnOpenSettingsRequested()

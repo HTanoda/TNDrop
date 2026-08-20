@@ -17,6 +17,8 @@ using Brush = System.Windows.Media.Brush;
 using Button = System.Windows.Controls.Button;
 using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;
 using Color = System.Windows.Media.Color;
+using DragDropEffects = System.Windows.DragDropEffects;
+using DragEventArgs = System.Windows.DragEventArgs;
 using MessageBox = System.Windows.MessageBox;
 using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using MouseEventHandler = System.Windows.Input.MouseEventHandler;
@@ -43,6 +45,13 @@ public partial class ShelfWindow : Window
     private static readonly Brush ActiveTabBackground = Freeze(new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x42)));
     private static readonly Brush ActiveTabForeground = Freeze(new SolidColorBrush(Color.FromRgb(0xF2, 0xF2, 0xF7)));
     private static readonly Brush TabBadgeBackground = Freeze(new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)));
+
+    /// <summary>Panel border while an acceptable external drag hovers over the shelf (Task 13).</summary>
+    private static readonly Brush DropAcceptBorderBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)));
+
+    /// <summary>Panel border the rest of the time. A field, not the Brushes.Transparent constant
+    /// inline, only so every reset goes through one named value.</summary>
+    private static readonly Brush DropIdleBorderBrush = System.Windows.Media.Brushes.Transparent;
 
     /// <summary>How long the inline status line (a failed copy/drag) stays up.</summary>
     private static readonly TimeSpan StatusDuration = TimeSpan.FromSeconds(2.5);
@@ -80,6 +89,10 @@ public partial class ShelfWindow : Window
     private UIElement? _captureHost;
     private bool _isDragging;
 
+    // Drag-IN (Task 13): true for the whole time an OLE drag -- from Explorer, a browser, or the
+    // shelf's own outbound drag looping back -- is hovering over the shelf. See IsPointerInside.
+    private bool _isDragOver;
+
     public ShelfWindow()
     {
         InitializeComponent();
@@ -94,6 +107,16 @@ public partial class ShelfWindow : Window
         MouseLeave += OnPointerLeave;
         IsVisibleChanged += OnSelfVisibleChanged;
         DpiChanged += OnDpiChanged;
+
+        // Drag-IN (Task 13): AllowDrop="True" is set in XAML; these four cover the whole hover
+        // lifecycle of an external drag over the shelf. Handlers on the Window itself, not on
+        // any one child -- DragEnter/Over/Leave/Drop are bubbling routed events, so whichever
+        // descendant is actually under the pointer (a card, the search box, empty Grid space)
+        // still reaches here.
+        DragEnter += OnShelfDragEnter;
+        DragOver += OnShelfDragOver;
+        DragLeave += OnShelfDragLeave;
+        Drop += OnShelfDrop;
 
         // Create the HWND now. ApplySettings runs before the shelf is ever shown and its
         // device-pixel snap needs a handle; without this the first placement silently skips it.
@@ -110,15 +133,24 @@ public partial class ShelfWindow : Window
 
     /// <summary>
     /// True while the pointer is over the shelf, while keyboard focus is inside it (typing in
-    /// the search box), or while the user is dragging a card out of it. Drives the retract timer.
+    /// the search box), while the user is dragging a card out of it, or while an external drag
+    /// is hovering over it waiting to be dropped. Drives the retract timer.
     /// <para>Without the keyboard-focus term, a user who clicks into the search box and then types
     /// without the mouse moving would get retracted out from under them mid-sentence once the
     /// existing hover countdown elapses. Without the drag term, dragging a card away from the
     /// shelf raises MouseLeave the instant the pointer crosses the edge -- and because
     /// DoDragDrop pumps its own message loop, the retract countdown would fire and slide the drag
     /// source out from under the drag while it is still in progress.</para>
+    /// <para>Without the drag-OVER term (<see cref="_isDragOver"/>), a drag-IN from another app
+    /// (Task 13) would retract the shelf out from under the drop: while any OLE drag session is
+    /// in progress, Windows routes DragEnter/DragOver/DragLeave to the target through
+    /// <c>IDropTarget</c> instead of ordinary WM_MOUSEMOVE, so this window never gets a
+    /// MouseEnter for the pointer arriving with a payload in tow -- <see cref="_pointerInside"/>
+    /// and <see cref="IsMouseOver"/> both stay false the entire time a file is hovering over the
+    /// shelf waiting to be dropped, and a retract timer already ticking down from an earlier,
+    /// unrelated MouseLeave would fire mid-hover with nothing here to stop it.</para>
     /// </summary>
-    public bool IsPointerInside => _pointerInside || _isDragging || IsMouseOver || IsKeyboardFocusWithin;
+    public bool IsPointerInside => _pointerInside || _isDragging || _isDragOver || IsMouseOver || IsKeyboardFocusWithin;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -761,6 +793,88 @@ public partial class ShelfWindow : Window
             _pointerInside = IsMouseOver;
             ArmRetractIfPointerOutside();
         }
+    }
+
+    /// <summary>
+    /// A drag carrying an acceptable payload has entered the shelf. Suspends the retract
+    /// countdown for the duration (see the drag-over term on <see cref="IsPointerInside"/>) and,
+    /// for anything other than the shelf's own card looping back on itself, brightens the panel
+    /// border as the accept affordance.
+    /// </summary>
+    private void OnShelfDragEnter(object sender, DragEventArgs e)
+    {
+        _isDragOver = true;
+        _retractTimer.Stop();
+
+        ApplyDragVisual(e);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Fires continuously while the drag stays over the shelf. WPF requires <see cref="DragEventArgs.Effects"/>
+    /// to be (re-)set on every call, not just on DragEnter, or the OS cursor reverts to
+    /// no-drop -- so this re-evaluates the same acceptability check DragEnter already showed the
+    /// border for, rather than assuming it still holds.
+    /// </summary>
+    private void OnShelfDragOver(object sender, DragEventArgs e)
+    {
+        ApplyDragVisual(e);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// The drag left the shelf without dropping (or moved onto a child that swallowed the event
+    /// -- it does not, since every subtree here leaves DragLeave to bubble). Restores the idle
+    /// border and lets the retract countdown resume if the real pointer is not over the shelf.
+    /// </summary>
+    private void OnShelfDragLeave(object sender, DragEventArgs e)
+    {
+        _isDragOver = false;
+        Panel.BorderBrush = DropIdleBorderBrush;
+        ArmRetractIfPointerOutside();
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// The actual drop. Self-drag (see <see cref="DragDropTarget.IsSelfDrag"/>) is ignored
+    /// entirely -- no card, no visual, matching the "no add, no visual" requirement -- since the
+    /// payload's own <see cref="DragDropSource.CardIdFormat"/> marker means this is a card the
+    /// shelf already holds looping back on itself. Anything else that classifies to a
+    /// <see cref="CapturedClip"/> is routed through <see cref="App.NotifyManualCapture"/> --
+    /// the SAME pipeline entry point a real clipboard capture uses -- so dedup, stacking, the
+    /// indicator flash and the capture sound all behave identically to a real capture instead of
+    /// a second, drifting copy of that logic living here.
+    /// </summary>
+    private void OnShelfDrop(object sender, DragEventArgs e)
+    {
+        _isDragOver = false;
+        Panel.BorderBrush = DropIdleBorderBrush;
+
+        var clip = DragDropTarget.ClipFromDataObject(e.Data);
+        e.Effects = clip is not null ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+
+        if (clip is not null)
+        {
+            global::TNDrop.App.NotifyManualCapture(clip);
+        }
+
+        ArmRetractIfPointerOutside();
+    }
+
+    /// <summary>
+    /// Shared DragEnter/DragOver logic: sets both the OS drop cursor (<see cref="DragEventArgs.Effects"/>)
+    /// and the panel border affordance from the same acceptability check, so the two can never
+    /// show contradictory answers (a Copy cursor over an un-highlighted border, or vice versa).
+    /// A self-drag is deliberately unacceptable here too -- "no visual" for that case means the
+    /// border must stay idle, which falls straight out of <see cref="DragDropTarget.HasAcceptablePayload"/>
+    /// already excluding it.
+    /// </summary>
+    private void ApplyDragVisual(DragEventArgs e)
+    {
+        var acceptable = DragDropTarget.HasAcceptablePayload(e.Data);
+        Panel.BorderBrush = acceptable ? DropAcceptBorderBrush : DropIdleBorderBrush;
+        e.Effects = acceptable ? DragDropEffects.Copy : DragDropEffects.None;
     }
 
     /// <summary>
