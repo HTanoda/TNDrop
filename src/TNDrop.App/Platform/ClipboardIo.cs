@@ -88,20 +88,22 @@ public static class ClipboardIo
         }
 
         // Deliberate fall-through: blank/whitespace text does not veto an accompanying bitmap.
-        if (data.GetDataPresent(WpfDataFormats.Bitmap))
+        // The bitmap is pulled from the SAME IDataObject the privacy check and the branches above
+        // used. Calling Clipboard.GetImage() here would re-resolve the clipboard and could mix two
+        // generations -- privacy-checking one clipboard and returning the contents of the next.
+        if (data.GetDataPresent(WpfDataFormats.Bitmap)
+            && data.GetData(WpfDataFormats.Bitmap) is BitmapSource image)
         {
-            var image = WpfClipboard.GetImage();
-            if (image is not null)
-                return new CapturedClip { Kind = ClipKind.Image, Image = FreezeForCrossThread(image) };
+            return new CapturedClip { Kind = ClipKind.Image, Image = FreezeForCrossThread(image) };
         }
 
         return null;
     }
 
     /// <summary>
-    /// The bitmap handed back by Clipboard.GetImage() is an interop bitmap over a
-    /// clipboard-owned memory section. Copy it into managed memory and freeze it so it
-    /// survives the clipboard changing and can be handed to other threads.
+    /// The bitmap the clipboard hands back is an interop bitmap over a clipboard-owned memory
+    /// section. Copy it into managed memory and freeze it so it survives the clipboard changing
+    /// and can be handed to other threads.
     /// </summary>
     private static BitmapSource FreezeForCrossThread(BitmapSource source)
     {

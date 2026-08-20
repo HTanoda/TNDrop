@@ -36,9 +36,11 @@ public sealed class ClipboardMonitor : IDisposable
     private static readonly TimeSpan ReadDelay = TimeSpan.FromMilliseconds(50);
 
     /// <summary>
-    /// How long a <see cref="SuppressNext"/> request stays armed. Without an expiry, a clipboard
-    /// write of ours that failed (so no WM_CLIPBOARDUPDATE ever arrives) would leave the latch set
-    /// and silently swallow the user's next real copy.
+    /// How long a <see cref="SuppressNext"/> request stays armed. It is a window, not a counter:
+    /// a single WPF clipboard write raises WM_CLIPBOARDUPDATE more than once (OleSetClipboard and
+    /// then OleFlushClipboard), so consuming exactly one notification would let the second one
+    /// re-capture our own copy. The window also bounds the damage when a write fails and no
+    /// notification arrives at all: it expires instead of swallowing the user's next real copy.
     /// </summary>
     private static readonly TimeSpan SuppressWindow = TimeSpan.FromSeconds(2);
 
@@ -86,8 +88,9 @@ public sealed class ClipboardMonitor : IDisposable
         _hook = WndProc;
         _source.AddHook(_hook);
 
-        // Same thread as the HwndSource, so the tick (and therefore Captured) stays on the UI thread.
-        _readTimer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher.CurrentDispatcher)
+        // Bound to the HwndSource's own dispatcher, so the tick (and therefore Captured) is
+        // guaranteed to run on the very thread that owns the window and receives WndProc.
+        _readTimer = new DispatcherTimer(DispatcherPriority.Normal, _source.Dispatcher)
         {
             Interval = ReadDelay,
         };
@@ -105,10 +108,29 @@ public sealed class ClipboardMonitor : IDisposable
     }
 
     /// <summary>
-    /// Ignores exactly one upcoming clipboard update (our own copy-to-clipboard), provided it
-    /// arrives within <see cref="SuppressWindow"/>. A stale request is discarded, not applied.
+    /// Ignores clipboard updates caused by our own copy-to-clipboard: every update arriving
+    /// within <see cref="SuppressWindow"/> of this call is dropped. Not a one-shot counter --
+    /// one WPF clipboard write raises the notification more than once.
     /// </summary>
     public void SuppressNext() => Interlocked.Exchange(ref _suppressRequestedTicks, DateTime.UtcNow.Ticks);
+
+    /// <summary>True when AddClipboardFormatListener succeeded and has not been torn down.</summary>
+    public bool IsListening => _listening;
+
+    private bool IsSuppressed()
+    {
+        // Read WITHOUT clearing: the whole window must suppress, not just the first notification.
+        var requestedTicks = Interlocked.Read(ref _suppressRequestedTicks);
+        if (requestedTicks == 0L)
+            return false;
+
+        if (DateTime.UtcNow - new DateTime(requestedTicks, DateTimeKind.Utc) <= SuppressWindow)
+            return true;
+
+        // Expired: clear it, but only if nobody re-armed it in the meantime.
+        Interlocked.CompareExchange(ref _suppressRequestedTicks, 0L, requestedTicks);
+        return false;
+    }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
@@ -125,14 +147,8 @@ public sealed class ClipboardMonitor : IDisposable
         if (_disposed)
             return;
 
-        // Read and clear in one step: an expired request is consumed (cleared) but not honoured,
-        // so it can never swallow a later genuine copy.
-        var requestedTicks = Interlocked.Exchange(ref _suppressRequestedTicks, 0L);
-        if (requestedTicks != 0L
-            && DateTime.UtcNow - new DateTime(requestedTicks, DateTimeKind.Utc) <= SuppressWindow)
-        {
+        if (IsSuppressed())
             return;
-        }
 
         if (Paused)
             return;
@@ -149,7 +165,9 @@ public sealed class ClipboardMonitor : IDisposable
     {
         _readTimer.Stop();
 
-        if (_disposed)
+        // Re-check: state can change during the 50 ms delay (the user enables secret mode, a
+        // fullscreen app starts, or we wrote to the clipboard ourselves just after this was armed).
+        if (_disposed || IsSuppressed() || Paused || DateTime.UtcNow < IgnoreUntil)
             return;
 
         CapturedClip? clip;
@@ -183,23 +201,37 @@ public sealed class ClipboardMonitor : IDisposable
 
         _disposed = true;
 
-        try
+        // Each step is isolated: unregistering the OS-level clipboard listener must not be
+        // skippable because an earlier step threw (DispatcherTimer.Stop() calls VerifyAccess and
+        // throws when Dispose runs off the owning thread). A leaked listener cannot be retried --
+        // _disposed is already set and the HWND is about to go away.
+        Step("remove clipboard listener", () =>
+        {
+            if (_listening && _source.Handle != IntPtr.Zero)
+                RemoveClipboardFormatListener(_source.Handle);
+
+            _listening = false;
+        });
+
+        Step("stop read timer", () =>
         {
             _readTimer.Stop();
             _readTimer.Tick -= OnReadTimerTick;
+        });
 
-            if (_listening && _source.Handle != IntPtr.Zero)
-            {
-                RemoveClipboardFormatListener(_source.Handle);
-                _listening = false;
-            }
+        Step("remove hook", () => _source.RemoveHook(_hook));
+        Step("dispose HwndSource", () => _source.Dispose());
+    }
 
-            _source.RemoveHook(_hook);
-            _source.Dispose();
+    private void Step(string what, Action action)
+    {
+        try
+        {
+            action();
         }
         catch (Exception ex)
         {
-            _log?.Error(Module, "dispose failed", ex);
+            _log?.Error(Module, $"dispose: {what} failed", ex);
         }
     }
 }
