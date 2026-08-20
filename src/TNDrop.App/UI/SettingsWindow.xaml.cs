@@ -477,11 +477,11 @@ public partial class SettingsWindow : Window
 
     private void BuildFooter()
     {
-        // Reuses the exact same AboutText resource (and Environment.NewLine substitution) as
-        // TrayIcon's "About" dialog -- one string is the version+copyright text everywhere it
-        // appears, rather than a second literal that could drift from the first at the next
-        // version bump.
-        FooterText.Text = string.Format(Strings.AboutText, Environment.NewLine);
+        // Reuses the exact same AboutText resource (and AppVersion.Display / Environment.NewLine
+        // substitution) as TrayIcon's "About" dialog -- one string is the version+copyright text
+        // everywhere it appears, rather than a second literal that could drift from the first at
+        // the next version bump.
+        FooterText.Text = string.Format(Strings.AboutText, AppVersion.Display, Environment.NewLine);
     }
 
     // ---- Position preview overlay ----------------------------------------------------------

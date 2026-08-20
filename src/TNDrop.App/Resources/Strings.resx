@@ -84,7 +84,7 @@
     <value>履歴の読み込みに失敗しました。詳細はログ (logs\app-YYYYMMDD.log) を確認してください</value>
   </data>
   <data name="AboutText" xml:space="preserve">
-    <value>TNDrop v1.0.0{0}Copyright (c) 2026 HIROKI TANODA (TND). All rights reserved.</value>
+    <value>TNDrop v{0}{1}Copyright (c) 2026 HIROKI TANODA (TND). All rights reserved.</value>
   </data>
   <data name="CardImage" xml:space="preserve">
     <value>画像</value>

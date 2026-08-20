@@ -2,7 +2,7 @@
 #
 # 1. dotnet test          -- 全テストが green であることを確認してから配布物を作る
 # 2. dotnet publish        -- Release / win-x64 / self-contained を dist\publish へ出力
-# 3. ISCC installer\setup.iss -- dist\TNDrop-Setup-1.0.0.exe を生成
+# 3. ISCC installer\setup.iss -- dist\TNDrop-Setup-{MyAppVersion}.exe を生成
 #
 # 本番機はオフライン (ランタイム未インストール) のため、publish 出力は自己完結 (self-contained)
 # でなければならない。ISCC のパスは開発機の実際のインストール先に合わせてある。
@@ -33,7 +33,14 @@ Write-Host "==> $iscc installer\setup.iss" -ForegroundColor Cyan
 & $iscc "installer\setup.iss"
 if (-not $?) { throw "ISCC (Inno Setup compile) failed" }
 
-$installerPath = Join-Path $repoRoot "dist\TNDrop-Setup-1.0.0.exe"
+$issContent = Get-Content -Path "installer\setup.iss" -Raw
+$issMatch = [regex]::Match($issContent, '#define\s+MyAppVersion\s+"([^"]+)"')
+if (-not $issMatch.Success) {
+    throw "Could not read MyAppVersion from installer\setup.iss"
+}
+$installerVersion = $issMatch.Groups[1].Value
+
+$installerPath = Join-Path $repoRoot "dist\TNDrop-Setup-$installerVersion.exe"
 if (-not (Test-Path $installerPath)) {
     throw "Expected installer not found at $installerPath"
 }

@@ -84,7 +84,7 @@
     <value>Failed to load clipboard history. Check the log (logs\app-YYYYMMDD.log) for details</value>
   </data>
   <data name="AboutText" xml:space="preserve">
-    <value>TNDrop v1.0.0{0}Copyright (c) 2026 HIROKI TANODA (TND). All rights reserved.</value>
+    <value>TNDrop v{0}{1}Copyright (c) 2026 HIROKI TANODA (TND). All rights reserved.</value>
   </data>
   <data name="CardImage" xml:space="preserve">
     <value>Image</value>

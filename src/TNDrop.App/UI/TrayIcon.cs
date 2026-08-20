@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using TNDrop.Core;
 using TNDrop.Resources;
 
 namespace TNDrop.UI;
@@ -93,7 +94,7 @@ public sealed class TrayIcon : IDisposable
 
     private static void ShowAbout()
     {
-        var text = string.Format(Strings.AboutText, Environment.NewLine);
+        var text = string.Format(Strings.AboutText, AppVersion.Display, Environment.NewLine);
         MessageBox.Show(text, Strings.TrayAbout, MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
