@@ -56,7 +56,7 @@
                          BorderThickness="0"
                          Foreground="#FFF2F2F7"
                          CaretBrush="#FFF2F2F7"
-                         FontSize="13">
+                         FontSize="{DynamicResource CardFontSize}">
                     <TextBox.Resources>
                         <Style TargetType="Border">
                             <Setter Property="CornerRadius" Value="8" />
@@ -66,7 +66,7 @@
                 <TextBlock x:Name="SearchPlaceholderText"
                            Margin="10,0,0,0"
                            VerticalAlignment="Center"
-                           FontSize="13"
+                           FontSize="{DynamicResource CardFontSize}"
                            Foreground="#FF6B6B73"
                            IsHitTestVisible="False" />
             </Grid>
@@ -141,7 +141,7 @@
                            Grid.Column="4"
                            HorizontalAlignment="Right"
                            VerticalAlignment="Center"
-                           FontSize="11"
+                           FontSize="{DynamicResource CardSmallFontSize}"
                            Foreground="#FFA5A5AD" />
             </Grid>
 
@@ -165,7 +165,7 @@
                            TextAlignment="Left"
                            VerticalAlignment="Center"
                            Margin="2,0,8,0"
-                           FontSize="11"
+                           FontSize="{DynamicResource CardSmallFontSize}"
                            Foreground="#FFFF9F4A"
                            TextTrimming="CharacterEllipsis"
                            IsHitTestVisible="False"

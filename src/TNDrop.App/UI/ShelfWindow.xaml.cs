@@ -441,7 +441,19 @@ public partial class ShelfWindow : Window
         // *next* slide-in would start pre-activated instead of NOACTIVATE. Idempotent if the
         // search box was never focused this time around.
         WindowStyles.SetNoActivate(this, true);
-        Keyboard.ClearFocus();
+
+        // Guarded on IsKeyboardFocusWithin (Task 17 review note, carried over from a Task 10
+        // caveat): Keyboard.ClearFocus() clears WPF's single, process-wide FocusedElement, not
+        // just this window's. Called unconditionally, it would steal focus from an unrelated
+        // window -- e.g. a control in the Task 17 settings window -- if the shelf happened to hide
+        // while that window held keyboard focus. The only element this window ever grants real
+        // keyboard focus to is its own SearchBox (see OnSearchBoxPreviewMouseLeftButtonDown), so
+        // this guard changes nothing for the case the call exists for: IsKeyboardFocusWithin is
+        // true exactly when there is search-box focus left to clear.
+        if (IsKeyboardFocusWithin)
+        {
+            Keyboard.ClearFocus();
+        }
     }
 
     /// <summary>

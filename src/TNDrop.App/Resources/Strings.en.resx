@@ -155,4 +155,136 @@
   <data name="FilesCopiedFormat" xml:space="preserve">
     <value>{0} files copied</value>
   </data>
+  <data name="SettingsWindowTitle" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="SettingsNavBehavior" xml:space="preserve">
+    <value>Behavior</value>
+  </data>
+  <data name="SettingsNavPosition" xml:space="preserve">
+    <value>Position</value>
+  </data>
+  <data name="SettingsNavAppearance" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="SettingsAutoStart" xml:space="preserve">
+    <value>Start automatically when Windows starts</value>
+  </data>
+  <data name="SettingsSoundsEnabled" xml:space="preserve">
+    <value>Sound effects</value>
+  </data>
+  <data name="SettingsAutoDelete" xml:space="preserve">
+    <value>Auto-delete</value>
+  </data>
+  <data name="SettingsAutoDeleteOffOption" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="SettingsAutoDeleteHours1Option" xml:space="preserve">
+    <value>After 1 hour</value>
+  </data>
+  <data name="SettingsAutoDeleteHours6Option" xml:space="preserve">
+    <value>After 6 hours</value>
+  </data>
+  <data name="SettingsAutoDeleteHours24Option" xml:space="preserve">
+    <value>After 24 hours</value>
+  </data>
+  <data name="SettingsAutoDeleteDays7Option" xml:space="preserve">
+    <value>After 7 days</value>
+  </data>
+  <data name="SettingsMoveToTopOnCopy" xml:space="preserve">
+    <value>Move to top after copying</value>
+  </data>
+  <data name="SettingsRetractDelay" xml:space="preserve">
+    <value>Time until it retracts</value>
+  </data>
+  <data name="SettingsEdge" xml:space="preserve">
+    <value>Edge</value>
+  </data>
+  <data name="SettingsEdgeLeft" xml:space="preserve">
+    <value>Left</value>
+  </data>
+  <data name="SettingsEdgeRight" xml:space="preserve">
+    <value>Right</value>
+  </data>
+  <data name="SettingsMonitor" xml:space="preserve">
+    <value>Monitor</value>
+  </data>
+  <data name="SettingsMonitorAuto" xml:space="preserve">
+    <value>Automatic (primary)</value>
+  </data>
+  <data name="SettingsMonitorFormat" xml:space="preserve">
+    <value>{0} ({1}x{2})</value>
+  </data>
+  <data name="SettingsHotZone" xml:space="preserve">
+    <value>Hot zone height</value>
+  </data>
+  <data name="SettingsTriggerSensitivity" xml:space="preserve">
+    <value>Trigger sensitivity</value>
+  </data>
+  <data name="SettingsTriggerAlign" xml:space="preserve">
+    <value>Trigger position</value>
+  </data>
+  <data name="SettingsTriggerAlignTop" xml:space="preserve">
+    <value>Top</value>
+  </data>
+  <data name="SettingsTriggerAlignCenter" xml:space="preserve">
+    <value>Center</value>
+  </data>
+  <data name="SettingsTriggerAlignBottom" xml:space="preserve">
+    <value>Bottom</value>
+  </data>
+  <data name="SettingsTextScale" xml:space="preserve">
+    <value>Text size</value>
+  </data>
+  <data name="SettingsTextScaleSmall" xml:space="preserve">
+    <value>Small</value>
+  </data>
+  <data name="SettingsTextScaleNormal" xml:space="preserve">
+    <value>Normal</value>
+  </data>
+  <data name="SettingsTextScaleMedium" xml:space="preserve">
+    <value>Medium</value>
+  </data>
+  <data name="SettingsTextScaleLarge" xml:space="preserve">
+    <value>Large</value>
+  </data>
+  <data name="SettingsIndicatorStyle" xml:space="preserve">
+    <value>Indicator style</value>
+  </data>
+  <data name="SettingsIndicatorStyleBeacon" xml:space="preserve">
+    <value>Beacon</value>
+  </data>
+  <data name="SettingsIndicatorStyleBar" xml:space="preserve">
+    <value>Bar</value>
+  </data>
+  <data name="SettingsIndicatorStylePulse" xml:space="preserve">
+    <value>Pulse</value>
+  </data>
+  <data name="SettingsIndicatorStyleCorner" xml:space="preserve">
+    <value>Corner</value>
+  </data>
+  <data name="SettingsLanguage" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="SettingsLanguageJa" xml:space="preserve">
+    <value>日本語</value>
+  </data>
+  <data name="SettingsLanguageEn" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="SettingsLanguageRestartNote" xml:space="preserve">
+    <value>Changes apply the next time the app starts</value>
+  </data>
+  <data name="SettingsEdgeHint" xml:space="preserve">
+    <value>Show the edge hint</value>
+  </data>
+  <data name="SettingsPercentFormat" xml:space="preserve">
+    <value>{0}%</value>
+  </data>
+  <data name="SettingsPixelFormat" xml:space="preserve">
+    <value>{0}px</value>
+  </data>
+  <data name="SettingsMillisecondsFormat" xml:space="preserve">
+    <value>{0} ms</value>
+  </data>
 </root>

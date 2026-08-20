@@ -31,6 +31,7 @@ public partial class App : System.Windows.Application
     private CapturePipeline? _pipeline;
     private AutoDeleteService? _autoDelete;
     private FullscreenDetector? _fullscreenDetector;
+    private SettingsWindow? _settingsWindow;
 
     /// <summary>
     /// How long a resume-from-sleep or unlock keeps <see cref="ClipboardMonitor.IgnoreUntil"/>
@@ -102,6 +103,13 @@ public partial class App : System.Windows.Application
             Settings = SettingsStore.Load();
             ApplyUiCulture(Settings.Language);
 
+            // Text scale (Task 17): applied before any window is constructed so the very first
+            // layout pass already reads the saved size instead of the App.xaml default and then
+            // visibly resizing a moment later. TextScaleMap.Apply is the single place that turns
+            // TextScale into point sizes -- SettingsWindow calls the very same method for a live
+            // change, see its doc comment.
+            TextScaleMap.Apply(Settings.TextScale, Resources);
+
             // Self-heal: compares against the exact stored value, not just whether one is
             // present. AutoStart.IsEnabled() alone would miss a STALE registry value -- the exe
             // moved (reinstall, drive letter change) since the Run value was written, so it still
@@ -125,7 +133,11 @@ public partial class App : System.Windows.Application
             _trayIcon.SetHoverEnabled(Settings.HoverEnabled);
             _trayIcon.SetIncognito(Settings.IncognitoMode);
             _trayIcon.HoverEnabledChanged += OnHoverEnabledChanged;
-            _trayIcon.IncognitoChanged += OnIncognitoChanged;
+            // Subscribed directly to the static setter rather than through an instance wrapper:
+            // SetIncognitoMode (below) is also SettingsWindow's call target for the same
+            // checkbox, so routing the tray's own click through anything else would be a second,
+            // driftable copy of "what changing incognito mode does".
+            _trayIcon.IncognitoChanged += SetIncognitoMode;
             _trayIcon.OpenSettingsRequested += OnOpenSettingsRequested;
             _trayIcon.ExitRequested += OnExitRequested;
 
@@ -334,17 +346,22 @@ public partial class App : System.Windows.Application
         }
     }
 
-    private void OnIncognitoChanged(bool value)
+    /// <summary>
+    /// Turns incognito mode on/off: pauses/resumes capture, syncs the tray checkbox (and its
+    /// tooltip suffix) and persists. The single call target for both the tray menu's own click
+    /// (subscribed directly in OnStartup) and SettingsWindow's checkbox -- see NotifyManualCapture
+    /// for the same "one static entry point reached via Application.Current" pattern.
+    /// </summary>
+    public static void SetIncognitoMode(bool value)
     {
+        if (System.Windows.Application.Current is not App app)
+        {
+            return;
+        }
+
         Settings.IncognitoMode = value;
         Monitor.Paused = value;
-
-        // The tray's own Click handler already flipped the checkbox before raising this event;
-        // SetIncognito is called again here purely for its tooltip-text side effect (idempotent
-        // on the checkbox itself), so the notification-area tooltip reflects secret mode without
-        // the user having to open the menu to tell.
-        _trayIcon?.SetIncognito(value);
-
+        app._trayIcon?.SetIncognito(value);
         SaveSettings();
     }
 
@@ -385,12 +402,184 @@ public partial class App : System.Windows.Application
         return true;
     }
 
+    /// <summary>
+    /// Opens the settings window, or re-activates the one already open. Single-instance rather
+    /// than one-per-click: a second "設定..." click while the window is already up must bring the
+    /// existing window forward (and restore it if minimized), not spawn a duplicate that would
+    /// immediately fight the first one over every ApplySettings/SaveSettings call.
+    /// </summary>
     private void OnOpenSettingsRequested()
     {
-        // 設定ウィンドウは Task 9 以降で実装する。
+        if (_settingsWindow is null)
+        {
+            _settingsWindow = new SettingsWindow();
+
+            // The field must be cleared when the window closes (X button, Alt+F4) or the next
+            // "設定..." click would Activate() a disposed window instead of creating a fresh one.
+            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        }
+
+        if (_settingsWindow.WindowState == WindowState.Minimized)
+        {
+            _settingsWindow.WindowState = WindowState.Normal;
+        }
+
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
     }
 
     private void OnExitRequested() => Shutdown();
+
+    // ---- Settings window entry points (Task 17) --------------------------------------------
+    //
+    // Every one of these follows the same shape: mutate Settings, SaveSettings(), and push the
+    // change out to whatever live window/service actually reads that setting -- resolving the
+    // live App instance first wherever the propagation half needs an instance field
+    // (_shelf/_edgeTrigger/_trayIcon), the same "Application.Current as App, no-op if there isn't
+    // one" pattern NotifyManualCapture and SetIncognitoMode above already use, so the design-time
+    // gap and any future test host stay just as safe as they are today. SettingsWindow never
+    // touches Settings or the store directly -- these methods (plus SetAutoStartEnabled and
+    // SetIncognitoMode above) are the ONLY place a settings change is written and propagated, so
+    // no second copy of "what changing setting X does" can drift out of sync with this one.
+
+    public static void SetSoundsEnabled(bool value)
+    {
+        Settings.SoundsEnabled = value;
+        SaveSettings();
+    }
+
+    public static void SetAutoDelete(AutoDeletePolicy value)
+    {
+        Settings.AutoDelete = value;
+        SaveSettings();
+    }
+
+    public static void SetMoveToTopOnCopy(bool value)
+    {
+        Settings.MoveToTopOnCopy = value;
+        SaveSettings();
+    }
+
+    public static void SetRetractDelayMs(int value)
+    {
+        Settings.RetractDelayMs = value;
+        SaveSettings();
+        ReapplyPlacement();
+    }
+
+    public static void SetEdge(EdgeSide value)
+    {
+        Settings.Edge = value;
+        SaveSettings();
+        ReapplyPlacement();
+    }
+
+    public static void SetMonitorDeviceName(string? value)
+    {
+        Settings.MonitorDeviceName = value;
+        SaveSettings();
+        ReapplyPlacement();
+    }
+
+    public static void SetHotZonePercent(int value)
+    {
+        Settings.HotZonePercent = value;
+        SaveSettings();
+        ReapplyPlacement();
+    }
+
+    public static void SetTriggerProximityPx(int value)
+    {
+        Settings.TriggerProximityPx = value;
+        SaveSettings();
+        ReapplyPlacement();
+    }
+
+    public static void SetTriggerAlign(TriggerAlign value)
+    {
+        Settings.TriggerAlign = value;
+        SaveSettings();
+        ReapplyPlacement();
+    }
+
+    /// <summary>
+    /// Swaps the App.xaml DynamicResource sizes via <see cref="TextScaleMap"/> -- see that
+    /// class's doc comment for why this is the only place besides OnStartup that computes them.
+    /// </summary>
+    public static void SetTextScale(TextScale value)
+    {
+        Settings.TextScale = value;
+        SaveSettings();
+
+        if (System.Windows.Application.Current is App app)
+        {
+            TextScaleMap.Apply(value, app.Resources);
+        }
+    }
+
+    public static void SetIndicatorStyle(IndicatorStyle value)
+    {
+        Settings.IndicatorStyle = value;
+        SaveSettings();
+    }
+
+    /// <summary>
+    /// UI language: saved but not applied live -- see <see cref="Strings"/>' class doc comment
+    /// and <see cref="ApplyUiCulture"/>'s call site in OnStartup. SettingsWindow's own note tells
+    /// the user the change needs a restart, so this method deliberately does not attempt one.
+    /// </summary>
+    public static void SetLanguage(string value)
+    {
+        Settings.Language = value;
+        SaveSettings();
+    }
+
+    public static void SetEdgeHintEnabled(bool value)
+    {
+        Settings.EdgeHintEnabled = value;
+        SaveSettings();
+
+        if (System.Windows.Application.Current is App app)
+        {
+            app._edgeTrigger?.SetHintVisible(value);
+        }
+    }
+
+    /// <summary>
+    /// Re-applies Settings to the shelf and edge trigger windows -- the one place both
+    /// <see cref="OnDisplaySettingsChanged"/> (monitor unplug/replug) and every position-affecting
+    /// setter above call to push a geometry change out to the live windows, instead of each
+    /// keeping its own copy of "re-place both windows, and don't let one's failure block the
+    /// other's". Safe to call from the Dispatcher thread directly (every setter above already
+    /// runs on it, since SettingsWindow's controls raise their events there); the one caller that
+    /// is NOT already on the Dispatcher (<see cref="OnDisplaySettingsChanged"/>) wraps its own
+    /// call in <see cref="RunOnUiThread"/> instead of this method doing so itself.
+    /// </summary>
+    public static void ReapplyPlacement()
+    {
+        if (System.Windows.Application.Current is not App app)
+        {
+            return;
+        }
+
+        try
+        {
+            app._shelf?.ApplySettings(Settings);
+        }
+        catch (Exception ex)
+        {
+            FileLogger.Instance?.Error(Module, "failed to re-apply settings to the shelf", ex);
+        }
+
+        try
+        {
+            app._edgeTrigger?.ApplySettings(Settings);
+        }
+        catch (Exception ex)
+        {
+            FileLogger.Instance?.Error(Module, "failed to re-apply settings to the edge trigger", ex);
+        }
+    }
 
     /// <summary>
     /// Fullscreen/presentation mode started or ended. Only the hover affordance is touched --
@@ -470,29 +659,7 @@ public partial class App : System.Windows.Application
         RunOnUiThread(() =>
         {
             FileLogger.Instance?.Info(Module, "display settings changed; re-applying window placement");
-
-            // Independent try/catch per window: each ApplySettings already catches its own
-            // internal placement failures and logs under its own module tag (see
-            // ShelfWindow/EdgeTriggerWindow), but a throw that somehow escapes that must still not
-            // take the OTHER window's re-placement down with it -- an exception from the shelf
-            // call would otherwise skip the edge trigger call entirely.
-            try
-            {
-                _shelf?.ApplySettings(Settings);
-            }
-            catch (Exception ex)
-            {
-                FileLogger.Instance?.Error(Module, "failed to re-apply settings to the shelf after a display change", ex);
-            }
-
-            try
-            {
-                _edgeTrigger?.ApplySettings(Settings);
-            }
-            catch (Exception ex)
-            {
-                FileLogger.Instance?.Error(Module, "failed to re-apply settings to the edge trigger after a display change", ex);
-            }
+            ReapplyPlacement();
         });
     }
 
@@ -519,9 +686,9 @@ public partial class App : System.Windows.Application
 
     /// <summary>
     /// Applies an autostart change: updates the setting, writes the registry Run value, and
-    /// persists. Not called anywhere yet -- Task 17's settings window is the intended caller, so
-    /// this only wires the mechanism and keeps the startup self-heal (see OnStartup) as the sole
-    /// active path until that UI exists.
+    /// persists. Called by SettingsWindow's checkbox (Task 17); the startup self-heal in
+    /// OnStartup still runs on every launch to correct drift this method cannot see (a
+    /// moved/reinstalled exe changing the expected registry value between runs).
     /// </summary>
     public static void SetAutoStartEnabled(bool enabled)
     {

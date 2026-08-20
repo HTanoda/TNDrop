@@ -96,7 +96,7 @@
                 <TextBlock x:Name="TextContent"
                            Text="{Binding Title}"
                            Foreground="{StaticResource Card.Foreground}"
-                           FontSize="13"
+                           FontSize="{DynamicResource CardFontSize}"
                            TextTrimming="CharacterEllipsis"
                            TextWrapping="Wrap"
                            MaxHeight="58"
@@ -113,16 +113,16 @@
                                 Tag="LinkOpen"
                                 HorizontalAlignment="Left"
                                 Background="Transparent">
-                        <TextBlock Text="&#128279;" FontSize="13" Margin="0,0,6,0" Cursor="Hand" />
+                        <TextBlock Text="&#128279;" FontSize="{DynamicResource CardFontSize}" Margin="0,0,6,0" Cursor="Hand" />
                         <TextBlock Text="{Binding Title}"
                                    FontWeight="Bold"
-                                   FontSize="13"
+                                   FontSize="{DynamicResource CardFontSize}"
                                    Foreground="{StaticResource Card.Foreground}"
                                    TextTrimming="CharacterEllipsis"
                                    Style="{StaticResource Card.LinkOpenText}" />
                     </StackPanel>
                     <TextBlock Text="{Binding Subtitle}"
-                               FontSize="11"
+                               FontSize="{DynamicResource CardSmallFontSize}"
                                Margin="0,4,0,0"
                                Foreground="{StaticResource Card.SubForeground}"
                                TextTrimming="CharacterEllipsis" />
@@ -139,14 +139,14 @@
                 <!-- Files, single item -->
                 <StackPanel x:Name="FilesSingleContent" Visibility="Collapsed">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#128196;" FontSize="13" Margin="0,0,6,0" />
+                        <TextBlock Text="&#128196;" FontSize="{DynamicResource CardFontSize}" Margin="0,0,6,0" />
                         <TextBlock Text="{Binding Title}"
-                                   FontSize="13"
+                                   FontSize="{DynamicResource CardFontSize}"
                                    Foreground="{StaticResource Card.Foreground}"
                                    TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     <TextBlock Text="{Binding Subtitle}"
-                               FontSize="11"
+                               FontSize="{DynamicResource CardSmallFontSize}"
                                Margin="0,4,0,0"
                                Foreground="{StaticResource Card.SubForeground}"
                                TextTrimming="CharacterEllipsis" />
@@ -181,11 +181,11 @@
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Title}"
-                                   FontSize="13"
+                                   FontSize="{DynamicResource CardFontSize}"
                                    Foreground="{StaticResource Card.Foreground}"
                                    TextTrimming="CharacterEllipsis" />
                         <TextBlock Text="{Binding Subtitle}"
-                                   FontSize="11"
+                                   FontSize="{DynamicResource CardSmallFontSize}"
                                    Margin="0,4,0,0"
                                    Foreground="{StaticResource Card.SubForeground}"
                                    TextTrimming="CharacterEllipsis" />
@@ -228,7 +228,7 @@
                         IsHitTestVisible="False"
                         Visibility="Collapsed">
                     <TextBlock Text="&#10003;"
-                               FontSize="11"
+                               FontSize="{DynamicResource CardSmallFontSize}"
                                FontWeight="Bold"
                                Foreground="White"
                                HorizontalAlignment="Center"
