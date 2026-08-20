@@ -68,6 +68,9 @@
   <data name="TrayIncognito" xml:space="preserve">
     <value>シークレットモード</value>
   </data>
+  <data name="TrayTooltipIncognitoSuffix" xml:space="preserve">
+    <value> (シークレット)</value>
+  </data>
   <data name="TraySettings" xml:space="preserve">
     <value>設定...</value>
   </data>

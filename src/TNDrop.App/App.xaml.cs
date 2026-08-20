@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using TNDrop.Core;
 using TNDrop.Platform;
 using TNDrop.Resources;
@@ -28,6 +29,16 @@ public partial class App : System.Windows.Application
     private ShelfWindow? _shelf;
     private EdgeTriggerWindow? _edgeTrigger;
     private CapturePipeline? _pipeline;
+    private AutoDeleteService? _autoDelete;
+    private FullscreenDetector? _fullscreenDetector;
+
+    /// <summary>
+    /// How long a resume-from-sleep or unlock keeps <see cref="ClipboardMonitor.IgnoreUntil"/>
+    /// in the future. Windows fires bogus clipboard-format-listener notifications for a moment
+    /// around both events; this window swallows them so a stale clipboard doesn't get re-captured
+    /// as if the user had just copied it.
+    /// </summary>
+    private static readonly TimeSpan WakeIgnoreWindow = TimeSpan.FromSeconds(2);
 
     public static string DataDir { get; private set; } = string.Empty;
 
@@ -91,6 +102,16 @@ public partial class App : System.Windows.Application
             Settings = SettingsStore.Load();
             ApplyUiCulture(Settings.Language);
 
+            // Self-heal: the exe may have moved (reinstall, drive letter change) since the
+            // registry Run value was written, so re-derive it from the *current*
+            // Environment.ProcessPath rather than trusting whatever is already there. Only
+            // touches the registry when the two disagree, so a fresh profile with
+            // AutoStartEnabled still false does not gain an unwanted Run entry.
+            if (Settings.AutoStartEnabled != AutoStart.IsEnabled())
+            {
+                AutoStart.SetEnabled(Settings.AutoStartEnabled);
+            }
+
             // (4) Clipboard history store.
             Store = new ItemStore(DataDir);
             Store.Load();
@@ -141,6 +162,43 @@ public partial class App : System.Windows.Application
             {
                 _edgeTrigger.Show();
             }
+
+            // (7) Auto-delete: purge once immediately (stale items left over from a previous
+            // session that never ran long enough to hit the 10-minute tick), then start the
+            // recurring cycle. Off (the default) makes RunOnce/the tick a no-op either way.
+            _autoDelete = new AutoDeleteService(Store, () => Settings.AutoDelete);
+            var purgedAtStartup = _autoDelete.RunOnce();
+            if (purgedAtStartup > 0)
+            {
+                FileLogger.Instance?.Info(Module, $"startup auto-delete purged {purgedAtStartup} stale item(s)");
+            }
+
+            _autoDelete.Start();
+
+            // (8) Fullscreen: while a fullscreen/presentation app owns the screen, hovering the
+            // edge would fight it for the pointer, so hide the trigger band (and with it the edge
+            // hint). Capture itself keeps running -- this only stops the hover affordance, exactly
+            // like the reference app. Restored on exit from fullscreen only if hover-to-open is still the
+            // user's setting.
+            _fullscreenDetector = new FullscreenDetector();
+            _fullscreenDetector.Changed += OnFullscreenChanged;
+
+            // (9) Sleep/unlock: Windows re-broadcasts a stale clipboard around both events, which
+            // would otherwise be captured as if freshly copied. SystemEvents is a static,
+            // process-wide publisher -- these handlers are unsubscribed in OnExit or they would
+            // outlive this App instance and, in a test host that creates/tears down multiple App
+            // objects, throw/log against a torn-down Monitor.
+            SystemEvents.PowerModeChanged += OnPowerModeChanged;
+            SystemEvents.SessionSwitch += OnSessionSwitch;
+
+            // (10) Monitor configuration changes (unplug/replug, resolution change): re-place the
+            // always-alive windows. MonitorGeometry.Resolve already falls back to the primary
+            // monitor when Settings.MonitorDeviceName is no longer present, and Settings itself is
+            // deliberately left untouched here so reconnecting the original monitor restores it
+            // automatically instead of the fallback sticking. The indicator overlay is not listed
+            // here: it re-resolves its monitor on every Flash() call instead of holding a placement
+            // to go stale.
+            SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         }
         catch (Exception ex)
         {
@@ -151,6 +209,18 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // Static, process-wide events: must be unsubscribed explicitly. Left subscribed, they
+        // would keep this (about-to-be-collected) App instance alive from SystemEvents' side and,
+        // for anything that fires after Monitor is disposed below, throw/log against a dead
+        // object -- neither of which "the process is exiting anyway" makes harmless, since
+        // SystemEvents' registration outlives normal GC.
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        SystemEvents.SessionSwitch -= OnSessionSwitch;
+        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+
+        _fullscreenDetector?.Dispose();
+        _autoDelete?.Dispose();
+
         Store?.Save();
         _trayIcon?.Dispose();
         Monitor?.Dispose();
@@ -253,6 +323,13 @@ public partial class App : System.Windows.Application
     {
         Settings.IncognitoMode = value;
         Monitor.Paused = value;
+
+        // The tray's own Click handler already flipped the checkbox before raising this event;
+        // SetIncognito is called again here purely for its tooltip-text side effect (idempotent
+        // on the checkbox itself), so the notification-area tooltip reflects secret mode without
+        // the user having to open the menu to tell.
+        _trayIcon?.SetIncognito(value);
+
         SaveSettings();
     }
 
@@ -299,6 +376,110 @@ public partial class App : System.Windows.Application
     }
 
     private void OnExitRequested() => Shutdown();
+
+    /// <summary>
+    /// Fullscreen/presentation mode started or ended. Only the hover affordance is touched --
+    /// capture keeps running the whole time, matching the reference app's behavior -- and exiting
+    /// fullscreen restores the trigger band only if hover-to-open is still the user's setting
+    /// (mirrors <see cref="OnHoverEnabledChanged"/>'s "true" branch).
+    /// </summary>
+    private void OnFullscreenChanged(object? sender, bool isFullscreen)
+    {
+        if (isFullscreen)
+        {
+            _edgeTrigger?.Hide();
+            FileLogger.Instance?.Info(Module, "fullscreen detected; hiding the edge trigger (capture continues)");
+        }
+        else if (Settings.HoverEnabled)
+        {
+            _edgeTrigger?.Show();
+            FileLogger.Instance?.Info(Module, "fullscreen ended; restoring the edge trigger");
+        }
+    }
+
+    /// <summary>
+    /// Resume from sleep: Windows re-broadcasts whatever was last on the clipboard for a moment
+    /// after waking, which would otherwise look exactly like the user copying it just now.
+    /// Raised by <see cref="SystemEvents"/> on its own background thread, not the Dispatcher, so
+    /// the actual write is marshaled -- <see cref="ClipboardMonitor.IgnoreUntil"/> is a plain,
+    /// unlocked property and Monitor is torn down on the UI thread during shutdown.
+    /// </summary>
+    private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode != PowerModes.Resume)
+        {
+            return;
+        }
+
+        RunOnUiThread(() =>
+        {
+            Monitor.IgnoreUntil = DateTime.UtcNow + WakeIgnoreWindow;
+            FileLogger.Instance?.Info(Module, "resumed from sleep; ignoring clipboard updates for 2s");
+        });
+    }
+
+    /// <summary>Session unlock: same bogus-clipboard-beacon problem as resume-from-sleep.</summary>
+    private void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
+    {
+        if (e.Reason != SessionSwitchReason.SessionUnlock)
+        {
+            return;
+        }
+
+        RunOnUiThread(() =>
+        {
+            Monitor.IgnoreUntil = DateTime.UtcNow + WakeIgnoreWindow;
+            FileLogger.Instance?.Info(Module, "session unlocked; ignoring clipboard updates for 2s");
+        });
+    }
+
+    /// <summary>
+    /// Monitor(s) added/removed/reconfigured. Re-places the shelf and the trigger band; the
+    /// indicator overlay needs no equivalent call because it re-resolves its monitor on every
+    /// <see cref="IndicatorWindow.Flash"/> instead of caching a placement. Also raised off the
+    /// Dispatcher thread -- see <see cref="OnPowerModeChanged"/>.
+    /// </summary>
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        RunOnUiThread(() =>
+        {
+            FileLogger.Instance?.Info(Module, "display settings changed; re-applying window placement");
+            _shelf?.ApplySettings(Settings);
+            _edgeTrigger?.ApplySettings(Settings);
+        });
+    }
+
+    /// <summary>
+    /// Marshals onto the Dispatcher this Application owns. <see cref="SystemEvents"/> callbacks
+    /// arrive on its own internal thread, not the UI thread, so anything they do that touches a
+    /// WPF window (ApplySettings) or should serialize with UI-thread work must go through here
+    /// rather than running inline. Best-effort: if the dispatcher is already shutting down (app
+    /// exiting while a SystemEvents callback is in flight), log and drop it rather than throw.
+    /// </summary>
+    private void RunOnUiThread(Action action)
+    {
+        try
+        {
+            Dispatcher.BeginInvoke(action);
+        }
+        catch (Exception ex)
+        {
+            FileLogger.Instance?.Warn(Module, $"could not dispatch to the UI thread: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Applies an autostart change: updates the setting, writes the registry Run value, and
+    /// persists. Not called anywhere yet -- Task 17's settings window is the intended caller, so
+    /// this only wires the mechanism and keeps the startup self-heal (see OnStartup) as the sole
+    /// active path until that UI exists.
+    /// </summary>
+    public static void SetAutoStartEnabled(bool enabled)
+    {
+        Settings.AutoStartEnabled = enabled;
+        AutoStart.SetEnabled(enabled);
+        SaveSettings();
+    }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {

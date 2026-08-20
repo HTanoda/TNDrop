@@ -22,6 +22,7 @@ internal static class Strings
     public static string AppName => Get(nameof(AppName));
     public static string TrayHover => Get(nameof(TrayHover));
     public static string TrayIncognito => Get(nameof(TrayIncognito));
+    public static string TrayTooltipIncognitoSuffix => Get(nameof(TrayTooltipIncognitoSuffix));
     public static string TraySettings => Get(nameof(TraySettings));
     public static string TrayAbout => Get(nameof(TrayAbout));
     public static string TrayExit => Get(nameof(TrayExit));

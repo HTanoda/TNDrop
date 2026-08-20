@@ -74,7 +74,14 @@ public sealed class TrayIcon : IDisposable
     /// <summary>Syncs the checkable menu items to the current settings without re-raising the change events.</summary>
     public void SetHoverEnabled(bool value) => _hoverItem.Checked = value;
 
-    public void SetIncognito(bool value) => _incognitoItem.Checked = value;
+    public void SetIncognito(bool value)
+    {
+        _incognitoItem.Checked = value;
+
+        // NotifyIcon.Text is capped at 63 chars on older shells; AppName + suffix is short
+        // enough to stay well under that, so no truncation is needed here.
+        _notifyIcon.Text = value ? Strings.AppName + Strings.TrayTooltipIncognitoSuffix : Strings.AppName;
+    }
 
     public void ShowBalloon(string title, string text, ToolTipIcon icon = ToolTipIcon.Warning)
     {
