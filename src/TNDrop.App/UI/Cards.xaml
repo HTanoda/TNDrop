@@ -75,6 +75,37 @@
         </Setter>
     </Style>
 
+    <!-- Shelf header ⚙/× buttons (v1.1 Task C): small icon-only buttons in ShelfWindow's top row.
+         Focusable=False keeps a click from taking keyboard focus even though the window can, in
+         principle, be activated (the search box's own deliberate NOACTIVATE exception, see
+         ShelfWindow.OnSearchBoxPreviewMouseLeftButtonDown) - unlike the search box, these two are
+         never meant to grab focus, only to fire their Click. -->
+    <Style x:Key="Header.IconButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="26" />
+        <Setter Property="Height" Value="26" />
+        <Setter Property="Margin" Value="4,0,0,0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{StaticResource Card.Foreground}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource Card.ActionHover}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <DataTemplate x:Key="CardItemTemplate" DataType="{x:Type vm:CardViewModel}">
         <!-- AllowDrop is what makes a card a drop target in its own right (Task 14 merge): without
              it WPF raises DragOver/Drop on the nearest ancestor that has it, which is the shelf
@@ -97,6 +128,7 @@
                      third line's glyph tops at Medium/Large instead of trimming it. -->
                 <TextBlock x:Name="TextContent"
                            Text="{Binding Title}"
+                           ToolTip="{Binding Title}"
                            Foreground="{StaticResource Card.Foreground}"
                            FontSize="{DynamicResource CardFontSize}"
                            TextTrimming="CharacterEllipsis"
@@ -117,6 +149,7 @@
                                 Background="Transparent">
                         <TextBlock Text="&#128279;" FontSize="{DynamicResource CardFontSize}" Margin="0,0,6,0" Cursor="Hand" />
                         <TextBlock Text="{Binding Title}"
+                                   ToolTip="{Binding Title}"
                                    FontWeight="Bold"
                                    FontSize="{DynamicResource CardFontSize}"
                                    Foreground="{StaticResource Card.Foreground}"
@@ -124,6 +157,7 @@
                                    Style="{StaticResource Card.LinkOpenText}" />
                     </StackPanel>
                     <TextBlock Text="{Binding Subtitle}"
+                               ToolTip="{Binding Subtitle}"
                                FontSize="{DynamicResource CardSmallFontSize}"
                                Margin="0,4,0,0"
                                Foreground="{StaticResource Card.SubForeground}"
@@ -156,11 +190,13 @@
                                        Visibility="Collapsed" />
                         </Grid>
                         <TextBlock Text="{Binding Title}"
+                                   ToolTip="{Binding Title}"
                                    FontSize="{DynamicResource CardFontSize}"
                                    Foreground="{StaticResource Card.Foreground}"
                                    TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     <TextBlock Text="{Binding Subtitle}"
+                               ToolTip="{Binding Subtitle}"
                                FontSize="{DynamicResource CardSmallFontSize}"
                                Margin="0,4,0,0"
                                Foreground="{StaticResource Card.SubForeground}"
@@ -252,10 +288,12 @@
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Title}"
+                                   ToolTip="{Binding Title}"
                                    FontSize="{DynamicResource CardFontSize}"
                                    Foreground="{StaticResource Card.Foreground}"
                                    TextTrimming="CharacterEllipsis" />
                         <TextBlock Text="{Binding Subtitle}"
+                                   ToolTip="{Binding Subtitle}"
                                    FontSize="{DynamicResource CardSmallFontSize}"
                                    Margin="0,4,0,0"
                                    Foreground="{StaticResource Card.SubForeground}"

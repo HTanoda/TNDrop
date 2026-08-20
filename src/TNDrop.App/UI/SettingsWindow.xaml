@@ -114,6 +114,7 @@
                         <CheckBox x:Name="AutoStartCheckBox" />
                         <CheckBox x:Name="SoundsCheckBox" />
                         <CheckBox x:Name="IncognitoCheckBox" />
+                        <CheckBox x:Name="HoverCheckBox" />
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
                             <TextBlock x:Name="AutoDeleteLabelText" Style="{StaticResource Settings.SectionLabel}" />

@@ -136,10 +136,18 @@ public partial class SettingsWindow : Window
         IncognitoCheckBox.Content = Strings.TrayIncognito;
         MoveToTopCheckBox.Content = Strings.SettingsMoveToTopOnCopy;
 
+        // ホバー表示 (v1.1 Task C): a second control for the same setting the tray's "ホバー表示"
+        // menu item already toggles, wired through the same App.SetHoverEnabled central setter --
+        // see that method's doc comment. KNOWN LIMIT, same as IncognitoCheckBox above: if this
+        // window is already open when the TRAY toggles hover, this box does not live-update; only
+        // the reverse direction (a change made here reaching the tray checkbox) is covered.
+        HoverCheckBox.Content = Strings.SettingsHoverEnabled;
+
         WireCheckBox(AutoStartCheckBox, settings.AutoStartEnabled, global::TNDrop.App.SetAutoStartEnabled);
         WireCheckBox(SoundsCheckBox, settings.SoundsEnabled, global::TNDrop.App.SetSoundsEnabled);
         WireCheckBox(IncognitoCheckBox, settings.IncognitoMode, global::TNDrop.App.SetIncognitoMode);
         WireCheckBox(MoveToTopCheckBox, settings.MoveToTopOnCopy, global::TNDrop.App.SetMoveToTopOnCopy);
+        WireCheckBox(HoverCheckBox, settings.HoverEnabled, global::TNDrop.App.SetHoverEnabled);
 
         AutoDeleteLabelText.Text = Strings.SettingsAutoDelete;
         var autoDeleteOptions = new[]

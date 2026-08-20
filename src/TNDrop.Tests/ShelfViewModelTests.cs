@@ -116,4 +116,49 @@ public class ShelfViewModelTests : IDisposable
         Assert.Equal(1, vm.CountImages);
         Assert.Equal(0, vm.CountFiles);
     }
+
+    // -- v1.1 Task C: footer count (全 {0} 件 / {0} / 全 {1} 件) --------------------------------
+    //
+    // TotalCount is the store's whole item count (pinned + unpinned, every kind) - independent of
+    // the current filter/search. VisibleCount is what is actually on screen right now: the
+    // filtered/searched Cards deck plus the PinnedCards deck, which always shows regardless of
+    // filter/search (see ShelfViewModel.Rebuild's own comment on that). Both single-resolution:
+    // ShelfWindow's footer reads only these two properties, never recomputing the same counts a
+    // second way.
+
+    [StaFact]
+    public void TotalCount_is_the_whole_store_including_pinned()
+    {
+        Add(ClipKind.Text, "a");
+        Add(ClipKind.Link, "https://example.com/page");
+        _store.SetPinned(_store.Items[0].Id, true);
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(2, vm.TotalCount);
+
+        vm.Filter = CardFilter.Links;
+        Assert.Equal(2, vm.TotalCount);
+    }
+
+    [StaFact]
+    public void VisibleCount_sums_filtered_cards_and_the_pinned_deck()
+    {
+        Add(ClipKind.Text, "hello");
+        Add(ClipKind.Link, "https://example.com/page");
+        Add(ClipKind.Files, @"C:\docs\a.txt");
+        _store.SetPinned(_store.Items[0].Id, true); // pins the just-added Files item
+
+        var vm = new ShelfViewModel(_store);
+
+        // All filter: 2 unpinned cards (text + link) + 1 pinned (files) = 3.
+        Assert.Equal(3, vm.VisibleCount);
+        Assert.Equal(3, vm.TotalCount);
+
+        vm.Filter = CardFilter.Links;
+
+        // Only the link card matches the filter among the unpinned deck; the pinned deck is
+        // unaffected by the filter and still counts.
+        Assert.Equal(2, vm.VisibleCount);
+        Assert.Equal(3, vm.TotalCount);
+    }
 }

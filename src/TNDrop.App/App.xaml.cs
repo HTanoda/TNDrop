@@ -132,7 +132,7 @@ public partial class App : System.Windows.Application
             _trayIcon = new TrayIcon();
             _trayIcon.SetHoverEnabled(Settings.HoverEnabled);
             _trayIcon.SetIncognito(Settings.IncognitoMode);
-            _trayIcon.HoverEnabledChanged += OnHoverEnabledChanged;
+            _trayIcon.HoverEnabledChanged += SetHoverEnabled;
             // Subscribed directly to the static setter rather than through an instance wrapper:
             // SetIncognitoMode (below) is also SettingsWindow's call target for the same
             // checkbox, so routing the tray's own click through anything else would be a second,
@@ -287,8 +287,24 @@ public partial class App : System.Windows.Application
         _singleInstanceMutex = null;
     }
 
-    private void OnHoverEnabledChanged(bool value)
+    /// <summary>
+    /// Turns hover-to-open on/off: persists the setting, shows/hides the edge trigger band (or
+    /// slides the shelf back in/out) and syncs the tray checkbox. Single static call target
+    /// (v1.1 Task C) for both the tray menu's own click (subscribed directly in OnStartup, above)
+    /// and SettingsWindow's hover checkbox -- see <see cref="SetIncognitoMode"/>'s doc comment for
+    /// the same "one entry point reached via Application.Current" rationale, which is what keeps
+    /// "what turning hover on/off does" from having two copies that could drift apart.
+    /// <para>KNOWN LIMIT: if SettingsWindow is open when the TRAY toggles this, its checkbox does
+    /// not live-update (WireCheckBox only sets the box once, at construction) -- the same accepted
+    /// limitation IncognitoCheckBox already has for the tray's own incognito item.</para>
+    /// </summary>
+    public static void SetHoverEnabled(bool value)
     {
+        if (System.Windows.Application.Current is not App app)
+        {
+            return;
+        }
+
         Settings.HoverEnabled = value;
         SaveSettings();
 
@@ -297,21 +313,27 @@ public partial class App : System.Windows.Application
             // Do NOT show while a fullscreen/presentation app is active: OnFullscreenChanged
             // already hid the trigger for a reason that has nothing to do with this setting, and
             // FullscreenDetector.Changed only fires on the true/false TRANSITION -- toggling
-            // hover on (here, or via the tray) while still fullscreen would otherwise put the
-            // trigger back over the fullscreen app and leave it there until the app is polled
-            // again, since no further Changed event is coming to hide it a second time. Gated
-            // here rather than in FullscreenDetector itself, which only tracks fullscreen state
-            // and has no opinion on hover.
-            if (_fullscreenDetector?.IsFullscreen != true)
+            // hover on (here, or via the tray, or now the settings window) while still fullscreen
+            // would otherwise put the trigger back over the fullscreen app and leave it there
+            // until the app is polled again, since no further Changed event is coming to hide it
+            // a second time. Gated here rather than in FullscreenDetector itself, which only
+            // tracks fullscreen state and has no opinion on hover.
+            if (app._fullscreenDetector?.IsFullscreen != true)
             {
-                _edgeTrigger?.Show();
+                app._edgeTrigger?.Show();
             }
         }
         else
         {
-            _edgeTrigger?.Hide();
-            _shelf?.SlideOut();
+            app._edgeTrigger?.Hide();
+            app._shelf?.SlideOut();
         }
+
+        // Syncs the tray checkbox for every caller, including the tray's own click: TrayIcon's
+        // SetHoverEnabled never re-raises HoverEnabledChanged (see its doc comment), so this is
+        // idempotent when the tray was the caller and is what keeps the settings-window checkbox
+        // change reflected on the tray menu the next time it opens.
+        app._trayIcon?.SetHoverEnabled(value);
     }
 
     private void OnEdgeTriggered()
@@ -426,6 +448,23 @@ public partial class App : System.Windows.Application
 
         _settingsWindow.Show();
         _settingsWindow.Activate();
+    }
+
+    /// <summary>
+    /// Public static entry point (v1.1 Task C) so ShelfWindow's new header ⚙ button opens exactly
+    /// the same settings window the tray's own "設定..." menu item does -- <see cref="OnOpenSettingsRequested"/>
+    /// itself stays private and instance-scoped (it is also the tray's direct event handler; see
+    /// OnStartup's <c>_trayIcon.OpenSettingsRequested += OnOpenSettingsRequested;</c>), so there is
+    /// exactly one place that knows how to open/re-activate the single settings window instance.
+    /// No-op (rather than throwing) before startup finishes or from a test host with no live App
+    /// instance, matching every other <c>Application.Current as App</c> entry point in this file.
+    /// </summary>
+    public static void OpenSettingsWindow()
+    {
+        if (System.Windows.Application.Current is App app)
+        {
+            app.OnOpenSettingsRequested();
+        }
     }
 
     private void OnExitRequested() => Shutdown();

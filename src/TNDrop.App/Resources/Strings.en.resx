@@ -287,4 +287,19 @@
   <data name="SettingsMillisecondsFormat" xml:space="preserve">
     <value>{0} ms</value>
   </data>
+  <data name="SettingsHoverEnabled" xml:space="preserve">
+    <value>Hover activation</value>
+  </data>
+  <data name="HeaderSettingsTooltip" xml:space="preserve">
+    <value>Open settings</value>
+  </data>
+  <data name="HeaderHideTooltip" xml:space="preserve">
+    <value>Hide the shelf</value>
+  </data>
+  <data name="TotalCountFormat" xml:space="preserve">
+    <value>{0} total</value>
+  </data>
+  <data name="FilteredCountFormat" xml:space="preserve">
+    <value>{0} of {1} total</value>
+  </data>
 </root>

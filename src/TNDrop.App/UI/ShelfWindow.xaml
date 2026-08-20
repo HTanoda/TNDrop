@@ -39,14 +39,37 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <TextBlock x:Name="PlaceholderTitle"
-                       Grid.Row="0"
-                       Text="TNDrop"
-                       Margin="2,0,0,10"
-                       HorizontalAlignment="Left"
-                       FontSize="15"
-                       FontWeight="SemiBold"
-                       Foreground="#FFF2F2F7" />
+            <!-- Header (v1.1 Task C): app name left, settings (opens the same window the tray's
+                 own "設定..." menu item opens - see App.OpenSettingsWindow) and hide (SlideOut,
+                 same as the retract timer) right. Both buttons use Header.IconButtonStyle
+                 (Cards.xaml), which sets Focusable=False so a click never steals keyboard focus. -->
+            <Grid Grid.Row="0" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="PlaceholderTitle"
+                           Grid.Column="0"
+                           Text="TNDrop"
+                           Margin="2,0,0,0"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Center"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           Foreground="#FFF2F2F7" />
+
+                <Button x:Name="HeaderSettingsButton"
+                        Grid.Column="1"
+                        Content="&#9881;"
+                        Style="{StaticResource Header.IconButtonStyle}" />
+
+                <Button x:Name="HeaderHideButton"
+                        Grid.Column="2"
+                        Content="&#215;"
+                        Style="{StaticResource Header.IconButtonStyle}" />
+            </Grid>
 
             <Grid Grid.Row="1" Margin="0,0,0,10">
                 <TextBox x:Name="SearchBox"
@@ -110,6 +133,7 @@
                      ItemTemplate="{StaticResource CardItemTemplate}"
                      ItemContainerStyle="{StaticResource Card.ListBoxItemStyle}"
                      ScrollViewer.CanContentScroll="True"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      VirtualizingPanel.IsVirtualizing="True"
                      VirtualizingPanel.VirtualizationMode="Recycling"
                      VirtualizingPanel.ScrollUnit="Pixel"
@@ -153,6 +177,23 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
+
+                <!-- Card count (v1.1 Task C): "全 {0} 件", or "{0} / 全 {1} 件" once a filter or
+                     search narrows the list - see ShelfWindow.UpdateFooterCount. Occupies the same
+                     cell as StatusText below rather than a column of its own: the two are mutually
+                     exclusive (a transient failure message briefly replaces the count), toggled by
+                     ShowStatus/OnStatusTick so the count text is never both stale and visible at
+                     once. -->
+                <TextBlock x:Name="CountText"
+                           Grid.Column="0"
+                           HorizontalAlignment="Stretch"
+                           TextAlignment="Left"
+                           VerticalAlignment="Center"
+                           Margin="2,0,8,0"
+                           FontSize="{DynamicResource CardSmallFontSize}"
+                           Foreground="{StaticResource Card.SubForeground}"
+                           TextTrimming="CharacterEllipsis"
+                           IsHitTestVisible="False" />
 
                 <!-- Transient inline feedback for actions that could not be carried out (a Files
                      card whose paths are all gone, an image whose blob was deleted). Shown here

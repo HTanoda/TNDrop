@@ -94,6 +94,31 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
 
     public int CountFiles => _countFiles;
 
+    /// <summary>Total items in the store, across everything - pinned and unpinned, every kind -
+    /// independent of the current filter/search. Backs the footer's "全 {0} 件" (v1.1 Task C).
+    /// Read straight off the store rather than cached in a field: Rebuild already re-raises
+    /// PropertyChanged for it on every path that could change it (a store change, or the user's
+    /// own Filter/SearchText), so there is nothing a cache would buy here.</summary>
+    public int TotalCount => _store.Items.Count;
+
+    /// <summary>
+    /// Count of cards actually on screen right now: the filtered/searched <see cref="Cards"/>
+    /// deck plus the <see cref="PinnedCards"/> deck. Backs the footer's "{0} / 全 {1} 件" (v1.1
+    /// Task C).
+    /// <para>DECISION (see task-C-brief.md): the pinned deck is included even while a
+    /// filter/search would otherwise exclude some of those items, because <see cref="Rebuild"/>
+    /// always shows every pinned item regardless of Filter/SearchText - it is genuinely still
+    /// visible on screen, so leaving it out of this count would make the footer under-report what
+    /// the user can actually see.</para>
+    /// </summary>
+    public int VisibleCount => Cards.Count + PinnedCards.Count;
+
+    /// <summary>True while a filter other than All is active, or the search box has text - i.e.
+    /// whichever moment the footer's format should switch from "全 {0} 件" to "{0} / 全 {1} 件".
+    /// Single resolution: ShelfWindow reads only this property rather than re-deriving the same
+    /// condition from Filter/SearchText itself.</summary>
+    public bool IsFilterActive => _filter != CardFilter.All || !string.IsNullOrEmpty(_searchText);
+
     /// <summary>True while at least one card (visible or pinned) has <see cref="CardViewModel.Selected"/>
     /// set. Drives the batch action bar in ShelfWindow.</summary>
     public bool SelectionMode => SelectedCount > 0;
@@ -279,6 +304,9 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CountLinks));
         OnPropertyChanged(nameof(CountImages));
         OnPropertyChanged(nameof(CountFiles));
+        OnPropertyChanged(nameof(TotalCount));
+        OnPropertyChanged(nameof(VisibleCount));
+        OnPropertyChanged(nameof(IsFilterActive));
 
         // A rebuild can change SelectedCount/SelectionMode even though nothing here calls
         // ToggleSelected/etc: a selected item can be removed by another path (the per-card Delete

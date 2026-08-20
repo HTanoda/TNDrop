@@ -523,6 +523,17 @@ public partial class ShelfWindow : Window
             tab.Button.Click += (_, _) => SetFilter(filter);
         }
 
+        // Header (v1.1 Task C): ⚙ opens the same settings window the tray's own "設定..." menu
+        // item opens (App.OpenSettingsWindow -- see that method's doc comment for why it exists
+        // alongside the tray's private event handler), × slides the shelf out exactly like the
+        // retract timer. Tooltips only, no Content text -- Header.IconButtonStyle sizes these as
+        // small square icon buttons.
+        HeaderSettingsButton.ToolTip = Strings.HeaderSettingsTooltip;
+        HeaderSettingsButton.Click += (_, _) => global::TNDrop.App.OpenSettingsWindow();
+
+        HeaderHideButton.ToolTip = Strings.HeaderHideTooltip;
+        HeaderHideButton.Click += (_, _) => SlideOut();
+
         SearchPlaceholderText.Text = Strings.SearchPlaceholder;
         SearchBox.TextChanged += OnSearchTextChanged;
         OnSearchTextChanged(SearchBox, null!);
@@ -592,6 +603,15 @@ public partial class ShelfWindow : Window
             {
                 UpdateSelectionBar();
             }
+
+            // TotalCount/VisibleCount are both re-raised by every Rebuild (Filter/SearchText
+            // changes and store-driven ones alike -- see ShelfViewModel.Rebuild), so watching just
+            // these two covers every path the footer count needs to track without also needing
+            // Filter/SearchText/IsFilterActive in this list.
+            if (e.PropertyName is null or nameof(ShelfViewModel.TotalCount) or nameof(ShelfViewModel.VisibleCount))
+            {
+                UpdateFooterCount();
+            }
         };
 
         // Store-driven rebuilds (a background clipboard capture, a pin toggle from elsewhere,
@@ -604,6 +624,7 @@ public partial class ShelfWindow : Window
         UpdateFilterTabs();
         UpdatePinnedVisibility();
         UpdateSelectionBar();
+        UpdateFooterCount();
     }
 
     private void SetFilter(CardFilter filter)
@@ -679,6 +700,29 @@ public partial class ShelfWindow : Window
         SelectionBar.Visibility = _shelfViewModel.SelectionMode ? Visibility.Visible : Visibility.Collapsed;
         SelectedCountText.Text = string.Format(
             CultureInfo.CurrentUICulture, Strings.SelectedCountFormat, _shelfViewModel.SelectedCount);
+    }
+
+    /// <summary>
+    /// Refreshes the footer's card-count line from <see cref="ShelfViewModel.TotalCount"/> /
+    /// <see cref="ShelfViewModel.VisibleCount"/> / <see cref="ShelfViewModel.IsFilterActive"/> -
+    /// the VM's single resolution for what those numbers are (see its own doc comments), so this
+    /// method only formats them, never recomputes them.
+    /// <para>Only updates <see cref="CountText"/>'s text, not its Visibility: while
+    /// <see cref="StatusText"/> is showing a transient failure message, the two share the same
+    /// footer cell and <see cref="ShowStatus"/>/<see cref="OnStatusTick"/> own that switch. Text
+    /// is still kept current here so it is correct the moment the status message clears.</para>
+    /// </summary>
+    private void UpdateFooterCount()
+    {
+        if (_shelfViewModel is null)
+        {
+            return;
+        }
+
+        CountText.Text = _shelfViewModel.IsFilterActive
+            ? string.Format(CultureInfo.CurrentUICulture, Strings.FilteredCountFormat,
+                _shelfViewModel.VisibleCount, _shelfViewModel.TotalCount)
+            : string.Format(CultureInfo.CurrentUICulture, Strings.TotalCountFormat, _shelfViewModel.TotalCount);
     }
 
     private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
@@ -1609,6 +1653,10 @@ public partial class ShelfWindow : Window
         StatusText.Text = message;
         StatusText.Visibility = Visibility.Visible;
 
+        // The two share one footer cell (see ShelfWindow.xaml): the count line has to make way
+        // for the transient message rather than show through underneath it.
+        CountText.Visibility = Visibility.Collapsed;
+
         // Restart, don't stack: a second failure resets the full duration rather than inheriting
         // the remainder of the first one's.
         _statusTimer.Stop();
@@ -1620,6 +1668,7 @@ public partial class ShelfWindow : Window
         _statusTimer.Stop();
         StatusText.Visibility = Visibility.Collapsed;
         StatusText.Text = string.Empty;
+        CountText.Visibility = Visibility.Visible;
     }
 
     /// <summary>Blobs directory of the live store; empty when there is no store (designer/tests).</summary>

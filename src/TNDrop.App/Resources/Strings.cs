@@ -99,6 +99,13 @@ internal static class Strings
     public static string SettingsPercentFormat => Get(nameof(SettingsPercentFormat));
     public static string SettingsPixelFormat => Get(nameof(SettingsPixelFormat));
     public static string SettingsMillisecondsFormat => Get(nameof(SettingsMillisecondsFormat));
+    public static string SettingsHoverEnabled => Get(nameof(SettingsHoverEnabled));
+
+    // Shelf header + footer (v1.1 Task C): the ⚙/× buttons' tooltips and the card-count line.
+    public static string HeaderSettingsTooltip => Get(nameof(HeaderSettingsTooltip));
+    public static string HeaderHideTooltip => Get(nameof(HeaderHideTooltip));
+    public static string TotalCountFormat => Get(nameof(TotalCountFormat));
+    public static string FilteredCountFormat => Get(nameof(FilteredCountFormat));
 
     private static string Get(string key) =>
         Manager.GetString(key, CultureInfo.CurrentUICulture) ?? key;

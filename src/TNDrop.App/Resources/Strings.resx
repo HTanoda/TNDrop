@@ -287,4 +287,19 @@
   <data name="SettingsMillisecondsFormat" xml:space="preserve">
     <value>{0} ミリ秒</value>
   </data>
+  <data name="SettingsHoverEnabled" xml:space="preserve">
+    <value>ホバー表示</value>
+  </data>
+  <data name="HeaderSettingsTooltip" xml:space="preserve">
+    <value>設定を開く</value>
+  </data>
+  <data name="HeaderHideTooltip" xml:space="preserve">
+    <value>シェルフを隠す</value>
+  </data>
+  <data name="TotalCountFormat" xml:space="preserve">
+    <value>全 {0} 件</value>
+  </data>
+  <data name="FilteredCountFormat" xml:space="preserve">
+    <value>{0} / 全 {1} 件</value>
+  </data>
 </root>
