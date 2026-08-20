@@ -28,7 +28,6 @@ public partial class App : System.Windows.Application
     private ShelfWindow? _shelf;
     private EdgeTriggerWindow? _edgeTrigger;
     private CapturePipeline? _pipeline;
-    private IndicatorWindow? _indicator;
 
     public static string DataDir { get; private set; } = string.Empty;
 
@@ -41,6 +40,15 @@ public partial class App : System.Windows.Application
     public static SoundService Sounds { get; private set; } = null!;
 
     public static ClipboardMonitor Monitor { get; private set; } = null!;
+
+    /// <summary>
+    /// The one long-lived capture indicator overlay. Static because the shelf's click-to-copy
+    /// path (see ShelfWindow) has to flash the very same overlay a background capture does -- the
+    /// confirmation for "I put this on the clipboard" must be indistinguishable from the one for
+    /// "TNDrop captured this". Null until OnStartup gets that far (and in the designer / tests),
+    /// unlike the non-null-by-contract statics above, so every caller must null-check.
+    /// </summary>
+    public static IndicatorWindow? Indicator { get; private set; }
 
     public static void SaveSettings() => SettingsStore.Save(Settings);
 
@@ -107,8 +115,8 @@ public partial class App : System.Windows.Application
             // an instance would buy nothing but a shared constructor dependency.
             _pipeline = new CapturePipeline(Store, new ThumbnailService(Store.BlobsDir), () => Settings);
 
-            _indicator = new IndicatorWindow();
-            _indicator.Show();
+            Indicator = new IndicatorWindow();
+            Indicator.Show();
 
             Monitor.Captured += OnClipboardCaptured;
 
@@ -255,14 +263,14 @@ public partial class App : System.Windows.Application
     /// </summary>
     private void OnClipboardCaptured(object? sender, CapturedClip clip)
     {
-        if (_pipeline is null || _indicator is null)
+        if (_pipeline is null || Indicator is null)
         {
             return;
         }
 
         if (_pipeline.Process(clip))
         {
-            _indicator.Flash(Settings.IndicatorStyle, Settings.Edge);
+            Indicator.Flash(Settings.IndicatorStyle, Settings.Edge);
             Sounds.PlayCapture();
         }
     }

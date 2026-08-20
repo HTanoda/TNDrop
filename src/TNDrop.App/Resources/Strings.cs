@@ -42,6 +42,7 @@ internal static class Strings
     public static string ActionPin => Get(nameof(ActionPin));
     public static string ActionUnpin => Get(nameof(ActionUnpin));
     public static string ActionDelete => Get(nameof(ActionDelete));
+    public static string FileMissing => Get(nameof(FileMissing));
 
     private static string Get(string key) =>
         Manager.GetString(key, CultureInfo.CurrentUICulture) ?? key;

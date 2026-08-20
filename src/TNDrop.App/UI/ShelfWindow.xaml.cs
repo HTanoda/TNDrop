@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -17,7 +18,10 @@ using Button = System.Windows.Controls.Button;
 using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;
 using Color = System.Windows.Media.Color;
 using MessageBox = System.Windows.MessageBox;
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
+using MouseEventHandler = System.Windows.Input.MouseEventHandler;
 using Orientation = System.Windows.Controls.Orientation;
+using Point = System.Windows.Point;
 
 namespace TNDrop.UI;
 
@@ -40,7 +44,14 @@ public partial class ShelfWindow : Window
     private static readonly Brush ActiveTabForeground = Freeze(new SolidColorBrush(Color.FromRgb(0xF2, 0xF2, 0xF7)));
     private static readonly Brush TabBadgeBackground = Freeze(new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)));
 
+    /// <summary>How long the inline status line (a failed copy/drag) stays up.</summary>
+    private static readonly TimeSpan StatusDuration = TimeSpan.FromSeconds(2.5);
+
+    /// <summary>Tag on the Link card's "open in the browser" hotspot. Must match Cards.xaml.</summary>
+    private const string LinkOpenTag = "LinkOpen";
+
     private readonly DispatcherTimer _retractTimer;
+    private readonly DispatcherTimer _statusTimer;
 
     private AppSettings? _settings;
     private EdgeSide _edge = EdgeSide.Left;
@@ -62,12 +73,21 @@ public partial class ShelfWindow : Window
     private ScrollViewer? _cardsScrollViewer;
     private double _savedCardsScrollOffset = -1;
 
+    // Card interaction: press records where and on what; a move past the system drag threshold
+    // promotes it to a drag; a release before that is a click (= re-copy).
+    private Point _pressPoint;
+    private CardViewModel? _pressedCard;
+    private bool _isDragging;
+
     public ShelfWindow()
     {
         InitializeComponent();
 
         _retractTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _retractTimer.Tick += OnRetractTick;
+
+        _statusTimer = new DispatcherTimer { Interval = StatusDuration };
+        _statusTimer.Tick += OnStatusTick;
 
         MouseEnter += OnPointerEnter;
         MouseLeave += OnPointerLeave;
@@ -88,12 +108,16 @@ public partial class ShelfWindow : Window
     }
 
     /// <summary>
-    /// True while the pointer is over the shelf, or while keyboard focus is inside it (typing in
-    /// the search box). Drives the retract timer -- without the keyboard-focus half, a user who
-    /// clicks into the search box and then types without the mouse moving would get retracted out
-    /// from under them mid-sentence once the existing hover countdown elapses.
+    /// True while the pointer is over the shelf, while keyboard focus is inside it (typing in
+    /// the search box), or while the user is dragging a card out of it. Drives the retract timer.
+    /// <para>Without the keyboard-focus term, a user who clicks into the search box and then types
+    /// without the mouse moving would get retracted out from under them mid-sentence once the
+    /// existing hover countdown elapses. Without the drag term, dragging a card away from the
+    /// shelf raises MouseLeave the instant the pointer crosses the edge -- and because
+    /// DoDragDrop pumps its own message loop, the retract countdown would fire and slide the drag
+    /// source out from under the drag while it is still in progress.</para>
     /// </summary>
-    public bool IsPointerInside => _pointerInside || IsMouseOver || IsKeyboardFocusWithin;
+    public bool IsPointerInside => _pointerInside || _isDragging || IsMouseOver || IsKeyboardFocusWithin;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -410,6 +434,26 @@ public partial class ShelfWindow : Window
         CardsList.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(OnCardActionClick));
         PinnedList.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(OnCardActionClick));
 
+        // Drag-out / click-to-copy, wired once per list instead of per card: the card visual lives
+        // in a shared DataTemplate (Cards.xaml) with no code-behind, and its containers are
+        // recycled by virtualization, so per-element handlers would have to be re-attached
+        // constantly.
+        //
+        // handledEventsToo:true is belt-and-braces, not a requirement: measured (all live
+        // interaction checks still pass with it false) because the two button events are Preview
+        // ones, which run before ListBoxItem's bubbling selection handling ever gets to mark
+        // anything handled. It stays on so a control added to the card template later cannot
+        // silently swallow the gesture.
+        foreach (var host in new ItemsControl[] { CardsList, PinnedList })
+        {
+            host.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent,
+                new MouseButtonEventHandler(OnCardPreviewMouseLeftButtonDown), true);
+            host.AddHandler(UIElement.MouseMoveEvent,
+                new MouseEventHandler(OnCardMouseMove), true);
+            host.AddHandler(UIElement.PreviewMouseLeftButtonUpEvent,
+                new MouseButtonEventHandler(OnCardPreviewMouseLeftButtonUp), true);
+        }
+
         _shelfViewModel.PinnedCards.CollectionChanged += (_, _) => UpdatePinnedVisibility();
         _shelfViewModel.PropertyChanged += (_, e) =>
         {
@@ -528,6 +572,298 @@ public partial class ShelfWindow : Window
 
         e.Handled = true;
     }
+
+    /// <summary>
+    /// Press on a card: remember what and where, so the following move/release can be classified
+    /// as a drag or a click. Nothing is committed here -- a press that turns out to be a scroll
+    /// gesture or a press on the pin/delete buttons must leave the card alone.
+    /// </summary>
+    private void OnCardPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _pressedCard = null;
+
+        // The action bar's own buttons own their clicks (see OnCardActionClick). Swallowing them
+        // here would make Delete re-copy the card instead of deleting it.
+        if (IsWithinActionButton(e.OriginalSource))
+        {
+            return;
+        }
+
+        _pressedCard = CardFrom(e.OriginalSource);
+        _pressPoint = e.GetPosition(this);
+    }
+
+    /// <summary>
+    /// Promotes a press into a native drag once the pointer has moved past the system drag
+    /// threshold. Below the threshold this does nothing, which is what lets a click stay a click.
+    /// </summary>
+    private void OnCardMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_pressedCard is null || _isDragging)
+        {
+            return;
+        }
+
+        // The button came up somewhere we never saw (drag onto another window, a lost capture):
+        // the press is stale and must not turn into a drag on the next stray move.
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            _pressedCard = null;
+            return;
+        }
+
+        var position = e.GetPosition(this);
+        if (Math.Abs(position.X - _pressPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(position.Y - _pressPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        var card = _pressedCard;
+        _pressedCard = null;
+        BeginCardDrag(sender as FrameworkElement ?? this, card);
+    }
+
+    /// <summary>
+    /// Release without having crossed the drag threshold: a click. Re-copies the card to the
+    /// clipboard, except on a Link card's domain hotspot, which opens the browser instead.
+    /// </summary>
+    private void OnCardPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        var card = _pressedCard;
+        _pressedCard = null;
+
+        if (card is null || _isDragging || IsWithinActionButton(e.OriginalSource))
+        {
+            return;
+        }
+
+        if (card.Kind == ClipKind.Link && IsWithinLinkOpenArea(e.OriginalSource))
+        {
+            OpenLink(card);
+        }
+        else
+        {
+            CopyCardToClipboard(card);
+        }
+
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Runs the outbound drag with the retract countdown suspended for its whole duration.
+    /// <para><see cref="DragDropSource.TryStartDrag"/> blocks (it pumps its own message loop), so
+    /// everything after it runs only once the drop has completed or been cancelled.</para>
+    /// </summary>
+    private void BeginCardDrag(FrameworkElement source, CardViewModel card)
+    {
+        _isDragging = true;
+        _retractTimer.Stop();
+
+        try
+        {
+            if (!DragDropSource.TryStartDrag(source, card.Item, BlobsDir))
+            {
+                ReportContentMissing(card, "drag");
+            }
+        }
+        finally
+        {
+            _isDragging = false;
+
+            // The pointer is wherever the drop left it -- quite possibly off the shelf, with the
+            // MouseLeave already consumed mid-drag. Re-evaluate rather than assume.
+            _pointerInside = IsMouseOver;
+            ArmRetractIfPointerOutside();
+        }
+    }
+
+    /// <summary>
+    /// Click-to-copy: puts the card back on the clipboard without TNDrop re-capturing its own
+    /// write, optionally floats the item to the top of the shelf, and confirms with the same
+    /// indicator flash + sound a real capture produces.
+    /// </summary>
+    private void CopyCardToClipboard(CardViewModel card)
+    {
+        var item = card.Item;
+
+        // Before the write, not after: the clipboard notification can arrive before SetX returns.
+        global::TNDrop.App.Monitor?.SuppressNext();
+
+        var copied = false;
+        switch (item.Kind)
+        {
+            case ClipKind.Text:
+            case ClipKind.Link:
+                if (!string.IsNullOrEmpty(item.Text))
+                {
+                    ClipboardIo.SetText(item.Text);
+                    copied = true;
+                }
+
+                break;
+
+            case ClipKind.Files:
+                // Same resolution the drag payload uses, so a click and a drag of the same card
+                // can never disagree about which of its paths still exist.
+                var paths = DragDropSource.ExistingPaths(item);
+                if (paths.Length > 0)
+                {
+                    ClipboardIo.SetFiles(paths);
+                    copied = true;
+                }
+
+                break;
+
+            case ClipKind.Image:
+                var image = DragDropSource.LoadImage(item, BlobsDir);
+                if (image is not null)
+                {
+                    ClipboardIo.SetImage(image);
+                    copied = true;
+                }
+
+                break;
+        }
+
+        if (!copied)
+        {
+            ReportContentMissing(card, "copy");
+            return;
+        }
+
+        if (global::TNDrop.App.Settings?.MoveToTopOnCopy == true)
+        {
+            // Rebuilds the card list underneath us (ItemStore.Changed). Safe here: this is the
+            // tail of the click, and _pressedCard was already cleared.
+            _itemStore?.MoveToTop(item.Id);
+        }
+
+        var settings = global::TNDrop.App.Settings;
+        if (settings is not null)
+        {
+            global::TNDrop.App.Indicator?.Flash(settings.IndicatorStyle, settings.Edge);
+        }
+
+        global::TNDrop.App.Sounds?.PlayCapture();
+    }
+
+    /// <summary>Opens a Link card's URL in the user's default browser.</summary>
+    private void OpenLink(CardViewModel card)
+    {
+        var url = card.Item.Text;
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return;
+        }
+
+        try
+        {
+            // UseShellExecute is what hands the URL to the registered browser rather than trying
+            // to exec it as a program.
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            // A malformed/unregistered scheme must not take the shelf down. The URL itself is not
+            // logged: it is user clipboard content.
+            FileLogger.Instance?.Warn(Module, $"failed to open a link in the browser: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The card's content is gone from disk (every file path deleted, or an image blob that can no
+    /// longer be decoded). Tells the user inline and leaves a WARN in the log.
+    /// </summary>
+    private void ReportContentMissing(CardViewModel card, string action)
+    {
+        FileLogger.Instance?.Warn(Module,
+            $"{action} of a {card.Kind} card found no content left on disk (id {card.Id})");
+        ShowStatus(Strings.FileMissing);
+    }
+
+    private void ShowStatus(string message)
+    {
+        StatusText.Text = message;
+        StatusText.Visibility = Visibility.Visible;
+
+        // Restart, don't stack: a second failure resets the full duration rather than inheriting
+        // the remainder of the first one's.
+        _statusTimer.Stop();
+        _statusTimer.Start();
+    }
+
+    private void OnStatusTick(object? sender, EventArgs e)
+    {
+        _statusTimer.Stop();
+        StatusText.Visibility = Visibility.Collapsed;
+        StatusText.Text = string.Empty;
+    }
+
+    /// <summary>Blobs directory of the live store; empty when there is no store (designer/tests).</summary>
+    private string BlobsDir => _itemStore?.BlobsDir ?? string.Empty;
+
+    private static bool IsWithinActionButton(object? source) =>
+        FindAncestor<ButtonBase>(source) is not null;
+
+    private static bool IsWithinLinkOpenArea(object? source)
+    {
+        for (var current = source as DependencyObject; current is not null; current = ParentOf(current))
+        {
+            if (current is FrameworkElement { Tag: LinkOpenTag })
+            {
+                return true;
+            }
+
+            // Never walk out of the card into the list chrome. Tag is used for other purposes
+            // nearby (the action bar's buttons carry Tag="Pin"/"Delete"), so an unbounded walk
+            // would be one stray Tag="LinkOpen" away from turning an unrelated click into a
+            // browser launch.
+            if (current is ItemsControl)
+            {
+                break;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The CardViewModel the given hit-test source belongs to, or null if it is not on a card.</summary>
+    private static CardViewModel? CardFrom(object? source)
+    {
+        for (var current = source as DependencyObject; current is not null; current = ParentOf(current))
+        {
+            if (current is FrameworkElement { DataContext: CardViewModel card })
+            {
+                return card;
+            }
+        }
+
+        return null;
+    }
+
+    private static T? FindAncestor<T>(object? source) where T : DependencyObject
+    {
+        for (var current = source as DependencyObject; current is not null; current = ParentOf(current))
+        {
+            if (current is T typed)
+            {
+                return typed;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Visual parent, falling back to the logical one. The fallback matters: a hit-test source can
+    /// be a non-Visual (a TextBlock's inline Run, for instance), and VisualTreeHelper.GetParent
+    /// throws rather than returning null for those.
+    /// </summary>
+    private static DependencyObject? ParentOf(DependencyObject node) =>
+        node is Visual or System.Windows.Media.Media3D.Visual3D
+            ? VisualTreeHelper.GetParent(node) ?? LogicalTreeHelper.GetParent(node)
+            : LogicalTreeHelper.GetParent(node);
 
     private void OnClearButtonClick(object sender, RoutedEventArgs e)
     {

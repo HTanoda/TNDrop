@@ -128,4 +128,7 @@
   <data name="ActionDelete" xml:space="preserve">
     <value>削除</value>
   </data>
+  <data name="FileMissing" xml:space="preserve">
+    <value>ファイルが見つかりません</value>
+  </data>
 </root>

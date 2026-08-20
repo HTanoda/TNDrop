@@ -118,7 +118,32 @@
             </ListBox>
 
             <Grid x:Name="Footer" Grid.Row="5" Margin="0,10,0,0">
+                <!-- Two columns rather than one overlapping cell: the status line has to trim
+                     against the Clear button instead of sliding underneath it, and that needs a
+                     real width constraint. -->
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Transient inline feedback for actions that could not be carried out (a Files
+                     card whose paths are all gone, an image whose blob was deleted). Shown here
+                     rather than as a per-card overlay so it survives the card list being rebuilt
+                     underneath it, and so it can never cover a card's own content. Hidden again
+                     by ShelfWindow's status timer. -->
+                <TextBlock x:Name="StatusText"
+                           Grid.Column="0"
+                           HorizontalAlignment="Stretch"
+                           TextAlignment="Left"
+                           VerticalAlignment="Center"
+                           Margin="2,0,8,0"
+                           FontSize="11"
+                           Foreground="#FFFF9F4A"
+                           TextTrimming="CharacterEllipsis"
+                           IsHitTestVisible="False"
+                           Visibility="Collapsed" />
                 <Button x:Name="ClearButton"
+                        Grid.Column="1"
                         Padding="10,6"
                         HorizontalAlignment="Right"
                         Background="#2A2A31"

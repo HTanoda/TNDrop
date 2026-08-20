@@ -24,6 +24,23 @@
     <SolidColorBrush x:Key="Card.Badge" Color="#FF5B8DEF" />
     <SolidColorBrush x:Key="Card.ActionHover" Color="#40FFFFFF" />
 
+    <!-- The clickable "open this in the browser" hotspot on a Link card: the chain glyph + the
+         bold domain line. Everything else on a link card re-copies the URL like any other card,
+         so the hotspot has to look different from the rest - hence the hand cursor and the
+         underline that appears on hover. ShelfWindow finds it by walking up from the click's
+         OriginalSource looking for Tag="LinkOpen"; keep that tag in sync with
+         ShelfWindow.LinkOpenTag. -->
+    <Style x:Key="Card.LinkOpenText" TargetType="TextBlock">
+        <Setter Property="Cursor" Value="Hand" />
+        <Style.Triggers>
+            <!-- On the StackPanel's IsMouseOver, not this TextBlock's: the glyph and the domain
+                 are one hotspot, so hovering either underlines the domain. -->
+            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=StackPanel}}" Value="True">
+                <Setter Property="TextDecorations" Value="Underline" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- Shared chrome for the hover-only pin/delete buttons. Each Button carries
          Tag="Pin"/"Unpin"/"Delete" - ShelfWindow attaches one class handler
          (Button.ClickEvent) on the containing ItemsControl/ListBox and reads Tag +
@@ -73,13 +90,22 @@
 
                 <!-- Link: chain glyph + bold domain + small full URL -->
                 <StackPanel x:Name="LinkContent" Visibility="Collapsed">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#128279;" FontSize="13" Margin="0,0,6,0" />
+                    <!-- Left-aligned and Transparent-backed on purpose: Left keeps the hotspot as
+                         narrow as the glyph+domain (a stretched panel would turn the empty space
+                         out to the card's right edge into "open the browser" too), and a
+                         Transparent background is what makes the gaps between the two TextBlocks
+                         hit-testable at all - a null Background is invisible to hit-testing. -->
+                    <StackPanel Orientation="Horizontal"
+                                Tag="LinkOpen"
+                                HorizontalAlignment="Left"
+                                Background="Transparent">
+                        <TextBlock Text="&#128279;" FontSize="13" Margin="0,0,6,0" Cursor="Hand" />
                         <TextBlock Text="{Binding Title}"
                                    FontWeight="Bold"
                                    FontSize="13"
                                    Foreground="{StaticResource Card.Foreground}"
-                                   TextTrimming="CharacterEllipsis" />
+                                   TextTrimming="CharacterEllipsis"
+                                   Style="{StaticResource Card.LinkOpenText}" />
                     </StackPanel>
                     <TextBlock Text="{Binding Subtitle}"
                                FontSize="11"

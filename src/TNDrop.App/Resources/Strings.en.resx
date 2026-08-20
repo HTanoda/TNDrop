@@ -128,4 +128,7 @@
   <data name="ActionDelete" xml:space="preserve">
     <value>Delete</value>
   </data>
+  <data name="FileMissing" xml:space="preserve">
+    <value>File not found</value>
+  </data>
 </root>
