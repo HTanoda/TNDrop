@@ -22,6 +22,11 @@ public sealed partial class ItemStore
     private readonly string _bakPath;
     private readonly string _tmpPath;
     private readonly Func<DateTime> _utcClock;
+
+    // Guards BOTH the in-memory _items list AND the on-disk items.dat/.bak/.tmp
+    // files: Load() and Save() run their entire file I/O under this lock so
+    // Save/Save and Save/Load are mutually exclusive at the file level, not
+    // just for the in-memory snapshot.
     private readonly object _lock = new();
     private List<ClipItem> _items = new();
 
@@ -101,33 +106,34 @@ public sealed partial class ItemStore
 
     public void Save()
     {
-        List<ClipItem> snapshot;
+        // Entire body (snapshot + serialize + encrypt + write + replace) runs
+        // under _lock so a concurrent Save() or Load() cannot interleave on
+        // the shared items.tmp/.dat/.bak files (see comment on _lock).
         lock (_lock)
         {
-            snapshot = _items.ToList();
-        }
-
-        try
-        {
-            Directory.CreateDirectory(_dataDir);
-            var json = JsonSerializer.Serialize(snapshot, JsonOptions);
-            var jsonBytes = Encoding.UTF8.GetBytes(json);
-            var protectedBytes = ProtectedData.Protect(jsonBytes, null, DataProtectionScope.CurrentUser);
-
-            File.WriteAllBytes(_tmpPath, protectedBytes);
-
-            if (File.Exists(_itemsPath))
+            try
             {
-                File.Replace(_tmpPath, _itemsPath, _bakPath);
+                var snapshot = _items.ToList();
+                Directory.CreateDirectory(_dataDir);
+                var json = JsonSerializer.Serialize(snapshot, JsonOptions);
+                var jsonBytes = Encoding.UTF8.GetBytes(json);
+                var protectedBytes = ProtectedData.Protect(jsonBytes, null, DataProtectionScope.CurrentUser);
+
+                File.WriteAllBytes(_tmpPath, protectedBytes);
+
+                if (File.Exists(_itemsPath))
+                {
+                    File.Replace(_tmpPath, _itemsPath, _bakPath);
+                }
+                else
+                {
+                    File.Move(_tmpPath, _itemsPath);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                File.Move(_tmpPath, _itemsPath);
+                FileLogger.Instance?.Error("store", "Failed to save items", ex);
             }
-        }
-        catch (Exception ex)
-        {
-            FileLogger.Instance?.Error("store", "Failed to save items", ex);
         }
     }
 

@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using TNDrop.Core;
 
 public class ItemStorePersistenceTests : IDisposable
@@ -61,5 +63,34 @@ public class ItemStorePersistenceTests : IDisposable
         store.Load();
         Assert.Empty(store.Items);
         Assert.True(store.LoadFailed);
+    }
+
+    [Fact]
+    public async Task Concurrent_saves_do_not_corrupt_or_lose_data()
+    {
+        const int itemCount = 5;
+        const int parallelSaves = 10;
+
+        var store = new ItemStore(_dir);
+        for (var i = 0; i < itemCount; i++)
+        {
+            store.TryAdd(TextItem($"item-{i}"));
+        }
+
+        // 10 parallel Save() calls racing against each other (and interleaved
+        // with the store's own list, which is not mutated further here) must
+        // not throw, must not corrupt items.dat/.bak, and must not silently
+        // drop the save.
+        var tasks = Enumerable.Range(0, parallelSaves)
+            .Select(_ => Task.Run(() => store.Save()))
+            .ToArray();
+
+        await Task.WhenAll(tasks); // throws if any Save() let an exception escape
+
+        var reloaded = new ItemStore(_dir);
+        reloaded.Load();
+
+        Assert.False(reloaded.LoadFailed);
+        Assert.Equal(itemCount, reloaded.Items.Count);
     }
 }
