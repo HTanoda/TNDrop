@@ -19,6 +19,9 @@ public partial class ShelfWindow : Window
 {
     private const string Module = "ShelfWindow";
 
+    /// <summary>Placement passes allowed per ApplySettings call. See the re-entrancy latch there.</summary>
+    private const int MaxPlacementPasses = 2;
+
     private static readonly Duration SlideInDuration = new(TimeSpan.FromMilliseconds(250));
     private static readonly Duration SlideOutDuration = new(TimeSpan.FromMilliseconds(180));
 
@@ -34,6 +37,7 @@ public partial class ShelfWindow : Window
     private bool _pointerInside;
     private bool _slidingOut;
     private bool _applying;
+    private bool _reapplyRequested;
 
     public ShelfWindow()
     {
@@ -44,6 +48,7 @@ public partial class ShelfWindow : Window
 
         MouseEnter += OnPointerEnter;
         MouseLeave += OnPointerLeave;
+        IsVisibleChanged += OnSelfVisibleChanged;
         DpiChanged += OnDpiChanged;
 
         // Create the HWND now. ApplySettings runs before the shelf is ever shown and its
@@ -70,50 +75,28 @@ public partial class ShelfWindow : Window
             return;
 
         _settings = s;
+
         if (_applying)
+        {
+            // WM_DPICHANGED is delivered synchronously from inside Place's SetWindowPos call, so
+            // Place can re-enter ApplySettings through DpiChanged. Dropping that re-entrant call
+            // would leave the rect the OS suggested for the DPI change in place instead of ours.
+            // Latch it and re-run once the outer pass unwinds.
+            _reapplyRequested = true;
+            FileLogger.Instance?.Info(Module, "placement re-entered during placement; will re-apply");
             return;
+        }
 
         _applying = true;
         try
         {
-            _edge = s.Edge;
-
-            var area = MonitorGeometry.Resolve(s.MonitorDeviceName, this);
-            var rect = ShelfPlacement.ShelfRect(new ShelfPlacement.Rect(area.X, area.Y, area.W, area.H), _edge);
-
-            _area = area;
-            _rect = rect;
-            _placed = true;
-            _shownX = rect.X;
-            _hiddenX = ShelfPlacement.HiddenX(rect, _edge);
-
-            Panel.CornerRadius = _edge == EdgeSide.Left
-                ? new CornerRadius(0, 12, 12, 0)
-                : new CornerRadius(12, 0, 0, 12);
-
-            _retractTimer.Interval = TimeSpan.FromMilliseconds(Math.Clamp(s.RetractDelayMs, 100, 10_000));
-
-            // A settings change mid-slide-out finishes the retract rather than leaving the shelf
-            // parked halfway with no timer running.
-            var wasSlidingOut = _slidingOut;
-            StopSlide();
-
-            var showing = IsVisible && !wasSlidingOut;
-            var x = showing ? _shownX : _hiddenX;
-
-            Width = rect.W;
-            Height = rect.H;
-            Top = rect.Y;
-            Left = x;
-
-            if (!showing && IsVisible)
-                Hide();
-
-            SnapToDevicePixels(x);
-
-            FileLogger.Instance?.Info(Module,
-                $"placed on {area.DeviceName} scale {area.ScaleX:0.##}: shown X {_shownX:0}, " +
-                $"hidden X {_hiddenX:0}, {rect.W:0}x{rect.H:0} DIP, retract {_retractTimer.Interval.TotalMilliseconds:0} ms");
+            var passes = 0;
+            do
+            {
+                _reapplyRequested = false;
+                Place(_settings);
+            }
+            while (_reapplyRequested && ++passes < MaxPlacementPasses);
         }
         catch (Exception ex)
         {
@@ -121,8 +104,56 @@ public partial class ShelfWindow : Window
         }
         finally
         {
+            _reapplyRequested = false;
             _applying = false;
         }
+    }
+
+    private void Place(AppSettings s)
+    {
+        _edge = s.Edge;
+
+        var area = MonitorGeometry.Resolve(s.MonitorDeviceName, this);
+        var rect = ShelfPlacement.ShelfRect(new ShelfPlacement.Rect(area.X, area.Y, area.W, area.H), _edge);
+
+        _area = area;
+        _rect = rect;
+        _placed = true;
+        _shownX = rect.X;
+        _hiddenX = ShelfPlacement.HiddenX(rect, _edge);
+
+        Panel.CornerRadius = _edge == EdgeSide.Left
+            ? new CornerRadius(0, 12, 12, 0)
+            : new CornerRadius(12, 0, 0, 12);
+
+        _retractTimer.Interval = TimeSpan.FromMilliseconds(Math.Clamp(s.RetractDelayMs, 100, 10_000));
+
+        // A settings change mid-slide-out finishes the retract rather than leaving the shelf
+        // parked halfway with no timer running.
+        var wasSlidingOut = _slidingOut;
+        StopSlide();
+
+        var showing = IsVisible && !wasSlidingOut;
+        var x = showing ? _shownX : _hiddenX;
+
+        Width = rect.W;
+        Height = rect.H;
+        Top = rect.Y;
+        Left = x;
+
+        if (!showing && IsVisible)
+            Hide();
+
+        SnapToDevicePixels(x);
+
+        // StopSlide above killed any in-flight slide-in, so its Completed handler will not run to
+        // arm the countdown. Without this the shelf would sit out with no timer.
+        if (showing)
+            ArmRetractIfPointerOutside();
+
+        FileLogger.Instance?.Info(Module,
+            $"placed on {area.DeviceName} scale {area.ScaleX:0.##}: shown X {_shownX:0}, " +
+            $"hidden X {_hiddenX:0}, {rect.W:0}x{rect.H:0} DIP, retract {_retractTimer.Interval.TotalMilliseconds:0} ms");
     }
 
     /// <summary>Slides the shelf in from off-screen with a slight overshoot (250 ms, BackEase EaseOut).</summary>
@@ -166,6 +197,12 @@ public partial class ShelfWindow : Window
         // equals, so the last animated frame -- which never lands exactly on the target -- is
         // what the HWND keeps. Snapping is cheap and makes the resting position exact.
         SnapToDevicePixels(_shownX);
+
+        // A pointer that flicks past the trigger band and never lands on the shelf produces no
+        // MouseEnter and therefore no MouseLeave, so nothing else would ever start the countdown
+        // -- and the trigger band is hidden while the shelf is out, so the user would have no way
+        // to dismiss it. Arm it here instead of relying on the pointer arriving.
+        ArmRetractIfPointerOutside();
     }
 
     /// <summary>Pins the window to the device-pixel rectangle that <paramref name="xDip"/> maps to on the target monitor.</summary>
@@ -231,16 +268,48 @@ public partial class ShelfWindow : Window
     private void OnPointerLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
         _pointerInside = false;
-        _retractTimer.Stop();
+        ArmRetractIfPointerOutside();
+    }
+
+    private void OnSelfVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
         if (IsVisible)
+            return;
+
+        // A hidden window never gets a MouseLeave. Leaving the flag set would make
+        // IsPointerInside permanently true and suppress every future retract -- the shelf would
+        // open once more and then never close again.
+        _pointerInside = false;
+        _retractTimer.Stop();
+    }
+
+    /// <summary>
+    /// Starts the retract countdown unless the pointer is on the shelf. Every path that leaves
+    /// the shelf visible must call this: the shelf only ever hides itself on this timer, and the
+    /// trigger band is hidden while the shelf is out, so a visible shelf with no timer running is
+    /// a shelf the user cannot get rid of.
+    /// </summary>
+    private void ArmRetractIfPointerOutside()
+    {
+        _retractTimer.Stop();
+        if (IsVisible && !IsPointerInside)
             _retractTimer.Start();
     }
 
     private void OnRetractTick(object? sender, EventArgs e)
     {
+        if (IsPointerInside)
+        {
+            // Suppressed, not cancelled. Re-arm rather than drop the timer: if IsPointerInside is
+            // wrong (or the MouseLeave that would normally re-arm never arrives), dropping it here
+            // is what wedges the shelf open permanently.
+            _retractTimer.Stop();
+            _retractTimer.Start();
+            return;
+        }
+
         _retractTimer.Stop();
-        if (!IsPointerInside)
-            SlideOut();
+        SlideOut();
     }
 
     private void OnDpiChanged(object sender, System.Windows.DpiChangedEventArgs e)
