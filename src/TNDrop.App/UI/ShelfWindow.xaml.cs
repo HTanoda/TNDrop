@@ -77,6 +77,7 @@ public partial class ShelfWindow : Window
     // promotes it to a drag; a release before that is a click (= re-copy).
     private Point _pressPoint;
     private CardViewModel? _pressedCard;
+    private UIElement? _captureHost;
     private bool _isDragging;
 
     public ShelfWindow()
@@ -452,6 +453,7 @@ public partial class ShelfWindow : Window
                 new MouseEventHandler(OnCardMouseMove), true);
             host.AddHandler(UIElement.PreviewMouseLeftButtonUpEvent,
                 new MouseButtonEventHandler(OnCardPreviewMouseLeftButtonUp), true);
+            host.LostMouseCapture += OnCardHostLostMouseCapture;
         }
 
         _shelfViewModel.PinnedCards.CollectionChanged += (_, _) => UpdatePinnedVisibility();
@@ -589,8 +591,81 @@ public partial class ShelfWindow : Window
             return;
         }
 
-        _pressedCard = CardFrom(e.OriginalSource);
+        var card = CardFrom(e.OriginalSource);
+        if (card is null)
+        {
+            return;
+        }
+
         _pressPoint = e.GetPosition(this);
+
+        // Capture BEFORE arming _pressedCard, not after. Taking the mouse makes WPF re-evaluate
+        // where the pointer is and can synthesize a MouseMove there and then -- which lands in
+        // OnCardMouseMove. Armed first, that move would find the press already pending and, if the
+        // button reads as up at that instant (a fast click released between the button-down
+        // message and this handler running), cancel the very press that asked for the capture.
+        // Arming last makes the synthesized move a no-op. Measured: with the old order the live
+        // probe's press-and-release checks cleared the press at birth, intermittently.
+        CaptureForGesture(sender as UIElement);
+        _pressedCard = card;
+    }
+
+    /// <summary>
+    /// Takes the mouse for the press-to-drag-or-click gesture, so the moves and the release that
+    /// decide which one it is still arrive after the pointer has left the list.
+    /// <para>Without this, a press followed by a fast flick off the list -- easy to do, since the
+    /// shelf is flush against a screen edge and the pointer leaves the window within a few pixels
+    /// of it -- produces neither a drag nor a click: no further MouseMove reaches the list, so the
+    /// 4px threshold is never evaluated, and the MouseUp lands on some other element entirely.</para>
+    /// <para><see cref="CaptureMode.SubTree"/>, not Element: element capture routes every mouse
+    /// event to the list itself and rewrites OriginalSource, which would blind the pin/delete and
+    /// link-hotspot checks (they read OriginalSource). SubTree keeps normal hit-testing for
+    /// anything inside the list and only redirects what happens outside it.</para>
+    /// <para>Presses that land on the action-bar buttons never get here: those return before
+    /// <see cref="_pressedCard"/> is set, so ButtonBase's own capture is left alone.</para>
+    /// </summary>
+    private void CaptureForGesture(UIElement? host)
+    {
+        if (host is null)
+        {
+            return;
+        }
+
+        // Best-effort. Capture can be refused (another app already owns it); the gesture then
+        // behaves exactly as it did before capture was introduced rather than breaking.
+        if (Mouse.Capture(host, CaptureMode.SubTree))
+        {
+            _captureHost = host;
+        }
+    }
+
+    private void ReleaseGestureCapture()
+    {
+        var host = _captureHost;
+        _captureHost = null;
+
+        if (host is not null && ReferenceEquals(Mouse.Captured, host))
+        {
+            host.ReleaseMouseCapture();
+        }
+    }
+
+    /// <summary>
+    /// Capture went away -- either we released it, or something outside took it (another window,
+    /// an Alt+Tab, a menu). Abandon the pending gesture: acting on a press whose release we will
+    /// never see would re-copy or drag a card the user has already moved on from.
+    /// </summary>
+    private void OnCardHostLostMouseCapture(object sender, MouseEventArgs e)
+    {
+        // LostMouseCapture bubbles, so a Button inside a card releasing its own capture reaches
+        // this handler too. Only the host's own loss is ours to act on.
+        if (!ReferenceEquals(sender, e.OriginalSource))
+        {
+            return;
+        }
+
+        _captureHost = null;
+        _pressedCard = null;
     }
 
     /// <summary>
@@ -609,6 +684,7 @@ public partial class ShelfWindow : Window
         if (e.LeftButton != MouseButtonState.Pressed)
         {
             _pressedCard = null;
+            ReleaseGestureCapture();
             return;
         }
 
@@ -621,6 +697,11 @@ public partial class ShelfWindow : Window
 
         var card = _pressedCard;
         _pressedCard = null;
+
+        // Hand the mouse over before DoDragDrop: the drag loop takes the capture itself, and
+        // holding ours into it would fight it for the pointer.
+        ReleaseGestureCapture();
+
         BeginCardDrag(sender as FrameworkElement ?? this, card);
     }
 
@@ -632,6 +713,10 @@ public partial class ShelfWindow : Window
     {
         var card = _pressedCard;
         _pressedCard = null;
+
+        // Released before anything else runs, and after _pressedCard is already cleared, so the
+        // LostMouseCapture this raises is a no-op rather than a second path into the same state.
+        ReleaseGestureCapture();
 
         if (card is null || _isDragging || IsWithinActionButton(e.OriginalSource))
         {
@@ -752,8 +837,15 @@ public partial class ShelfWindow : Window
     private void OpenLink(CardViewModel card)
     {
         var url = card.Item.Text;
-        if (string.IsNullOrWhiteSpace(url))
+
+        // Defence in depth. The card is only Kind==Link because UrlDetector said so at capture
+        // time, but re-checking here is what keeps ShellExecute from ever being handed something
+        // that is not an http/https URL -- ShellExecute happily runs file paths and other schemes,
+        // and the string came off the clipboard.
+        if (string.IsNullOrWhiteSpace(url) || !UrlDetector.IsUrl(url))
         {
+            FileLogger.Instance?.Warn(Module,
+                $"refused to open a {card.Kind} card's content as a URL: not an http/https address");
             return;
         }
 
