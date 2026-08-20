@@ -102,12 +102,16 @@ public partial class App : System.Windows.Application
             Settings = SettingsStore.Load();
             ApplyUiCulture(Settings.Language);
 
-            // Self-heal: the exe may have moved (reinstall, drive letter change) since the
-            // registry Run value was written, so re-derive it from the *current*
-            // Environment.ProcessPath rather than trusting whatever is already there. Only
-            // touches the registry when the two disagree, so a fresh profile with
-            // AutoStartEnabled still false does not gain an unwanted Run entry.
-            if (Settings.AutoStartEnabled != AutoStart.IsEnabled())
+            // Self-heal: compares against the exact stored value, not just whether one is
+            // present. AutoStart.IsEnabled() alone would miss a STALE registry value -- the exe
+            // moved (reinstall, drive letter change) since the Run value was written, so it still
+            // points at the old path even though "a value is present" reads as already correct.
+            // ExpectedCommand() is null when AutoStartEnabled is false, so this also catches (and
+            // removes) a Run value that outlived the setting being turned off. A fresh profile
+            // with AutoStartEnabled still false and no Run value compares null == null and skips
+            // the registry write entirely.
+            var expectedAutoStartCommand = Settings.AutoStartEnabled ? AutoStart.ExpectedCommand() : null;
+            if (!string.Equals(expectedAutoStartCommand, AutoStart.GetStoredCommand(), StringComparison.Ordinal))
             {
                 AutoStart.SetEnabled(Settings.AutoStartEnabled);
             }
@@ -278,7 +282,18 @@ public partial class App : System.Windows.Application
 
         if (value)
         {
-            _edgeTrigger?.Show();
+            // Do NOT show while a fullscreen/presentation app is active: OnFullscreenChanged
+            // already hid the trigger for a reason that has nothing to do with this setting, and
+            // FullscreenDetector.Changed only fires on the true/false TRANSITION -- toggling
+            // hover on (here, or via the tray) while still fullscreen would otherwise put the
+            // trigger back over the fullscreen app and leave it there until the app is polled
+            // again, since no further Changed event is coming to hide it a second time. Gated
+            // here rather than in FullscreenDetector itself, which only tracks fullscreen state
+            // and has no opinion on hover.
+            if (_fullscreenDetector?.IsFullscreen != true)
+            {
+                _edgeTrigger?.Show();
+            }
         }
         else
         {
@@ -382,6 +397,13 @@ public partial class App : System.Windows.Application
     /// capture keeps running the whole time, matching the reference app's behavior -- and exiting
     /// fullscreen restores the trigger band only if hover-to-open is still the user's setting
     /// (mirrors <see cref="OnHoverEnabledChanged"/>'s "true" branch).
+    /// <para>The "false" (exit-fullscreen) branch below does NOT need to re-check
+    /// <see cref="FullscreenDetector.IsFullscreen"/> the way <see cref="OnHoverEnabledChanged"/>
+    /// checks it before showing: by the time this handler runs, <c>_fullscreenDetector.IsFullscreen</c>
+    /// has already been updated to false (see <see cref="FullscreenDetector.OnTick"/>, which sets
+    /// the property before raising <see cref="FullscreenDetector.Changed"/>), so there is nothing
+    /// left to gate against -- this handler IS the transition, not a caller reacting to some other
+    /// setting after the fact.</para>
     /// </summary>
     private void OnFullscreenChanged(object? sender, bool isFullscreen)
     {
@@ -400,9 +422,14 @@ public partial class App : System.Windows.Application
     /// <summary>
     /// Resume from sleep: Windows re-broadcasts whatever was last on the clipboard for a moment
     /// after waking, which would otherwise look exactly like the user copying it just now.
-    /// Raised by <see cref="SystemEvents"/> on its own background thread, not the Dispatcher, so
-    /// the actual write is marshaled -- <see cref="ClipboardMonitor.IgnoreUntil"/> is a plain,
-    /// unlocked property and Monitor is torn down on the UI thread during shutdown.
+    /// <para>Raised by <see cref="SystemEvents"/> on its own background thread, not the
+    /// Dispatcher -- but the write below runs directly on THAT thread, synchronously, rather than
+    /// being marshaled through <see cref="RunOnUiThread"/>: marshaling would queue it behind
+    /// whatever is already in the Dispatcher queue, and a spurious post-wake clipboard
+    /// notification racing in on the Dispatcher's own timer could win that race and land before
+    /// <see cref="ClipboardMonitor.IgnoreUntil"/> was actually updated. Safe to write from here
+    /// because <see cref="ClipboardMonitor.IgnoreUntil"/> is now backed by an Interlocked tick
+    /// count rather than a plain property -- see its doc comment.</para>
     /// </summary>
     private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {
@@ -411,14 +438,14 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        RunOnUiThread(() =>
-        {
-            Monitor.IgnoreUntil = DateTime.UtcNow + WakeIgnoreWindow;
-            FileLogger.Instance?.Info(Module, "resumed from sleep; ignoring clipboard updates for 2s");
-        });
+        Monitor.IgnoreUntil = DateTime.UtcNow + WakeIgnoreWindow;
+        FileLogger.Instance?.Info(Module, "resumed from sleep; ignoring clipboard updates for 2s");
     }
 
-    /// <summary>Session unlock: same bogus-clipboard-beacon problem as resume-from-sleep.</summary>
+    /// <summary>
+    /// Session unlock: same bogus-clipboard-beacon problem as resume-from-sleep, same direct
+    /// (not marshaled) write -- see <see cref="OnPowerModeChanged"/>.
+    /// </summary>
     private void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
     {
         if (e.Reason != SessionSwitchReason.SessionUnlock)
@@ -426,35 +453,57 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        RunOnUiThread(() =>
-        {
-            Monitor.IgnoreUntil = DateTime.UtcNow + WakeIgnoreWindow;
-            FileLogger.Instance?.Info(Module, "session unlocked; ignoring clipboard updates for 2s");
-        });
+        Monitor.IgnoreUntil = DateTime.UtcNow + WakeIgnoreWindow;
+        FileLogger.Instance?.Info(Module, "session unlocked; ignoring clipboard updates for 2s");
     }
 
     /// <summary>
     /// Monitor(s) added/removed/reconfigured. Re-places the shelf and the trigger band; the
     /// indicator overlay needs no equivalent call because it re-resolves its monitor on every
-    /// <see cref="IndicatorWindow.Flash"/> instead of caching a placement. Also raised off the
-    /// Dispatcher thread -- see <see cref="OnPowerModeChanged"/>.
+    /// <see cref="IndicatorWindow.Flash"/> instead of caching a placement. Raised off the
+    /// Dispatcher thread (same as <see cref="OnPowerModeChanged"/>), so -- unlike that handler --
+    /// this one DOES need <see cref="RunOnUiThread"/>: ApplySettings touches WPF window
+    /// properties (Width/Left/Top etc.), which is not safe off the Dispatcher thread.
     /// </summary>
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
         RunOnUiThread(() =>
         {
             FileLogger.Instance?.Info(Module, "display settings changed; re-applying window placement");
-            _shelf?.ApplySettings(Settings);
-            _edgeTrigger?.ApplySettings(Settings);
+
+            // Independent try/catch per window: each ApplySettings already catches its own
+            // internal placement failures and logs under its own module tag (see
+            // ShelfWindow/EdgeTriggerWindow), but a throw that somehow escapes that must still not
+            // take the OTHER window's re-placement down with it -- an exception from the shelf
+            // call would otherwise skip the edge trigger call entirely.
+            try
+            {
+                _shelf?.ApplySettings(Settings);
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Instance?.Error(Module, "failed to re-apply settings to the shelf after a display change", ex);
+            }
+
+            try
+            {
+                _edgeTrigger?.ApplySettings(Settings);
+            }
+            catch (Exception ex)
+            {
+                FileLogger.Instance?.Error(Module, "failed to re-apply settings to the edge trigger after a display change", ex);
+            }
         });
     }
 
     /// <summary>
-    /// Marshals onto the Dispatcher this Application owns. <see cref="SystemEvents"/> callbacks
-    /// arrive on its own internal thread, not the UI thread, so anything they do that touches a
-    /// WPF window (ApplySettings) or should serialize with UI-thread work must go through here
-    /// rather than running inline. Best-effort: if the dispatcher is already shutting down (app
-    /// exiting while a SystemEvents callback is in flight), log and drop it rather than throw.
+    /// Marshals onto the Dispatcher this Application owns. Used by
+    /// <see cref="OnDisplaySettingsChanged"/>, whose work touches WPF windows and so must run on
+    /// the Dispatcher thread; NOT used by <see cref="OnPowerModeChanged"/>/<see cref="OnSessionSwitch"/>,
+    /// which write a cross-thread-safe field directly and deliberately skip this queue (see their
+    /// doc comments) to avoid losing a race with a spurious clipboard notification. Best-effort:
+    /// if the dispatcher is already shutting down (app exiting while a SystemEvents callback is in
+    /// flight), log and drop it rather than throw.
     /// </summary>
     private void RunOnUiThread(Action action)
     {

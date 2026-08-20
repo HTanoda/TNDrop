@@ -57,6 +57,7 @@ public sealed class ClipboardMonitor : IDisposable
     private readonly DispatcherTimer _readTimer;
     private readonly HwndSourceHook _hook;
     private long _suppressRequestedTicks;
+    private long _ignoreUntilTicks;
     private bool _listening;
     private bool _disposed;
 
@@ -69,8 +70,22 @@ public sealed class ClipboardMonitor : IDisposable
     /// <summary>
     /// UTC instant before which clipboard updates are dropped. Used to swallow the bogus
     /// clipboard notifications Windows emits around resume-from-sleep and unlock.
+    /// <para>Backed by an Interlocked <c>long</c> of UTC ticks rather than a plain auto-property:
+    /// the write comes from Microsoft.Win32.SystemEvents' own background thread (see
+    /// App.OnPowerModeChanged / OnSessionSwitch), deliberately set there synchronously rather
+    /// than marshaled onto the Dispatcher, so it lands before a spurious post-wake clipboard
+    /// notification can race it. The read happens on this object's own Dispatcher thread inside
+    /// <see cref="OnClipboardUpdate"/> / <see cref="OnReadTimerTick"/>. A plain <see cref="DateTime"/>
+    /// field has no atomicity guarantee across that thread boundary (and cannot be marked
+    /// <c>volatile</c>, being a struct); reusing the same Interlocked-ticks pattern
+    /// <see cref="_suppressRequestedTicks"/> already uses below avoids inventing a second, subtly
+    /// different way to do the same thing.</para>
     /// </summary>
-    public DateTime IgnoreUntil { get; set; }
+    public DateTime IgnoreUntil
+    {
+        get => new(Interlocked.Read(ref _ignoreUntilTicks), DateTimeKind.Utc);
+        set => Interlocked.Exchange(ref _ignoreUntilTicks, value.Ticks);
+    }
 
     public ClipboardMonitor(FileLogger? log)
     {

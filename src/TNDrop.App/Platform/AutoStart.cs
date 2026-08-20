@@ -14,6 +14,22 @@ public static class AutoStart
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "TNDrop";
 
+    /// <summary>
+    /// The exact value SetEnabled(true) would write right now -- the quoted current process
+    /// path -- or null when Environment.ProcessPath is unavailable. One computation feeds both
+    /// SetEnabled and a caller's drift check (see App.OnStartup's self-heal), so "what counts as
+    /// correct" can never quietly disagree between the two: deriving the expected quoted path a
+    /// second time somewhere else is exactly how a self-heal check would end up comparing against
+    /// its own stale idea of what SetEnabled writes.
+    /// </summary>
+    public static string? ExpectedCommand()
+    {
+        var path = Environment.ProcessPath;
+
+        // Quoted: the install path can contain spaces (Program Files).
+        return string.IsNullOrEmpty(path) ? null : $"\"{path}\"";
+    }
+
     public static void SetEnabled(bool enabled)
     {
         try
@@ -27,15 +43,14 @@ public static class AutoStart
 
             if (enabled)
             {
-                var path = Environment.ProcessPath;
-                if (string.IsNullOrEmpty(path))
+                var command = ExpectedCommand();
+                if (command is null)
                 {
                     FileLogger.Instance?.Error(Module, "Environment.ProcessPath is empty; autostart not set");
                     return;
                 }
 
-                // Quoted: the install path can contain spaces (Program Files).
-                key.SetValue(ValueName, $"\"{path}\"", RegistryValueKind.String);
+                key.SetValue(ValueName, command, RegistryValueKind.String);
                 FileLogger.Instance?.Info(Module, "autostart enabled");
             }
             else
@@ -61,6 +76,27 @@ public static class AutoStart
         {
             FileLogger.Instance?.Error(Module, "IsEnabled failed", ex);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// The raw string currently stored under the Run value, or null when it is absent (or on a
+    /// registry read failure). Exists because <see cref="IsEnabled"/> only answers "is some value
+    /// present", which reads a stale path (exe moved: reinstall, drive letter change) as
+    /// indistinguishable from a correct one. A caller that needs to detect that drift -- not just
+    /// presence -- compares this against <see cref="ExpectedCommand"/> instead.
+    /// </summary>
+    public static string? GetStoredCommand()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
+            return key?.GetValue(ValueName) as string;
+        }
+        catch (Exception ex)
+        {
+            FileLogger.Instance?.Error(Module, "GetStoredCommand failed", ex);
+            return null;
         }
     }
 }
