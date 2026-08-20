@@ -1,4 +1,4 @@
-﻿namespace TNDrop.Tests;
+namespace TNDrop.Tests;
 
 public class UnitTest1
 {
