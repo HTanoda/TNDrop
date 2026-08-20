@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -13,12 +14,14 @@ using TNDrop.Core;
 using TNDrop.Platform;
 using TNDrop.Resources;
 using TNDrop.Services;
+using Border = System.Windows.Controls.Border;
 using Brush = System.Windows.Media.Brush;
 using Button = System.Windows.Controls.Button;
 using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;
 using Color = System.Windows.Media.Color;
 using DragDropEffects = System.Windows.DragDropEffects;
 using DragEventArgs = System.Windows.DragEventArgs;
+using DragEventHandler = System.Windows.DragEventHandler;
 using MessageBox = System.Windows.MessageBox;
 using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using MouseEventHandler = System.Windows.Input.MouseEventHandler;
@@ -59,6 +62,18 @@ public partial class ShelfWindow : Window
     /// <summary>Tag on the Link card's "open in the browser" hotspot. Must match Cards.xaml.</summary>
     private const string LinkOpenTag = "LinkOpen";
 
+    /// <summary>x:Name of a card template's outermost Border. Must match Cards.xaml.</summary>
+    private const string CardRootName = "CardRoot";
+
+    /// <summary>Border of a card that would accept the card currently being dragged over it (Task 14).</summary>
+    private static readonly Brush MergeAcceptBorderBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)));
+
+    /// <summary>Border of a card the rest of the time. Matches Cards.xaml's CardRoot BorderBrush.</summary>
+    private static readonly Brush CardIdleBorderBrush = System.Windows.Media.Brushes.Transparent;
+
+    /// <summary>Total length of the refusal shake played on a card that cannot take a merge.</summary>
+    private static readonly Duration ShakeDuration = new(TimeSpan.FromMilliseconds(320));
+
     private readonly DispatcherTimer _retractTimer;
     private readonly DispatcherTimer _statusTimer;
 
@@ -92,6 +107,15 @@ public partial class ShelfWindow : Window
     // Drag-IN (Task 13): true for the whole time an OLE drag -- from Explorer, a browser, or the
     // shelf's own outbound drag looping back -- is hovering over the shelf. See IsPointerInside.
     private bool _isDragOver;
+
+    // Stack UX (Task 14): the one expanded-stack popup, created on first use, and the card border
+    // currently lit up as a merge target (null when no acceptable card drag is hovering).
+    private StackFlyout? _stackFlyout;
+    private Border? _mergeHighlight;
+
+    // Latched when the press lands, read when the release decides whether the click is an open or
+    // a close. It cannot be re-derived at release time: see OnCardPreviewMouseLeftButtonDown.
+    private bool _flyoutWasShowingPressedCard;
 
     public ShelfWindow()
     {
@@ -149,8 +173,16 @@ public partial class ShelfWindow : Window
     /// and <see cref="IsMouseOver"/> both stay false the entire time a file is hovering over the
     /// shelf waiting to be dropped, and a retract timer already ticking down from an earlier,
     /// unrelated MouseLeave would fire mid-hover with nothing here to stop it.</para>
+    /// <para>Without the stack-flyout term (Task 14), the expanded stack popup -- its own top-level
+    /// window, so the pointer being on it means the pointer is NOT on the shelf -- would be
+    /// retracted out from under the user while they were reading it. The flyout closes itself once
+    /// the pointer has been off both it and the shelf for a moment (StackFlyout.OnHoverTick), which
+    /// is what stops this term from pinning the shelf open for good.</para>
     /// </summary>
-    public bool IsPointerInside => _pointerInside || _isDragging || _isDragOver || IsMouseOver || IsKeyboardFocusWithin;
+    public bool IsPointerInside =>
+        _pointerInside || _isDragging || _isDragOver || IsStackFlyoutOpen || IsMouseOver || IsKeyboardFocusWithin;
+
+    private bool IsStackFlyoutOpen => _stackFlyout is not null && _stackFlyout.IsOpen;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -315,6 +347,10 @@ public partial class ShelfWindow : Window
         if (!IsVisible)
             return;
 
+        // First: the flyout is a separate top-level window and would be left hanging in mid-air
+        // over the desktop once the shelf it belongs to has slid away.
+        CloseStackFlyout();
+
         var from = Left;
 
         StopSlide();
@@ -384,6 +420,13 @@ public partial class ShelfWindow : Window
         // even though nothing is being dragged anymore.
         _isDragOver = false;
         Panel.BorderBrush = DropIdleBorderBrush;
+
+        // Same again for the two Task 14 visuals. The flyout would otherwise float over the
+        // desktop with no shelf under it (and, being counted by IsPointerInside, would keep the
+        // retract suppressed for the next slide-in); a merge highlight left set would come back
+        // lit on a recycled container.
+        CloseStackFlyout();
+        ClearMergeHighlight();
 
         // Whatever temporarily allowed real activation for the search box (see
         // OnSearchBoxPreviewMouseLeftButtonDown) must not survive the shelf going away, or the
@@ -496,6 +539,16 @@ public partial class ShelfWindow : Window
             host.AddHandler(UIElement.PreviewMouseLeftButtonUpEvent,
                 new MouseButtonEventHandler(OnCardPreviewMouseLeftButtonUp), true);
             host.LostMouseCapture += OnCardHostLostMouseCapture;
+
+            // Card-to-card merge (Task 14). These sit BELOW the window-level drag-IN handlers in
+            // the tree, so they run first and, for a merge payload, mark the event handled -- the
+            // window's own handlers (registered without handledEventsToo) then do not run, and the
+            // shelf-wide accept border never competes with the per-card one. Anything that is not
+            // a merge payload is left alone here and bubbles on to the window exactly as before.
+            host.AddHandler(UIElement.DragEnterEvent, new DragEventHandler(OnCardDragOver));
+            host.AddHandler(UIElement.DragOverEvent, new DragEventHandler(OnCardDragOver));
+            host.AddHandler(UIElement.DragLeaveEvent, new DragEventHandler(OnCardDragLeave));
+            host.AddHandler(UIElement.DropEvent, new DragEventHandler(OnCardDrop));
         }
 
         _shelfViewModel.PinnedCards.CollectionChanged += (_, _) => UpdatePinnedVisibility();
@@ -625,6 +678,7 @@ public partial class ShelfWindow : Window
     private void OnCardPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _pressedCard = null;
+        _flyoutWasShowingPressedCard = false;
 
         // The action bar's own buttons own their clicks (see OnCardActionClick). Swallowing them
         // here would make Delete re-copy the card instead of deleting it.
@@ -640,6 +694,14 @@ public partial class ShelfWindow : Window
         }
 
         _pressPoint = e.GetPosition(this);
+
+        // Latched here, before anything touches the mouse. Taking the gesture capture below moves
+        // the mouse away from the flyout's PopupRoot, and a StaysOpen="False" Popup reads that as
+        // an outside click and closes itself -- so by the time the release runs, "is the flyout
+        // showing this card?" always answers false and the toggle would re-open the very flyout
+        // the press just dismissed. Measured: the live probe's close-on-second-click check failed
+        // exactly that way before this existed.
+        _flyoutWasShowingPressedCard = _stackFlyout is not null && _stackFlyout.IsShowing(card.Id);
 
         // Capture BEFORE arming _pressedCard, not after. Taking the mouse makes WPF re-evaluate
         // where the pointer is and can synthesize a MouseMove there and then -- which lands in
@@ -769,6 +831,13 @@ public partial class ShelfWindow : Window
         {
             OpenLink(card);
         }
+        else if (card.IsStack)
+        {
+            // A stack's click expands it instead of re-copying: the whole point of the flyout is
+            // that the individual files inside are separately clickable and draggable, and the
+            // stack as a whole is still available by dragging the card itself.
+            ToggleStackFlyout(card, CardRootFrom(e.OriginalSource) ?? (UIElement)this);
+        }
         else
         {
             CopyCardToClipboard(card);
@@ -887,6 +956,410 @@ public partial class ShelfWindow : Window
         e.Effects = acceptable ? DragDropEffects.Copy : DragDropEffects.None;
     }
 
+    // ---- Stack UX (Task 14): flyout, split, merge ------------------------------------------
+
+    /// <summary>
+    /// The one stack flyout, created on first use and reused for every stack afterwards. One
+    /// instance rather than one per card: only one can be open at a time by design, and a Popup
+    /// owns a top-level window.
+    /// </summary>
+    private StackFlyout EnsureStackFlyout()
+    {
+        if (_stackFlyout is not null)
+        {
+            return _stackFlyout;
+        }
+
+        var flyout = new StackFlyout
+        {
+            // The flyout knows nothing about monitors; this is the only place the resolved work
+            // area, its DPI scale and the configured edge all exist together.
+            CursorInSplitZone = IsCursorInSplitZone,
+        };
+
+        flyout.FileActivated += OnStackFileActivated;
+        flyout.SplitRequested += OnStackSplitRequested;
+        flyout.ContentMissing += OnStackContentMissing;
+
+        // A row drag blocks in DoDragDrop exactly like a card drag, and can close the popup out
+        // from under itself on the way -- so the retract countdown needs the same explicit
+        // suspension a card drag gets rather than relying on the flyout still being open.
+        flyout.RowDragStarted += OnStackRowDragStarted;
+        flyout.RowDragEnded += OnStackRowDragEnded;
+
+        // Closing (outside click, the flyout's own hover timeout, a stale stack) drops the
+        // IsPointerInside term that was suppressing the countdown; nothing else would re-arm it.
+        flyout.Closed += (_, _) => ArmRetractIfPointerOutside();
+
+        _stackFlyout = flyout;
+        return flyout;
+    }
+
+    /// <summary>Opens the flyout for this stack, or closes it if it is already the one on show.</summary>
+    private void ToggleStackFlyout(CardViewModel card, UIElement placementTarget)
+    {
+        var flyout = EnsureStackFlyout();
+
+        // Either answer means "this click is the close half of the toggle": the flyout is still
+        // open for this card, or it was when the press landed and the capture change has since
+        // closed it (see the latch in OnCardPreviewMouseLeftButtonDown).
+        if (_flyoutWasShowingPressedCard || flyout.IsShowing(card.Id))
+        {
+            flyout.IsOpen = false;
+            return;
+        }
+
+        // Closed first, then re-opened: re-pointing a live Popup at a different PlacementTarget
+        // leaves it measured against the old one.
+        flyout.IsOpen = false;
+        flyout.ShowFor(card, placementTarget);
+    }
+
+    /// <summary>
+    /// Points an open flyout back at the live container for its stack after a card-list rebuild,
+    /// or closes it when that stack is no longer on screen (filtered out, or scrolled out of the
+    /// virtualized list). A flyout hanging off a container that now shows someone else's card is
+    /// worse than no flyout: it claims those files belong to the card it is touching.
+    /// </summary>
+    private void ReanchorStackFlyout()
+    {
+        var flyout = _stackFlyout;
+        if (flyout is null || !flyout.IsOpen)
+        {
+            return;
+        }
+
+        var border = FindLiveCardRoot(flyout.StackId);
+        if (border is null || border.DataContext is not CardViewModel card)
+        {
+            flyout.IsOpen = false;
+            return;
+        }
+
+        if (ReferenceEquals(flyout.PlacementTarget, border))
+        {
+            return;
+        }
+
+        // Re-shown rather than re-pointed: assigning PlacementTarget on an already-open Popup does
+        // not re-run its placement. The rows are rebuilt from the same unchanged paths, so the only
+        // visible difference is that the flyout is next to the right card again.
+        flyout.IsOpen = false;
+        flyout.ShowFor(card, border);
+    }
+
+    /// <summary>The realized CardRoot Border currently showing the given item, or null.</summary>
+    private Border? FindLiveCardRoot(string? id)
+    {
+        if (string.IsNullOrEmpty(id))
+        {
+            return null;
+        }
+
+        foreach (var host in new ItemsControl[] { CardsList, PinnedList })
+        {
+            var hit = FindCardRootIn(host, id);
+            if (hit is not null)
+            {
+                return hit;
+            }
+        }
+
+        return null;
+    }
+
+    private static Border? FindCardRootIn(DependencyObject parent, string id)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+
+            if (child is Border { Name: CardRootName } border &&
+                border.DataContext is CardViewModel card &&
+                string.Equals(card.Id, id, StringComparison.Ordinal))
+            {
+                return border;
+            }
+
+            var found = FindCardRootIn(child, id);
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    private void CloseStackFlyout()
+    {
+        if (_stackFlyout is not null)
+        {
+            _stackFlyout.IsOpen = false;
+        }
+    }
+
+    /// <summary>
+    /// True when the mouse cursor is, right now, inside the split band along the configured screen
+    /// edge. Called once per row drag, immediately after the drag returns.
+    /// <para>The cursor comes back in physical pixels and the work area is in DIPs, so it is
+    /// divided by the very scale <see cref="MonitorGeometry.Resolve"/> used to produce that work
+    /// area -- the two must be converted with the same number or the band lands in the wrong
+    /// place on a scaled display.</para>
+    /// </summary>
+    private bool IsCursorInSplitZone()
+    {
+        if (!_placed)
+        {
+            return false;
+        }
+
+        try
+        {
+            var cursor = System.Windows.Forms.Cursor.Position;
+            var scaleX = _area.ScaleX > 0 ? _area.ScaleX : 1.0;
+            var scaleY = _area.ScaleY > 0 ? _area.ScaleY : 1.0;
+
+            return StackGestures.IsInSplitZone(
+                new ShelfPlacement.Rect(_area.X, _area.Y, _area.W, _area.H),
+                _edge,
+                cursor.X / scaleX,
+                cursor.Y / scaleY);
+        }
+        catch (Exception ex)
+        {
+            // Reading the cursor is a Win32 call; a failure here must mean "not a split", never a
+            // crash at the end of a drag.
+            FileLogger.Instance?.Warn(Module, $"could not read the cursor position: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>A flyout row was clicked: put that one file on the clipboard.</summary>
+    private void OnStackFileActivated(string path)
+    {
+        // Re-checked at action time rather than trusting the row's snapshot: the flyout may have
+        // been open for a while. Same existence rule the drag payload uses.
+        var paths = DragDropSource.PathExists(path) ? new[] { path } : Array.Empty<string>();
+
+        if (!SetClipboardFiles(paths))
+        {
+            FileLogger.Instance?.Warn(Module, "copy of a stacked file found nothing left on disk");
+            ShowStatus(Strings.FileMissing);
+            return;
+        }
+
+        ConfirmCopy();
+    }
+
+    /// <summary>A flyout row was dragged into the edge band: pull it out into its own card.</summary>
+    private void OnStackSplitRequested(string stackId, string path)
+    {
+        if (_itemStore is null)
+        {
+            return;
+        }
+
+        if (_itemStore.SplitFile(stackId, path) is null)
+        {
+            // The stack changed under the drag (another capture merged it, the file was removed).
+            // Nothing to tell the user: no card moved, and the drop itself did nothing either.
+            FileLogger.Instance?.Warn(Module, "split refused: the path is no longer part of that stack");
+            return;
+        }
+
+        _itemStore.Save();
+    }
+
+    private void OnStackContentMissing() => ShowStatus(Strings.FileMissing);
+
+    private void OnStackRowDragStarted()
+    {
+        _isDragging = true;
+        _retractTimer.Stop();
+    }
+
+    private void OnStackRowDragEnded()
+    {
+        _isDragging = false;
+
+        // The pointer is wherever the drop left it, and the MouseLeave was consumed mid-drag.
+        _pointerInside = IsMouseOver;
+        ArmRetractIfPointerOutside();
+    }
+
+    /// <summary>
+    /// DragEnter/DragOver on a card. Handles -- and marks handled, keeping the window-level
+    /// drag-IN handlers out of it -- only a whole-card drag that this card could actually absorb.
+    /// Everything else (an external file drop, a flyout row, a card onto itself, a non-Files
+    /// combination) is left to bubble to the window, which answers it exactly as it did before.
+    /// </summary>
+    private void OnCardDragOver(object sender, DragEventArgs e)
+    {
+        var merge = ResolveMerge(e);
+        if (merge is null)
+        {
+            ClearMergeHighlight();
+            return;
+        }
+
+        // The window's DragEnter never runs for a merge, so its retract suspension has to happen
+        // here instead -- an OLE drag produces no MouseMove, so nothing else would hold the shelf.
+        _isDragOver = true;
+        _retractTimer.Stop();
+
+        HighlightMergeTarget(CardRootFrom(e.OriginalSource));
+
+        // WPF requires Effects to be re-set on every DragOver, not just on DragEnter.
+        e.Effects = DragDropEffects.Copy;
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// The drag left this card. Deliberately does NOT mark the event handled: the window-level
+    /// DragLeave still has to clear <see cref="_isDragOver"/> and re-arm the countdown for a drag
+    /// that has left the shelf altogether. Moving from one card to the next clears the highlight
+    /// here and the next DragEnter sets it again a frame later.
+    /// </summary>
+    private void OnCardDragLeave(object sender, DragEventArgs e) => ClearMergeHighlight();
+
+    /// <summary>
+    /// The merge itself. A refusal (<see cref="ItemStore.TryMergeFiles"/> false -- the combined
+    /// stack would exceed 10 files) is shown rather than swallowed: the target card shakes and the
+    /// footer says why, because from the user's side a silently ignored drop is indistinguishable
+    /// from a missed one.
+    /// </summary>
+    private void OnCardDrop(object sender, DragEventArgs e)
+    {
+        var merge = ResolveMerge(e);
+        var targetBorder = CardRootFrom(e.OriginalSource);
+
+        ClearMergeHighlight();
+
+        if (merge is null || _itemStore is null)
+        {
+            return;
+        }
+
+        _isDragOver = false;
+        e.Effects = DragDropEffects.Copy;
+        e.Handled = true;
+
+        var (target, source) = merge.Value;
+
+        if (_itemStore.TryMergeFiles(target.Id, source.Id))
+        {
+            _itemStore.Save();
+        }
+        else
+        {
+            FileLogger.Instance?.Info(Module, "merge refused: the combined stack would exceed 10 files");
+            ShowStatus(Strings.StackLimit);
+            ShakeCard(targetBorder);
+        }
+
+        ArmRetractIfPointerOutside();
+    }
+
+    /// <summary>
+    /// The (target, source) pair a drag over a card would merge, or null when this drag is not an
+    /// acceptable merge. One resolution for both halves: the highlight, the drop effect and the
+    /// store call all come from this single answer, so they cannot contradict each other.
+    /// </summary>
+    private (ClipItem Target, ClipItem Source)? ResolveMerge(DragEventArgs e)
+    {
+        if (_itemStore is null || !DragDropTarget.IsCardMergeDrag(e.Data))
+        {
+            return null;
+        }
+
+        var targetCard = CardFrom(e.OriginalSource);
+        if (targetCard is null)
+        {
+            return null;
+        }
+
+        var sourceId = DragDropTarget.SourceCardId(e.Data);
+        if (string.IsNullOrEmpty(sourceId))
+        {
+            return null;
+        }
+
+        var source = _itemStore.Items.FirstOrDefault(i => i.Id == sourceId);
+        return StackGestures.CanAcceptMerge(targetCard.Item, source)
+            ? (targetCard.Item, source!)
+            : null;
+    }
+
+    private void HighlightMergeTarget(Border? border)
+    {
+        if (ReferenceEquals(_mergeHighlight, border))
+        {
+            return;
+        }
+
+        ClearMergeHighlight();
+
+        if (border is null)
+        {
+            return;
+        }
+
+        border.BorderBrush = MergeAcceptBorderBrush;
+        _mergeHighlight = border;
+    }
+
+    private void ClearMergeHighlight()
+    {
+        if (_mergeHighlight is null)
+        {
+            return;
+        }
+
+        // Assigned back explicitly rather than ClearValue: the brush came from a value the
+        // DataTemplate set on this instance, and clearing it would not restore that value.
+        _mergeHighlight.BorderBrush = CardIdleBorderBrush;
+        _mergeHighlight = null;
+    }
+
+    /// <summary>
+    /// The refusal shake: a short damped horizontal wobble on the target card.
+    /// <para>FillBehavior.Stop and a final 0 keyframe both matter -- the Border lives in a
+    /// virtualized, recycled container, so a transform left holding a non-zero offset would come
+    /// back applied to whatever card that container is reused for.</para>
+    /// </summary>
+    private static void ShakeCard(Border? border)
+    {
+        if (border is null)
+        {
+            return;
+        }
+
+        if (border.RenderTransform is not TranslateTransform transform)
+        {
+            transform = new TranslateTransform();
+            border.RenderTransform = transform;
+        }
+
+        var animation = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = ShakeDuration,
+            FillBehavior = FillBehavior.Stop,
+        };
+
+        double[] offsets = { -8, 8, -5, 5, -2, 2, 0 };
+        var step = ShakeDuration.TimeSpan.TotalMilliseconds / offsets.Length;
+
+        for (var i = 0; i < offsets.Length; i++)
+        {
+            animation.KeyFrames.Add(new LinearDoubleKeyFrame(
+                offsets[i], KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(step * (i + 1)))));
+        }
+
+        transform.BeginAnimation(TranslateTransform.XProperty, animation);
+    }
+
     /// <summary>
     /// Click-to-copy: puts the card back on the clipboard without TNDrop re-capturing its own
     /// write, optionally floats the item to the top of the shelf, and confirms with the same
@@ -896,9 +1369,6 @@ public partial class ShelfWindow : Window
     {
         var item = card.Item;
 
-        // Before the write, not after: the clipboard notification can arrive before SetX returns.
-        global::TNDrop.App.Monitor?.SuppressNext();
-
         var copied = false;
         switch (item.Kind)
         {
@@ -906,6 +1376,9 @@ public partial class ShelfWindow : Window
             case ClipKind.Link:
                 if (!string.IsNullOrEmpty(item.Text))
                 {
+                    // Before the write, not after: the clipboard notification can arrive before
+                    // SetX returns.
+                    global::TNDrop.App.Monitor?.SuppressNext();
                     ClipboardIo.SetText(item.Text);
                     copied = true;
                 }
@@ -915,19 +1388,14 @@ public partial class ShelfWindow : Window
             case ClipKind.Files:
                 // Same resolution the drag payload uses, so a click and a drag of the same card
                 // can never disagree about which of its paths still exist.
-                var paths = DragDropSource.ExistingPaths(item);
-                if (paths.Length > 0)
-                {
-                    ClipboardIo.SetFiles(paths);
-                    copied = true;
-                }
-
+                copied = SetClipboardFiles(DragDropSource.ExistingPaths(item));
                 break;
 
             case ClipKind.Image:
                 var image = DragDropSource.LoadImage(item, BlobsDir);
                 if (image is not null)
                 {
+                    global::TNDrop.App.Monitor?.SuppressNext();
                     ClipboardIo.SetImage(image);
                     copied = true;
                 }
@@ -948,6 +1416,33 @@ public partial class ShelfWindow : Window
             _itemStore?.MoveToTop(item.Id);
         }
 
+        ConfirmCopy();
+    }
+
+    /// <summary>
+    /// Puts file paths on the clipboard without TNDrop re-capturing its own write. False when
+    /// there is nothing left to write, so the caller can report it. Shared by the whole-card click
+    /// and the stack flyout's single-row click, so the two cannot drift apart on suppression.
+    /// </summary>
+    private static bool SetClipboardFiles(string[] paths)
+    {
+        if (paths.Length == 0)
+        {
+            return false;
+        }
+
+        // Before the write, not after: the clipboard notification can arrive before SetFiles returns.
+        global::TNDrop.App.Monitor?.SuppressNext();
+        ClipboardIo.SetFiles(paths);
+        return true;
+    }
+
+    /// <summary>
+    /// The "it's on the clipboard" confirmation: the same indicator flash and capture sound a real
+    /// clipboard capture produces, so re-copying is indistinguishable from capturing.
+    /// </summary>
+    private static void ConfirmCopy()
+    {
         var settings = global::TNDrop.App.Settings;
         if (settings is not null)
         {
@@ -1058,6 +1553,30 @@ public partial class ShelfWindow : Window
         return null;
     }
 
+    /// <summary>
+    /// The outermost Border of the card a hit-test source belongs to -- the element that carries
+    /// the merge highlight and the refusal shake -- or null when the source is not on a card.
+    /// Matched by name rather than by type because a card's sub-tree contains several other
+    /// Borders (the stack-layer glyphs, the count badge) that would otherwise be found first.
+    /// </summary>
+    private static Border? CardRootFrom(object? source)
+    {
+        for (var current = source as DependencyObject; current is not null; current = ParentOf(current))
+        {
+            if (current is Border { Name: CardRootName } border)
+            {
+                return border;
+            }
+
+            if (current is ItemsControl)
+            {
+                break;
+            }
+        }
+
+        return null;
+    }
+
     private static T? FindAncestor<T>(object? source) where T : DependencyObject
     {
         for (var current = source as DependencyObject; current is not null; current = ParentOf(current))
@@ -1137,6 +1656,24 @@ public partial class ShelfWindow : Window
 
     private void OnStoreRebuilt()
     {
+        // Before the scroll restore and before its early return: the flyout's rows are a snapshot
+        // of a stack that may have just been removed, merged into another card, or split.
+        _stackFlyout?.CloseIfStale(_itemStore);
+
+        // A merge target that was mid-shake is gone from the tree with the rebuild, and the
+        // highlighted Border is now a recycled container that may host a different card.
+        ClearMergeHighlight();
+
+        // Same hazard for a flyout that survived the staleness check: Cards was Clear()-and-
+        // repopulated, so the container it is anchored to has been regenerated and -- with
+        // recycling on -- very likely now hosts a DIFFERENT card. Deferred to Loaded priority
+        // because the new containers only exist after the layout pass that follows, exactly like
+        // the scroll restore below.
+        if (_stackFlyout is not null && _stackFlyout.IsOpen)
+        {
+            Dispatcher.BeginInvoke(new Action(ReanchorStackFlyout), DispatcherPriority.Loaded);
+        }
+
         if (_savedCardsScrollOffset < 0)
         {
             return;

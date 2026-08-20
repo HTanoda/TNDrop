@@ -131,4 +131,7 @@
   <data name="FileMissing" xml:space="preserve">
     <value>File not found</value>
   </data>
+  <data name="StackLimit" xml:space="preserve">
+    <value>A stack holds up to 10 files</value>
+  </data>
 </root>

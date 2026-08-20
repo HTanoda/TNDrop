@@ -46,6 +46,50 @@ public static class DragDropTarget
         data is not null && GetDataPresent(data, DragDropSource.CardIdFormat);
 
     /// <summary>
+    /// True when the payload is a single row dragged out of a stack's flyout (Task 14) rather than
+    /// a whole card. Such a payload carries <see cref="DragDropSource.CardIdFormat"/> too -- the
+    /// stack it came from -- so this is the only thing that tells the two apart.
+    /// </summary>
+    public static bool IsStackRowDrag(IDataObject? data) =>
+        data is not null && GetDataPresent(data, DragDropSource.StackPathFormat);
+
+    /// <summary>
+    /// True when the payload is a WHOLE card being dragged from the shelf -- the only thing that
+    /// may be merged into another card. A flyout row is excluded: releasing a row over a card must
+    /// not fold the row's entire parent stack into that card.
+    /// </summary>
+    public static bool IsCardMergeDrag(IDataObject? data) =>
+        IsSelfDrag(data) && !IsStackRowDrag(data);
+
+    /// <summary>The <see cref="Core.ClipItem.Id"/> of the card the drag started from, or null.</summary>
+    public static string? SourceCardId(IDataObject? data)
+    {
+        if (data is null || !GetDataPresent(data, DragDropSource.CardIdFormat))
+        {
+            return null;
+        }
+
+        return GetData(data, DragDropSource.CardIdFormat) as string;
+    }
+
+    /// <summary>
+    /// The (stack id, path) pair a flyout row drag carries, or null when the payload is not a row
+    /// drag or its marker is malformed.
+    /// </summary>
+    public static (string StackId, string Path)? StackRowOf(IDataObject? data)
+    {
+        if (!IsStackRowDrag(data))
+        {
+            return null;
+        }
+
+        var encoded = GetData(data!, DragDropSource.StackPathFormat) as string;
+        return DragDropSource.TryDecodeStackPath(encoded, out var stackId, out var path)
+            ? (stackId, path)
+            : null;
+    }
+
+    /// <summary>
     /// True when <paramref name="data"/> is a genuine external drop the shelf can turn into a
     /// card: not self-drag, and carrying at least one of FileDrop / Bitmap / UnicodeText. Drives
     /// the DragEnter/DragOver accept-affordance and the DragDropEffects choice; does not itself

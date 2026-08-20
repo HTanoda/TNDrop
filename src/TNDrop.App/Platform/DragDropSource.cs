@@ -36,6 +36,24 @@ public static class DragDropSource
     public const string CardIdFormat = "TNDrop.CardId";
 
     /// <summary>
+    /// Private marker format carried ONLY by a single row dragged out of the stack flyout
+    /// (Task 14). The value is the source stack's <see cref="ClipItem.Id"/> and the one path,
+    /// joined by <see cref="StackPathSeparator"/>.
+    ///
+    /// <para>Two consumers depend on its presence, not just its value: the split detection needs
+    /// the (stack, path) pair to hand to <see cref="Core.ItemStore.SplitFile"/>, and the card-level
+    /// merge handler uses "has CardId but NOT this" to tell a whole-card drag from a row drag --
+    /// a row must never merge its parent stack into the card it happens to be released over.</para>
+    /// </summary>
+    public const string StackPathFormat = "TNDrop.StackPath";
+
+    /// <summary>
+    /// Separator between the stack id and the path inside a <see cref="StackPathFormat"/> value.
+    /// A line feed is not a legal character in a Windows path, so the split can never be ambiguous.
+    /// </summary>
+    public const char StackPathSeparator = '\n';
+
+    /// <summary>
     /// The item's payload as a drag/drop <see cref="DataObject"/>, or null when there is nothing
     /// left to hand over (empty text, every file path gone, an image whose blob has been deleted).
     /// Pure apart from reading the file system; no UI, no clipboard -- this is the unit under test.
@@ -166,6 +184,71 @@ public static class DragDropSource
         TryStartDrag(source, item, blobsDir);
 
     /// <summary>
+    /// The payload for ONE path dragged out of a stack's flyout (Task 14): an ordinary single-file
+    /// CF_HDROP -- so dropping it into Explorer/Word behaves exactly like dragging that file from
+    /// anywhere else -- plus the two TNDrop markers. Null when the path is not part of
+    /// <paramref name="stack"/> or is no longer on disk, so the caller can say why nothing happened
+    /// rather than starting a drag that carries an empty list.
+    /// </summary>
+    public static DataObject? BuildStackRowDataObject(ClipItem? stack, string? path)
+    {
+        if (stack is null || string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        // Membership is checked here as well as in ItemStore.SplitFile: this is what stops a stale
+        // flyout (rows built before a background change) from dragging a path the stack no longer
+        // holds and then splitting it back in as a new card.
+        if (stack.Kind != ClipKind.Files || !stack.Paths.Contains(path))
+        {
+            FileLogger.Instance?.Warn(Module, "refused to drag a row that is not part of the stack anymore");
+            return null;
+        }
+
+        if (!PathExists(path))
+        {
+            FileLogger.Instance?.Warn(Module, "nothing to drag for a stacked file (gone from disk)");
+            return null;
+        }
+
+        var data = new DataObject();
+        data.SetData(DataFormats.FileDrop, new[] { path });
+        data.SetData(StackPathFormat, EncodeStackPath(stack.Id ?? string.Empty, path));
+        return Tag(data, stack);
+    }
+
+    /// <summary>The <see cref="StackPathFormat"/> value for a (stack, path) pair.</summary>
+    public static string EncodeStackPath(string stackId, string path) =>
+        (stackId ?? string.Empty) + StackPathSeparator + (path ?? string.Empty);
+
+    /// <summary>
+    /// Inverse of <see cref="EncodeStackPath"/>. False (with both outputs empty) for anything that
+    /// is not a well-formed pair, so a malformed marker can never be turned into a split of ""
+    /// out of stack "".
+    /// </summary>
+    public static bool TryDecodeStackPath(string? encoded, out string stackId, out string path)
+    {
+        stackId = string.Empty;
+        path = string.Empty;
+
+        if (string.IsNullOrEmpty(encoded))
+        {
+            return false;
+        }
+
+        var separator = encoded.IndexOf(StackPathSeparator);
+        if (separator <= 0 || separator == encoded.Length - 1)
+        {
+            return false;
+        }
+
+        stackId = encoded[..separator];
+        path = encoded[(separator + 1)..];
+        return true;
+    }
+
+    /// <summary>
     /// The item's file paths that still exist on disk, in their original order. Directories count:
     /// a folder copied to the clipboard is a legitimate CF_HDROP entry.
     /// </summary>
@@ -177,8 +260,33 @@ public static class DragDropSource
         }
 
         return item.Paths
-            .Where(p => !string.IsNullOrWhiteSpace(p) && Exists(p))
+            .Where(p => !string.IsNullOrWhiteSpace(p) && PathExists(p))
             .ToArray();
+    }
+
+    /// <summary>
+    /// The one definition of "this clipboard path is still there" used across the shelf -- the drag
+    /// payload, click-to-copy, and the stack flyout's rows all go through it, so they cannot
+    /// disagree about which of a stack's files are live. Directories count: a folder is a
+    /// legitimate CF_HDROP entry.
+    /// </summary>
+    public static bool PathExists(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            return File.Exists(path) || Directory.Exists(path);
+        }
+        catch (Exception ex)
+        {
+            // A path on a disconnected network share can throw rather than return false.
+            FileLogger.Instance?.Warn(Module, $"existence check failed for '{path}': {ex.Message}");
+            return false;
+        }
     }
 
     /// <summary>
@@ -283,20 +391,6 @@ public static class DragDropSource
         {
             FileLogger.Instance?.Warn(Module, $"failed to decode image blob '{path}': {ex.Message}");
             return null;
-        }
-    }
-
-    private static bool Exists(string path)
-    {
-        try
-        {
-            return File.Exists(path) || Directory.Exists(path);
-        }
-        catch (Exception ex)
-        {
-            // A path on a disconnected network share can throw rather than return false.
-            FileLogger.Instance?.Warn(Module, $"existence check failed for '{path}': {ex.Message}");
-            return false;
         }
     }
 }

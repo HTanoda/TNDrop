@@ -1,0 +1,103 @@
+<Popup x:Class="TNDrop.UI.StackFlyout"
+       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+       AllowsTransparency="True"
+       StaysOpen="False"
+       Placement="Right"
+       HorizontalOffset="6"
+       PopupAnimation="Fade">
+
+    <!--
+        Expanded view of one Files stack: one row per path (icon + name + size).
+
+        Self-contained on purpose. This Popup is constructed in code by ShelfWindow and is NOT
+        part of the window's logical tree, so it inherits neither Cards.xaml's brushes nor the
+        window's DataContext. Everything the rows need is declared right here.
+
+        Row gestures (click = copy that one file, drag = a single-file DataObject, released in the
+        screen-edge band = split) live in StackFlyout.xaml.cs, wired once on RowsHost rather than
+        per row, for the same reason ShelfWindow wires the card gestures once per list: the row
+        visual is a template with no code-behind of its own.
+    -->
+
+    <Popup.Resources>
+        <SolidColorBrush x:Key="Flyout.Background" Color="#F02A2A31" />
+        <SolidColorBrush x:Key="Flyout.Border" Color="#40FFFFFF" />
+        <SolidColorBrush x:Key="Flyout.Foreground" Color="#FFF2F2F7" />
+        <SolidColorBrush x:Key="Flyout.SubForeground" Color="#FFA5A5AD" />
+        <!-- Missing files stay readable but visibly inert: the user still needs to recognise which
+             entry has gone before deciding to split or delete it. -->
+        <SolidColorBrush x:Key="Flyout.MissingForeground" Color="#FF6B6B73" />
+        <SolidColorBrush x:Key="Flyout.RowHover" Color="#40FFFFFF" />
+    </Popup.Resources>
+
+    <Border Background="{StaticResource Flyout.Background}"
+            BorderBrush="{StaticResource Flyout.Border}"
+            BorderThickness="1"
+            CornerRadius="10"
+            Padding="6"
+            MinWidth="220"
+            MaxWidth="360"
+            SnapsToDevicePixels="True">
+        <ItemsControl x:Name="RowsHost">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <!-- Transparent, not null: a null Background is invisible to hit-testing, and
+                         the gaps between the three columns have to be draggable/clickable too. -->
+                    <Border x:Name="RowRoot"
+                            Background="Transparent"
+                            CornerRadius="6"
+                            Padding="8,5"
+                            Margin="0,1"
+                            Cursor="Hand">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock x:Name="RowIcon"
+                                       Grid.Column="0"
+                                       Text="{Binding Icon}"
+                                       FontSize="13"
+                                       Margin="0,0,7,0"
+                                       VerticalAlignment="Center" />
+
+                            <TextBlock x:Name="RowName"
+                                       Grid.Column="1"
+                                       Text="{Binding FileName}"
+                                       ToolTip="{Binding Path}"
+                                       FontSize="12"
+                                       Foreground="{StaticResource Flyout.Foreground}"
+                                       TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center" />
+
+                            <TextBlock x:Name="RowSize"
+                                       Grid.Column="2"
+                                       Text="{Binding SizeText}"
+                                       FontSize="11"
+                                       Margin="10,0,0,0"
+                                       Foreground="{StaticResource Flyout.SubForeground}"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding Exists}" Value="False">
+                            <Setter TargetName="RowName" Property="Foreground"
+                                    Value="{StaticResource Flyout.MissingForeground}" />
+                            <Setter TargetName="RowSize" Property="Foreground"
+                                    Value="{StaticResource Flyout.MissingForeground}" />
+                            <Setter TargetName="RowIcon" Property="Opacity" Value="0.6" />
+                        </DataTrigger>
+                        <Trigger SourceName="RowRoot" Property="IsMouseOver" Value="True">
+                            <Setter TargetName="RowRoot" Property="Background"
+                                    Value="{StaticResource Flyout.RowHover}" />
+                        </Trigger>
+                    </DataTemplate.Triggers>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </Border>
+</Popup>

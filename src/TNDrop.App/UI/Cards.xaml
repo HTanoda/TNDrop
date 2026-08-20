@@ -72,10 +72,20 @@
     </Style>
 
     <DataTemplate x:Key="CardItemTemplate" DataType="{x:Type vm:CardViewModel}">
+        <!-- AllowDrop is what makes a card a drop target in its own right (Task 14 merge): without
+             it WPF raises DragOver/Drop on the nearest ancestor that has it, which is the shelf
+             Window, and the card-level handlers would never see the drag. Padding is 8 rather than
+             10 to pay for the 2px border, so a highlighted card is exactly the same size as an
+             idle one and the list does not twitch as a drag passes over it. ShelfWindow finds this
+             element by walking up from the drag's OriginalSource looking for Name="CardRoot"; keep
+             the name in sync with ShelfWindow.CardRootName. -->
         <Border x:Name="CardRoot"
                 Background="{StaticResource Card.Background}"
+                BorderBrush="Transparent"
+                BorderThickness="2"
                 CornerRadius="10"
-                Padding="10"
+                Padding="8"
+                AllowDrop="True"
                 SnapsToDevicePixels="True">
             <Grid>
                 <!-- Text: up to 3 lines, ellipsis -->

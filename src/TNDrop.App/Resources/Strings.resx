@@ -131,4 +131,7 @@
   <data name="FileMissing" xml:space="preserve">
     <value>ファイルが見つかりません</value>
   </data>
+  <data name="StackLimit" xml:space="preserve">
+    <value>1 つのスタックは 10 件までです</value>
+  </data>
 </root>
