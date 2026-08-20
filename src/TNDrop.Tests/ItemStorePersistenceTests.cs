@@ -66,6 +66,17 @@ public class ItemStorePersistenceTests : IDisposable
     }
 
     [Fact]
+    public void Load_fresh_install_is_not_a_failure()
+    {
+        // Neither items.dat nor items.bak exists yet (brand-new profile). This must NOT be
+        // reported the same as corruption: no LoadFailed, no error balloon on first launch.
+        var store = new ItemStore(_dir);
+        store.Load();
+        Assert.Empty(store.Items);
+        Assert.False(store.LoadFailed);
+    }
+
+    [Fact]
     public async Task Concurrent_saves_do_not_corrupt_or_lose_data()
     {
         const int itemCount = 5;

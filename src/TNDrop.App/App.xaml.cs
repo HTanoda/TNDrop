@@ -66,35 +66,49 @@ public partial class App : System.Windows.Application
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
-        // (3) Settings + UI culture, before any UI string is read.
-        SettingsStore = new SettingsStore(DataDir);
-        Settings = SettingsStore.Load();
-        ApplyUiCulture(Settings.Language);
-
-        // (4) Clipboard history store.
-        Store = new ItemStore(DataDir);
-        Store.Load();
-
-        // (5) Tray / monitor / sound.
-        _trayIcon = new TrayIcon();
-        _trayIcon.SetHoverEnabled(Settings.HoverEnabled);
-        _trayIcon.SetIncognito(Settings.IncognitoMode);
-        _trayIcon.HoverEnabledChanged += OnHoverEnabledChanged;
-        _trayIcon.IncognitoChanged += OnIncognitoChanged;
-        _trayIcon.OpenSettingsRequested += OnOpenSettingsRequested;
-        _trayIcon.ExitRequested += OnExitRequested;
-
-        Sounds = new SoundService(() => Settings.SoundsEnabled);
-
-        Monitor = new ClipboardMonitor(FileLogger.Instance);
-        Monitor.Paused = Settings.IncognitoMode;
-
-        if (Store.LoadFailed)
+        // (3)-(6) run under a single guard: a throw anywhere in here would otherwise be
+        // caught by DispatcherUnhandledException (WPF pumps OnStartup on the Dispatcher),
+        // which sets e.Handled = true and lets OnStartup return early -- with the mutex
+        // already held, no tray icon, and ShutdownMode="OnExplicitShutdown", that would
+        // leave an unkillable-by-normal-means headless zombie process. Catch here instead
+        // and shut down explicitly so OnExit still runs and the process actually exits.
+        try
         {
-            _trayIcon.ShowBalloon(Strings.AppName, Strings.StoreLoadFailed);
-        }
+            // (3) Settings + UI culture, before any UI string is read.
+            SettingsStore = new SettingsStore(DataDir);
+            Settings = SettingsStore.Load();
+            ApplyUiCulture(Settings.Language);
 
-        // (6) Window creation is added in Task 9+.
+            // (4) Clipboard history store.
+            Store = new ItemStore(DataDir);
+            Store.Load();
+
+            // (5) Tray / monitor / sound.
+            _trayIcon = new TrayIcon();
+            _trayIcon.SetHoverEnabled(Settings.HoverEnabled);
+            _trayIcon.SetIncognito(Settings.IncognitoMode);
+            _trayIcon.HoverEnabledChanged += OnHoverEnabledChanged;
+            _trayIcon.IncognitoChanged += OnIncognitoChanged;
+            _trayIcon.OpenSettingsRequested += OnOpenSettingsRequested;
+            _trayIcon.ExitRequested += OnExitRequested;
+
+            Sounds = new SoundService(() => Settings.SoundsEnabled);
+
+            Monitor = new ClipboardMonitor(FileLogger.Instance);
+            Monitor.Paused = Settings.IncognitoMode;
+
+            if (Store.LoadFailed)
+            {
+                _trayIcon.ShowBalloon(Strings.AppName, Strings.StoreLoadFailed);
+            }
+
+            // (6) Window creation is added in Task 9+.
+        }
+        catch (Exception ex)
+        {
+            FileLogger.Instance?.Error(Module, "Startup failed; shutting down", ex);
+            Shutdown();
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

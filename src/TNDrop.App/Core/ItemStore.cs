@@ -326,8 +326,19 @@ public sealed partial class ItemStore
             }
 
             _items = new List<ClipItem>();
-            LoadFailed = true;
-            FileLogger.Instance?.Error("store", "Failed to load items.dat and items.bak; starting with an empty list");
+
+            if (!File.Exists(_itemsPath) && !File.Exists(_bakPath))
+            {
+                // Neither file exists: a brand-new install/profile, not a failure. Must not
+                // be reported the same as corruption (no ERROR log, no LoadFailed balloon).
+                LoadFailed = false;
+                FileLogger.Instance?.Info("store", "no existing history; starting fresh");
+            }
+            else
+            {
+                LoadFailed = true;
+                FileLogger.Instance?.Error("store", "Failed to load items.dat and items.bak; starting with an empty list");
+            }
         }
     }
 

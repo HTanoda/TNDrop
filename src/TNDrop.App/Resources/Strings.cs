@@ -5,10 +5,14 @@ using System.Resources;
 namespace TNDrop.Resources;
 
 /// <summary>
-/// Thin wrapper over the embedded Strings.resx / Strings.en.resx resources. Looked up
-/// against <see cref="CultureInfo.CurrentUICulture"/> at call time, so switching
-/// CurrentUICulture (done once at startup from AppSettings.Language) is enough --
-/// no restart required for the strings themselves.
+/// Thin wrapper over the embedded Strings.resx / Strings.en.resx resources. Each property
+/// resolves against <see cref="CultureInfo.CurrentUICulture"/> at the moment it is read --
+/// but that does not make the UI language switch live. Consumers such as
+/// TNDrop.UI.TrayIcon read these properties once, at construction, and bake the resulting
+/// strings into their menu items/text; they do not re-read on a later culture change. So a
+/// change to AppSettings.Language only takes effect the next time the app starts, which
+/// matches the rest of the settings design (see App.OnStartup, which sets CurrentUICulture
+/// once during startup, before any of these consumers are constructed).
 /// </summary>
 internal static class Strings
 {
