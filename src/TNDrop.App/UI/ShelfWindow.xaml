@@ -14,19 +14,124 @@
         TextOptions.TextFormattingMode="Ideal"
         Left="-340" Top="0" Width="340" Height="600"
         Background="Transparent">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Cards.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
     <Border x:Name="Panel"
             Background="#F01A1A1F"
             CornerRadius="0,12,12,0"
             SnapsToDevicePixels="True">
-        <Grid>
+        <Grid Margin="14,16,14,10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
             <TextBlock x:Name="PlaceholderTitle"
+                       Grid.Row="0"
                        Text="TNDrop"
-                       Margin="20,18,20,0"
+                       Margin="2,0,0,10"
                        HorizontalAlignment="Left"
-                       VerticalAlignment="Top"
                        FontSize="15"
                        FontWeight="SemiBold"
                        Foreground="#FFF2F2F7" />
+
+            <Grid Grid.Row="1" Margin="0,0,0,10">
+                <TextBox x:Name="SearchBox"
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         Padding="8,6"
+                         Background="#2A2A31"
+                         BorderThickness="0"
+                         Foreground="#FFF2F2F7"
+                         CaretBrush="#FFF2F2F7"
+                         FontSize="13">
+                    <TextBox.Resources>
+                        <Style TargetType="Border">
+                            <Setter Property="CornerRadius" Value="8" />
+                        </Style>
+                    </TextBox.Resources>
+                </TextBox>
+                <TextBlock x:Name="SearchPlaceholderText"
+                           Margin="10,0,0,0"
+                           VerticalAlignment="Center"
+                           FontSize="13"
+                           Foreground="#FF6B6B73"
+                           IsHitTestVisible="False" />
+            </Grid>
+
+            <WrapPanel x:Name="FilterTabs"
+                       Grid.Row="2"
+                       Orientation="Horizontal"
+                       Margin="0,0,0,10">
+                <Button x:Name="FilterAllButton" Style="{StaticResource FilterTabButtonStyle}" Margin="0,0,6,6" />
+                <Button x:Name="FilterTextButton" Style="{StaticResource FilterTabButtonStyle}" Margin="0,0,6,6" />
+                <Button x:Name="FilterLinksButton" Style="{StaticResource FilterTabButtonStyle}" Margin="0,0,6,6" />
+                <Button x:Name="FilterImagesButton" Style="{StaticResource FilterTabButtonStyle}" Margin="0,0,6,6" />
+                <Button x:Name="FilterFilesButton" Style="{StaticResource FilterTabButtonStyle}" Margin="0,0,6,6" />
+            </WrapPanel>
+
+            <ScrollViewer x:Name="PinnedScroll"
+                          Grid.Row="3"
+                          Margin="0,0,0,10"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled"
+                          Visibility="Collapsed">
+                <ItemsControl x:Name="PinnedList"
+                              ItemsSource="{Binding PinnedCards}"
+                              ItemTemplate="{StaticResource CardItemTemplate}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter" BasedOn="{StaticResource Card.PinnedContainerStyle}" />
+                    </ItemsControl.ItemContainerStyle>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <ListBox x:Name="CardsList"
+                     Grid.Row="4"
+                     ItemsSource="{Binding Cards}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     ItemTemplate="{StaticResource CardItemTemplate}"
+                     ItemContainerStyle="{StaticResource Card.ListBoxItemStyle}"
+                     ScrollViewer.CanContentScroll="True"
+                     VirtualizingPanel.IsVirtualizing="True"
+                     VirtualizingPanel.VirtualizationMode="Recycling"
+                     VirtualizingPanel.ScrollUnit="Pixel"
+                     SelectionMode="Single">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel Orientation="Vertical" />
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+            </ListBox>
+
+            <Grid x:Name="Footer" Grid.Row="5" Margin="0,10,0,0">
+                <Button x:Name="ClearButton"
+                        Padding="10,6"
+                        HorizontalAlignment="Right"
+                        Background="#2A2A31"
+                        Foreground="#FFF2F2F7"
+                        BorderThickness="0"
+                        Cursor="Hand">
+                    <Button.Resources>
+                        <Style TargetType="Border">
+                            <Setter Property="CornerRadius" Value="8" />
+                        </Style>
+                    </Button.Resources>
+                </Button>
+            </Grid>
         </Grid>
     </Border>
 </Window>

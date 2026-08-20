@@ -27,6 +27,21 @@ internal static class Strings
     public static string TrayExit => Get(nameof(TrayExit));
     public static string StoreLoadFailed => Get(nameof(StoreLoadFailed));
     public static string AboutText => Get(nameof(AboutText));
+    public static string CardImage => Get(nameof(CardImage));
+    public static string CardFilesCountFormat => Get(nameof(CardFilesCountFormat));
+    public static string CardCharCountFormat => Get(nameof(CardCharCountFormat));
+    public static string FilterAll => Get(nameof(FilterAll));
+    public static string FilterText => Get(nameof(FilterText));
+    public static string FilterLinks => Get(nameof(FilterLinks));
+    public static string FilterImages => Get(nameof(FilterImages));
+    public static string FilterFiles => Get(nameof(FilterFiles));
+    public static string SearchPlaceholder => Get(nameof(SearchPlaceholder));
+    public static string ClearButton => Get(nameof(ClearButton));
+    public static string ClearConfirmTitle => Get(nameof(ClearConfirmTitle));
+    public static string ClearConfirmMessageFormat => Get(nameof(ClearConfirmMessageFormat));
+    public static string ActionPin => Get(nameof(ActionPin));
+    public static string ActionUnpin => Get(nameof(ActionUnpin));
+    public static string ActionDelete => Get(nameof(ActionDelete));
 
     private static string Get(string key) =>
         Manager.GetString(key, CultureInfo.CurrentUICulture) ?? key;

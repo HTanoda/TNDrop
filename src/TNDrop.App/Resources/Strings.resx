@@ -83,4 +83,49 @@
   <data name="AboutText" xml:space="preserve">
     <value>TNDrop v1.0.0{0}Copyright (c) 2026 HIROKI TANODA (TND). All rights reserved.</value>
   </data>
+  <data name="CardImage" xml:space="preserve">
+    <value>画像</value>
+  </data>
+  <data name="CardFilesCountFormat" xml:space="preserve">
+    <value>ファイル {0} 件</value>
+  </data>
+  <data name="CardCharCountFormat" xml:space="preserve">
+    <value>{0} 文字</value>
+  </data>
+  <data name="FilterAll" xml:space="preserve">
+    <value>すべて</value>
+  </data>
+  <data name="FilterText" xml:space="preserve">
+    <value>テキスト</value>
+  </data>
+  <data name="FilterLinks" xml:space="preserve">
+    <value>リンク</value>
+  </data>
+  <data name="FilterImages" xml:space="preserve">
+    <value>画像</value>
+  </data>
+  <data name="FilterFiles" xml:space="preserve">
+    <value>ファイル</value>
+  </data>
+  <data name="SearchPlaceholder" xml:space="preserve">
+    <value>検索...</value>
+  </data>
+  <data name="ClearButton" xml:space="preserve">
+    <value>クリア</value>
+  </data>
+  <data name="ClearConfirmTitle" xml:space="preserve">
+    <value>確認</value>
+  </data>
+  <data name="ClearConfirmMessageFormat" xml:space="preserve">
+    <value>表示中の {0} 件を削除しますか?</value>
+  </data>
+  <data name="ActionPin" xml:space="preserve">
+    <value>ピン留め</value>
+  </data>
+  <data name="ActionUnpin" xml:space="preserve">
+    <value>ピン解除</value>
+  </data>
+  <data name="ActionDelete" xml:space="preserve">
+    <value>削除</value>
+  </data>
 </root>

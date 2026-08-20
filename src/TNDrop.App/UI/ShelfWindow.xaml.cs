@@ -1,12 +1,22 @@
 using System;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using TNDrop.Core;
 using TNDrop.Platform;
+using TNDrop.Resources;
 using TNDrop.Services;
+using Brush = System.Windows.Media.Brush;
+using Button = System.Windows.Controls.Button;
+using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;
+using Color = System.Windows.Media.Color;
+using MessageBox = System.Windows.MessageBox;
+using Orientation = System.Windows.Controls.Orientation;
 
 namespace TNDrop.UI;
 
@@ -25,6 +35,10 @@ public partial class ShelfWindow : Window
     private static readonly Duration SlideInDuration = new(TimeSpan.FromMilliseconds(250));
     private static readonly Duration SlideOutDuration = new(TimeSpan.FromMilliseconds(180));
 
+    private static readonly Brush ActiveTabBackground = Freeze(new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x42)));
+    private static readonly Brush ActiveTabForeground = Freeze(new SolidColorBrush(Color.FromRgb(0xF2, 0xF2, 0xF7)));
+    private static readonly Brush TabBadgeBackground = Freeze(new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)));
+
     private readonly DispatcherTimer _retractTimer;
 
     private AppSettings? _settings;
@@ -38,6 +52,11 @@ public partial class ShelfWindow : Window
     private bool _slidingOut;
     private bool _applying;
     private bool _reapplyRequested;
+
+    private ItemStore? _itemStore;
+    private ShelfViewModel? _shelfViewModel;
+    private (Button Button, CardFilter Filter, string Label, Func<int> Count)[] _filterTabs =
+        Array.Empty<(Button, CardFilter, string, Func<int>)>();
 
     public ShelfWindow()
     {
@@ -54,6 +73,14 @@ public partial class ShelfWindow : Window
         // Create the HWND now. ApplySettings runs before the shelf is ever shown and its
         // device-pixel snap needs a handle; without this the first placement silently skips it.
         new WindowInteropHelper(this).EnsureHandle();
+
+        InitializeCardList();
+    }
+
+    private static Brush Freeze(Brush brush)
+    {
+        brush.Freeze();
+        return brush;
     }
 
     /// <summary>True while the pointer is over the shelf. Drives the retract timer.</summary>
@@ -316,5 +343,180 @@ public partial class ShelfWindow : Window
     {
         if (_settings is not null)
             ApplySettings(_settings);
+    }
+
+    /// <summary>
+    /// Wires the card list up to <see cref="TNDrop.App.Store"/>. Guarded against a null store so
+    /// that constructing a ShelfWindow never crashes outside the normal App.OnStartup sequence
+    /// (e.g. the XAML designer, which never runs App.OnStartup).
+    /// </summary>
+    private void InitializeCardList()
+    {
+        var store = global::TNDrop.App.Store;
+        if (store is null)
+        {
+            return;
+        }
+
+        _itemStore = store;
+        _shelfViewModel = new ShelfViewModel(store);
+        DataContext = _shelfViewModel;
+
+        _filterTabs = new (Button, CardFilter, string, Func<int>)[]
+        {
+            (FilterAllButton, CardFilter.All, Strings.FilterAll, () => _shelfViewModel.CountAll),
+            (FilterTextButton, CardFilter.Text, Strings.FilterText, () => _shelfViewModel.CountText),
+            (FilterLinksButton, CardFilter.Links, Strings.FilterLinks, () => _shelfViewModel.CountLinks),
+            (FilterImagesButton, CardFilter.Images, Strings.FilterImages, () => _shelfViewModel.CountImages),
+            (FilterFilesButton, CardFilter.Files, Strings.FilterFiles, () => _shelfViewModel.CountFiles),
+        };
+
+        foreach (var tab in _filterTabs)
+        {
+            var filter = tab.Filter;
+            tab.Button.Click += (_, _) => SetFilter(filter);
+        }
+
+        SearchPlaceholderText.Text = Strings.SearchPlaceholder;
+        SearchBox.TextChanged += OnSearchTextChanged;
+        OnSearchTextChanged(SearchBox, null!);
+
+        ClearButton.Content = Strings.ClearButton;
+        ClearButton.Click += OnClearButtonClick;
+
+        CardsList.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(OnCardActionClick));
+        PinnedList.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(OnCardActionClick));
+
+        _shelfViewModel.PinnedCards.CollectionChanged += (_, _) => UpdatePinnedVisibility();
+        _shelfViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is null || e.PropertyName.StartsWith("Count", StringComparison.Ordinal))
+            {
+                UpdateFilterTabs();
+            }
+        };
+
+        UpdateFilterTabs();
+        UpdatePinnedVisibility();
+    }
+
+    private void SetFilter(CardFilter filter)
+    {
+        if (_shelfViewModel is null)
+        {
+            return;
+        }
+
+        _shelfViewModel.Filter = filter;
+        UpdateFilterTabs();
+    }
+
+    private void UpdateFilterTabs()
+    {
+        if (_shelfViewModel is null)
+        {
+            return;
+        }
+
+        foreach (var tab in _filterTabs)
+        {
+            tab.Button.Content = BuildTabContent(tab.Label, tab.Count());
+
+            if (tab.Filter == _shelfViewModel.Filter)
+            {
+                tab.Button.Background = ActiveTabBackground;
+                tab.Button.Foreground = ActiveTabForeground;
+            }
+            else
+            {
+                tab.Button.ClearValue(BackgroundProperty);
+                tab.Button.ClearValue(ForegroundProperty);
+            }
+        }
+    }
+
+    private static object BuildTabContent(string label, int count)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        panel.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+        panel.Children.Add(new Border
+        {
+            Background = TabBadgeBackground,
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(5, 1, 5, 1),
+            Margin = new Thickness(5, 0, 0, 0),
+            Child = new TextBlock
+            {
+                Text = count.ToString(CultureInfo.CurrentUICulture),
+                FontSize = 10,
+            },
+        });
+        return panel;
+    }
+
+    private void UpdatePinnedVisibility()
+    {
+        PinnedScroll.Visibility = _shelfViewModel is not null && _shelfViewModel.PinnedCards.Count > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
+    {
+        SearchPlaceholderText.Visibility = string.IsNullOrEmpty(SearchBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Class handler for every pin/delete button rendered inside a card (see Cards.xaml): both
+    /// the pinned deck and the main card list route their Button.Click here instead of each
+    /// button needing its own handler, since the buttons live inside a shared DataTemplate with
+    /// no code-behind of its own.
+    /// </summary>
+    private void OnCardActionClick(object sender, RoutedEventArgs e)
+    {
+        if (_itemStore is null)
+        {
+            return;
+        }
+
+        if (e.OriginalSource is not Button button || button.DataContext is not CardViewModel card)
+        {
+            return;
+        }
+
+        switch (button.Tag as string)
+        {
+            case "Pin":
+                _itemStore.SetPinned(card.Id, !card.Pinned);
+                break;
+            case "Delete":
+                _itemStore.Remove(card.Id);
+                break;
+        }
+
+        e.Handled = true;
+    }
+
+    private void OnClearButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (_shelfViewModel is null)
+        {
+            return;
+        }
+
+        var count = _shelfViewModel.Cards.Count;
+        if (count == 0)
+        {
+            return;
+        }
+
+        var message = string.Format(CultureInfo.CurrentUICulture, Strings.ClearConfirmMessageFormat, count);
+        var result = MessageBox.Show(this, message, Strings.ClearConfirmTitle, MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (result == MessageBoxResult.Yes)
+        {
+            _shelfViewModel.ClearVisible();
+        }
     }
 }

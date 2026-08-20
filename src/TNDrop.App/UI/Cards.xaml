@@ -1,0 +1,246 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:TNDrop.UI">
+
+    <!--
+        Card visuals for the shelf's card list, pinned deck, and (via the same template) any
+        other place a CardViewModel needs to render.
+
+        Design note (per task-10 brief: "DataTrigger or DataTemplateSelector, document it"):
+        a single DataTemplate keyed off CardViewModel holds one sub-tree per Kind (Text / Link /
+        Image / Files-single / Files-stack); DataTrigger/Trigger pairs in DataTemplate.Triggers
+        toggle which sub-tree is Visible. This was chosen over a DataTemplateSelector so the
+        whole card visual stays declarative in this one file, with no extra .cs class to keep in
+        sync with the Kind enum.
+    -->
+
+    <SolidColorBrush x:Key="Card.Background" Color="#2A2A31" />
+    <SolidColorBrush x:Key="Card.HoverBackground" Color="#34343C" />
+    <SolidColorBrush x:Key="Card.Foreground" Color="#FFF2F2F7" />
+    <SolidColorBrush x:Key="Card.SubForeground" Color="#FFA5A5AD" />
+    <SolidColorBrush x:Key="Card.StackLayer1" Color="#FF3A3A42" />
+    <SolidColorBrush x:Key="Card.StackLayer2" Color="#FF333339" />
+    <SolidColorBrush x:Key="Card.StackLayer3" Color="#FF2E2E34" />
+    <SolidColorBrush x:Key="Card.Badge" Color="#FF5B8DEF" />
+    <SolidColorBrush x:Key="Card.ActionHover" Color="#40FFFFFF" />
+
+    <!-- Shared chrome for the hover-only pin/delete buttons. Each Button carries
+         Tag="Pin"/"Unpin"/"Delete" - ShelfWindow attaches one class handler
+         (Button.ClickEvent) on the containing ItemsControl/ListBox and reads Tag +
+         DataContext (the CardViewModel) from the event args, so this dictionary needs no
+         code-behind of its own. -->
+    <Style x:Key="Card.ActionButton" TargetType="Button">
+        <Setter Property="Width" Value="24" />
+        <Setter Property="Height" Value="24" />
+        <Setter Property="Margin" Value="2,0,0,0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{StaticResource Card.Foreground}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="5">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource Card.ActionHover}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <DataTemplate x:Key="CardItemTemplate" DataType="{x:Type vm:CardViewModel}">
+        <Border x:Name="CardRoot"
+                Background="{StaticResource Card.Background}"
+                CornerRadius="10"
+                Padding="10"
+                SnapsToDevicePixels="True">
+            <Grid>
+                <!-- Text: up to 3 lines, ellipsis -->
+                <TextBlock x:Name="TextContent"
+                           Text="{Binding Title}"
+                           Foreground="{StaticResource Card.Foreground}"
+                           FontSize="13"
+                           TextTrimming="CharacterEllipsis"
+                           TextWrapping="Wrap"
+                           MaxHeight="58"
+                           Visibility="Collapsed" />
+
+                <!-- Link: chain glyph + bold domain + small full URL -->
+                <StackPanel x:Name="LinkContent" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#128279;" FontSize="13" Margin="0,0,6,0" />
+                        <TextBlock Text="{Binding Title}"
+                                   FontWeight="Bold"
+                                   FontSize="13"
+                                   Foreground="{StaticResource Card.Foreground}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Subtitle}"
+                               FontSize="11"
+                               Margin="0,4,0,0"
+                               Foreground="{StaticResource Card.SubForeground}"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <!-- Image: thumbnail (lazily loaded by CardViewModel.Thumbnail) -->
+                <Image x:Name="ImageContent"
+                       Source="{Binding Thumbnail}"
+                       Stretch="Uniform"
+                       MaxHeight="140"
+                       HorizontalAlignment="Left"
+                       Visibility="Collapsed" />
+
+                <!-- Files, single item -->
+                <StackPanel x:Name="FilesSingleContent" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#128196;" FontSize="13" Margin="0,0,6,0" />
+                        <TextBlock Text="{Binding Title}"
+                                   FontSize="13"
+                                   Foreground="{StaticResource Card.Foreground}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Subtitle}"
+                               FontSize="11"
+                               Margin="0,4,0,0"
+                               Foreground="{StaticResource Card.SubForeground}"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <!-- Files, stack (2+ items): layered-paper icon + count badge -->
+                <Grid x:Name="FilesStackContent" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Grid Width="34" Height="34" Margin="0,0,10,0">
+                        <Border Background="{StaticResource Card.StackLayer1}" CornerRadius="4"
+                                Width="26" Height="30" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Margin="8,4,0,0" />
+                        <Border Background="{StaticResource Card.StackLayer2}" CornerRadius="4"
+                                Width="26" Height="30" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Margin="4,2,0,0" />
+                        <Border Background="{StaticResource Card.StackLayer3}" CornerRadius="4"
+                                Width="26" Height="30" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                        <Border Background="{StaticResource Card.Badge}" CornerRadius="8"
+                                Width="16" Height="16" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                            <TextBlock Text="{Binding StackCount}"
+                                       FontSize="9"
+                                       FontWeight="Bold"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Title}"
+                                   FontSize="13"
+                                   Foreground="{StaticResource Card.Foreground}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Subtitle}"
+                                   FontSize="11"
+                                   Margin="0,4,0,0"
+                                   Foreground="{StaticResource Card.SubForeground}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Hover-only action bar: pin / delete -->
+                <StackPanel x:Name="ActionBar"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Opacity="0">
+                    <Button Content="&#128204;" Tag="Pin" Style="{StaticResource Card.ActionButton}" />
+                    <Button Content="&#128465;" Tag="Delete" Style="{StaticResource Card.ActionButton}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding Kind}" Value="Text">
+                <Setter TargetName="TextContent" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Kind}" Value="Link">
+                <Setter TargetName="LinkContent" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Kind}" Value="Image">
+                <Setter TargetName="ImageContent" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Kind}" Value="Files">
+                <Setter TargetName="FilesSingleContent" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <!-- Listed after the Files DataTrigger above: on a tie, the later trigger's setters
+                 win, so a stack (IsStack==true) ends up showing FilesStackContent instead. -->
+            <DataTrigger Binding="{Binding IsStack}" Value="True">
+                <Setter TargetName="FilesSingleContent" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="FilesStackContent" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <Trigger SourceName="CardRoot" Property="IsMouseOver" Value="True">
+                <Setter TargetName="CardRoot" Property="Background" Value="{StaticResource Card.HoverBackground}" />
+                <Setter TargetName="ActionBar" Property="Opacity" Value="1" />
+            </Trigger>
+        </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <!-- ListBoxItem chrome for the main card list: no default selection highlight (selection
+         isn't wired up until Task 15), spacing between cards done here rather than baked into
+         CardItemTemplate so the same template can be reused edge-to-edge in the pinned deck. -->
+    <Style x:Key="Card.ListBoxItemStyle" TargetType="ListBoxItem">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <ContentPresenter />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Fixed-width container for the horizontal pinned deck. -->
+    <Style x:Key="Card.PinnedContainerStyle" TargetType="ContentPresenter">
+        <Setter Property="Width" Value="200" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+    </Style>
+
+    <!-- Filter tab pill. Label text + count badge is built in ShelfWindow.xaml.cs (it needs to
+         refresh live as ShelfViewModel.Count* changes), and the active/inactive look is also
+         toggled there - kept out of XAML triggers because "which tab is active" isn't a
+         property on any single bound object, it's a comparison against ShelfViewModel.Filter. -->
+    <Style x:Key="FilterTabButtonStyle" TargetType="Button">
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="Background" Value="{StaticResource Card.Background}" />
+        <Setter Property="Foreground" Value="{StaticResource Card.SubForeground}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="8"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           TextElement.Foreground="{TemplateBinding Foreground}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource Card.HoverBackground}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>
