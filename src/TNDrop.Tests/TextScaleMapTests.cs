@@ -10,20 +10,22 @@ namespace TNDrop.Tests;
 public class TextScaleMapTests
 {
     [Theory]
-    [InlineData(TextScale.Small, 12, 10)]
-    [InlineData(TextScale.Normal, 13, 11)]
-    [InlineData(TextScale.Medium, 15, 13)]
-    [InlineData(TextScale.Large, 17, 15)]
-    public void Resolve_maps_scale_to_base_and_small_sizes(TextScale scale, double expectedBase, double expectedSmall)
+    [InlineData(TextScale.Small, 12, 10, 48)]
+    [InlineData(TextScale.Normal, 13, 11, 52)]
+    [InlineData(TextScale.Medium, 15, 13, 60)]
+    [InlineData(TextScale.Large, 17, 15, 68)]
+    public void Resolve_maps_scale_to_base_small_and_text_max_height(
+        TextScale scale, double expectedBase, double expectedSmall, double expectedTextMaxHeight)
     {
         var sizes = TextScaleMap.Resolve(scale);
 
         Assert.Equal(expectedBase, sizes.Base);
         Assert.Equal(expectedSmall, sizes.Small);
+        Assert.Equal(expectedTextMaxHeight, sizes.TextMaxHeight);
     }
 
     [Fact]
-    public void Apply_writes_both_keys_into_the_given_resource_dictionary()
+    public void Apply_writes_all_three_keys_into_the_given_resource_dictionary()
     {
         var resources = new System.Windows.ResourceDictionary();
 
@@ -31,5 +33,6 @@ public class TextScaleMapTests
 
         Assert.Equal(17.0, resources["CardFontSize"]);
         Assert.Equal(15.0, resources["CardSmallFontSize"]);
+        Assert.Equal(68.0, resources["CardTextMaxHeight"]);
     }
 }

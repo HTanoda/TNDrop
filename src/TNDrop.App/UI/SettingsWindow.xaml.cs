@@ -67,6 +67,12 @@ public partial class SettingsWindow : Window
 
         SetCategory(0);
 
+        // The preview overlay is its own top-level Window with its own DispatcherTimer; neither
+        // is owned by anything that goes away when this window closes, so both would otherwise
+        // leak for the rest of the process's life every time a settings session touched a
+        // position field (see PositionPreviewWindow's own Closed handler for the timer half).
+        Closed += (_, _) => _preview?.Close();
+
         _initializing = false;
     }
 
@@ -411,8 +417,14 @@ public partial class SettingsWindow : Window
         LanguageRestartNoteText.Text = Strings.SettingsLanguageRestartNote;
         LanguageJaRadio.Content = Strings.SettingsLanguageJa;
         LanguageEnRadio.Content = Strings.SettingsLanguageEn;
-        LanguageJaRadio.IsChecked = settings.Language == "ja";
-        LanguageEnRadio.IsChecked = settings.Language == "en";
+
+        // Anything other than exactly "en" falls back to the ja radio being the one checked --
+        // mirrors ApplyUiCulture's own fallback (an unrecognized Language value falls back to
+        // "ja", not to nothing). Without this, a corrupt/unknown persisted value left BOTH radios
+        // unchecked, an unrepresentable state for a 2-option exclusive choice.
+        var isJapanese = settings.Language != "en";
+        LanguageJaRadio.IsChecked = isJapanese;
+        LanguageEnRadio.IsChecked = !isJapanese;
         LanguageJaRadio.Checked += (_, _) => OnLanguageChanged("ja");
         LanguageEnRadio.Checked += (_, _) => OnLanguageChanged("en");
 
@@ -504,6 +516,12 @@ public partial class SettingsWindow : Window
                 _hideTimer.Stop();
                 Hide();
             };
+
+            // Stops the timer before Close() tears down the HWND: left running, its next Tick
+            // would call Hide() on an already-closed Window, which throws
+            // InvalidOperationException ("Cannot set Visibility ... after Window is closed").
+            // SettingsWindow.Closed calls Close() on this instance -- see that handler.
+            Closed += (_, _) => _hideTimer.Stop();
 
             // Create the HWND now: MakeClickThrough (from OnSourceInitialized) and the first
             // ShowAt need a handle, matching every other overlay window in this app.

@@ -92,14 +92,16 @@
                 AllowDrop="True"
                 SnapsToDevicePixels="True">
             <Grid>
-                <!-- Text: up to 3 lines, ellipsis -->
+                <!-- Text: up to 3 lines, ellipsis. MaxHeight scales with CardFontSize via
+                     CardTextMaxHeight (see TextScaleMap) - pinned to a fixed 58 it clipped the
+                     third line's glyph tops at Medium/Large instead of trimming it. -->
                 <TextBlock x:Name="TextContent"
                            Text="{Binding Title}"
                            Foreground="{StaticResource Card.Foreground}"
                            FontSize="{DynamicResource CardFontSize}"
                            TextTrimming="CharacterEllipsis"
                            TextWrapping="Wrap"
-                           MaxHeight="58"
+                           MaxHeight="{DynamicResource CardTextMaxHeight}"
                            Visibility="Collapsed" />
 
                 <!-- Link: chain glyph + bold domain + small full URL -->
@@ -217,10 +219,16 @@
                         CornerRadius="8"
                         IsHitTestVisible="False"
                         Visibility="Collapsed" />
+                <!-- 20x20, not 18x18: the checkmark's FontSize is CardSmallFontSize, which reaches
+                     15px at TextScale.Large - 18px left almost no headroom around a 15px glyph
+                     and started clipping against the circle. Bumped rather than made a fourth
+                     DynamicResource key, per the review's "bump if it clips" (this badge's size is
+                     cosmetic chrome around the glyph, not reading text that itself needs to scale
+                     proportionally). -->
                 <Border x:Name="SelectionCheck"
-                        Width="18"
-                        Height="18"
-                        CornerRadius="9"
+                        Width="20"
+                        Height="20"
+                        CornerRadius="10"
                         Background="{StaticResource Card.SelectedAccent}"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Bottom"
@@ -300,7 +308,7 @@
         <Setter Property="Background" Value="{StaticResource Card.Background}" />
         <Setter Property="Foreground" Value="{StaticResource Card.Foreground}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontSize" Value="{DynamicResource CardSmallFontSize}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
@@ -329,7 +337,7 @@
         <Setter Property="Background" Value="{StaticResource Card.Background}" />
         <Setter Property="Foreground" Value="{StaticResource Card.SubForeground}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="{DynamicResource CardFontSize}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>

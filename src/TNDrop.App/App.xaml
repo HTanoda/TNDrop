@@ -15,5 +15,6 @@
         -->
         <sys:Double x:Key="CardFontSize">13</sys:Double>
         <sys:Double x:Key="CardSmallFontSize">11</sys:Double>
+        <sys:Double x:Key="CardTextMaxHeight">52</sys:Double>
     </Application.Resources>
 </Application>
