@@ -35,6 +35,13 @@ public sealed class ClipboardMonitor : IDisposable
     /// </summary>
     private static readonly TimeSpan ReadDelay = TimeSpan.FromMilliseconds(50);
 
+    /// <summary>
+    /// How long a <see cref="SuppressNext"/> request stays armed. Without an expiry, a clipboard
+    /// write of ours that failed (so no WM_CLIPBOARDUPDATE ever arrives) would leave the latch set
+    /// and silently swallow the user's next real copy.
+    /// </summary>
+    private static readonly TimeSpan SuppressWindow = TimeSpan.FromSeconds(2);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool AddClipboardFormatListener(IntPtr hwnd);
@@ -47,7 +54,7 @@ public sealed class ClipboardMonitor : IDisposable
     private readonly HwndSource _source;
     private readonly DispatcherTimer _readTimer;
     private readonly HwndSourceHook _hook;
-    private int _suppressNext;
+    private long _suppressRequestedTicks;
     private bool _listening;
     private bool _disposed;
 
@@ -97,8 +104,11 @@ public sealed class ClipboardMonitor : IDisposable
         }
     }
 
-    /// <summary>Ignores exactly one upcoming clipboard update (our own copy-to-clipboard).</summary>
-    public void SuppressNext() => Interlocked.Exchange(ref _suppressNext, 1);
+    /// <summary>
+    /// Ignores exactly one upcoming clipboard update (our own copy-to-clipboard), provided it
+    /// arrives within <see cref="SuppressWindow"/>. A stale request is discarded, not applied.
+    /// </summary>
+    public void SuppressNext() => Interlocked.Exchange(ref _suppressRequestedTicks, DateTime.UtcNow.Ticks);
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
@@ -115,8 +125,14 @@ public sealed class ClipboardMonitor : IDisposable
         if (_disposed)
             return;
 
-        if (Interlocked.Exchange(ref _suppressNext, 0) == 1)
+        // Read and clear in one step: an expired request is consumed (cleared) but not honoured,
+        // so it can never swallow a later genuine copy.
+        var requestedTicks = Interlocked.Exchange(ref _suppressRequestedTicks, 0L);
+        if (requestedTicks != 0L
+            && DateTime.UtcNow - new DateTime(requestedTicks, DateTimeKind.Utc) <= SuppressWindow)
+        {
             return;
+        }
 
         if (Paused)
             return;

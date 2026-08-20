@@ -65,19 +65,15 @@ public static class ClipboardIo
         if (HasPrivacyFlag(data.GetFormats()))
             return null;
 
-        // Priority: Files > Image > Text
+        // Priority: Files > Text > Image.
+        // Text beats Image because Office puts CF_DIB on the clipboard alongside CF_UNICODETEXT
+        // for a copied cell range, and the user means the text. Sources that really are images
+        // (screenshot tools, browser "copy image") carry no plain text, so they still land as Image.
         if (data.GetDataPresent(WpfDataFormats.FileDrop)
             && data.GetData(WpfDataFormats.FileDrop) is string[] paths
             && paths.Length > 0)
         {
             return new CapturedClip { Kind = ClipKind.Files, Files = paths };
-        }
-
-        if (data.GetDataPresent(WpfDataFormats.Bitmap))
-        {
-            var image = WpfClipboard.GetImage();
-            if (image is not null)
-                return new CapturedClip { Kind = ClipKind.Image, Image = FreezeForCrossThread(image) };
         }
 
         if (data.GetDataPresent(WpfDataFormats.UnicodeText)
@@ -89,6 +85,14 @@ public static class ClipboardIo
                 Kind = UrlDetector.IsUrl(text) ? ClipKind.Link : ClipKind.Text,
                 Text = text,
             };
+        }
+
+        // Deliberate fall-through: blank/whitespace text does not veto an accompanying bitmap.
+        if (data.GetDataPresent(WpfDataFormats.Bitmap))
+        {
+            var image = WpfClipboard.GetImage();
+            if (image is not null)
+                return new CapturedClip { Kind = ClipKind.Image, Image = FreezeForCrossThread(image) };
         }
 
         return null;
