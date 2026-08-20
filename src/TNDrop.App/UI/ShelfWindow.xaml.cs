@@ -1009,8 +1009,10 @@ public partial class ShelfWindow : Window
             return;
         }
 
-        // Closed first, then re-opened: re-pointing a live Popup at a different PlacementTarget
-        // leaves it measured against the old one.
+        // Closed first, then re-opened, so placement is computed from scratch against the new card
+        // rather than relying on an already-open Popup re-measuring itself when PlacementTarget
+        // changes underneath it (untested either way -- this costs nothing and needs no such
+        // assumption).
         flyout.IsOpen = false;
         flyout.ShowFor(card, placementTarget);
     }
@@ -1041,9 +1043,9 @@ public partial class ShelfWindow : Window
             return;
         }
 
-        // Re-shown rather than re-pointed: assigning PlacementTarget on an already-open Popup does
-        // not re-run its placement. The rows are rebuilt from the same unchanged paths, so the only
-        // visible difference is that the flyout is next to the right card again.
+        // Re-shown rather than re-pointed, for the same reason as in ToggleStackFlyout. The rows
+        // are rebuilt from the same unchanged paths (CloseIfStale ran first), so the only visible
+        // difference is that the flyout is next to the right card again.
         flyout.IsOpen = false;
         flyout.ShowFor(card, border);
     }

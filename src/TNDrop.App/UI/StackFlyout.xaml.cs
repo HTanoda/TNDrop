@@ -254,7 +254,12 @@ public partial class StackFlyout : Popup
     /// leaves the flyout within a few pixels -- without capture no further MouseMove would arrive
     /// and the drag would never start at all.
     /// <para>Capturing a DESCENDANT of the popup (rather than something outside it) is what keeps
-    /// <c>StaysOpen="False"</c> from treating the capture change as an outside click.</para>
+    /// <c>StaysOpen="False"</c> from treating the capture change as an outside click. Measured, not
+    /// assumed: the live probe presses a row and then releases it, and the release still finds the
+    /// pending press and copies the file -- which it could not do had the popup closed on the press
+    /// (<see cref="OnClosed"/> abandons the gesture). Note the contrast with the SHELF taking the
+    /// same kind of capture from outside the popup, which does close it -- see the latch in
+    /// ShelfWindow.OnCardPreviewMouseLeftButtonDown.</para>
     /// </summary>
     private void CaptureForGesture(UIElement host)
     {
