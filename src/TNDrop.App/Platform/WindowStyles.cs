@@ -15,6 +15,8 @@ public static class WindowStyles
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_NOACTIVATE = 0x08000000;
+    private const int WS_EX_TRANSPARENT = 0x00000020;
+    private const int WS_EX_LAYERED = 0x00080000;
 
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOMOVE = 0x0002;
@@ -46,6 +48,21 @@ public static class WindowStyles
     {
         WithHwnd(w, hwnd => ApplyExStyle(hwnd, current => current | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE),
             "MakeToolWindowNoActivate");
+    }
+
+    /// <summary>
+    /// Adds WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW so the window
+    /// never receives mouse input (clicks fall through to whatever is underneath), never takes
+    /// focus, and never appears in Alt+Tab or the taskbar. Used for the capture indicator overlay,
+    /// which must be able to sit on top of everything -- including the user's active window --
+    /// without ever intercepting a click meant for that window. Safe to call before the window is
+    /// shown: the HWND is created on demand. Failures are logged, never thrown.
+    /// </summary>
+    public static void MakeClickThrough(System.Windows.Window w)
+    {
+        WithHwnd(w, hwnd => ApplyExStyle(hwnd,
+            current => current | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW),
+            "MakeClickThrough");
     }
 
     /// <summary>

@@ -1,0 +1,63 @@
+<Window x:Class="TNDrop.UI.IndicatorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="TNDrop Indicator"
+        WindowStyle="None"
+        WindowStartupLocation="Manual"
+        AllowsTransparency="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        Focusable="False"
+        SizeToContent="Manual"
+        UseLayoutRounding="True"
+        Left="-1000" Top="0" Width="64" Height="400"
+        Background="Transparent">
+    <!-- Every visual here starts Opacity="0"; Flash() picks one, restarts its animation, then
+         resets Opacity back to 0 when the animation completes (see IndicatorWindow.xaml.cs).
+         The window itself is click-through (WindowStyles.MakeClickThrough), so hit-testing on
+         these elements is already moot, but IsHitTestVisible="False" documents the intent. -->
+    <Grid IsHitTestVisible="False">
+        <!-- Beacon: a soft 6px-wide vertical light at the edge, centered on the work area. -->
+        <Rectangle x:Name="BeaconLight"
+                   Width="6" Height="140"
+                   Opacity="0"
+                   VerticalAlignment="Center">
+            <Rectangle.Fill>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Offset="0.0" Color="#005AC8FA" />
+                    <GradientStop Offset="0.5" Color="#CC5AC8FA" />
+                    <GradientStop Offset="1.0" Color="#005AC8FA" />
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+
+        <!-- Bar: a thin 3px bar spanning the full work-area height. -->
+        <Rectangle x:Name="BarLight"
+                   Width="3"
+                   Opacity="0"
+                   VerticalAlignment="Stretch"
+                   Fill="#CC5AC8FA" />
+
+        <!-- Pulse: a circle at the edge's vertical center that expands and fades. -->
+        <Ellipse x:Name="PulseCircle"
+                 Width="8" Height="8"
+                 Opacity="0"
+                 VerticalAlignment="Center"
+                 Fill="#CC5AC8FA"
+                 RenderTransformOrigin="0.5,0.5">
+            <Ellipse.RenderTransform>
+                <ScaleTransform x:Name="PulseScale" ScaleX="1" ScaleY="1" />
+            </Ellipse.RenderTransform>
+        </Ellipse>
+
+        <!-- Corner: a small dot near the bottom of the work area, on the edge side. -->
+        <Ellipse x:Name="CornerDot"
+                 Width="10" Height="10"
+                 Opacity="0"
+                 VerticalAlignment="Bottom"
+                 Margin="0,0,0,24"
+                 Fill="#E65AC8FA" />
+    </Grid>
+</Window>

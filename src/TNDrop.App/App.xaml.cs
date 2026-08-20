@@ -27,6 +27,8 @@ public partial class App : System.Windows.Application
     private TrayIcon? _trayIcon;
     private ShelfWindow? _shelf;
     private EdgeTriggerWindow? _edgeTrigger;
+    private CapturePipeline? _pipeline;
+    private IndicatorWindow? _indicator;
 
     public static string DataDir { get; private set; } = string.Empty;
 
@@ -98,6 +100,17 @@ public partial class App : System.Windows.Application
 
             Monitor = new ClipboardMonitor(FileLogger.Instance);
             Monitor.Paused = Settings.IncognitoMode;
+
+            // Capture pipeline: its own ThumbnailService instance (separate from the one
+            // ShelfViewModel builds for reading/rendering) since SaveImage is the only method the
+            // pipeline calls and that method doesn't touch the read-side decode cache, so sharing
+            // an instance would buy nothing but a shared constructor dependency.
+            _pipeline = new CapturePipeline(Store, new ThumbnailService(Store.BlobsDir), () => Settings);
+
+            _indicator = new IndicatorWindow();
+            _indicator.Show();
+
+            Monitor.Captured += OnClipboardCaptured;
 
             if (Store.LoadFailed)
             {
@@ -233,6 +246,25 @@ public partial class App : System.Windows.Application
         Settings.IncognitoMode = value;
         Monitor.Paused = value;
         SaveSettings();
+    }
+
+    /// <summary>
+    /// The capture pipeline owns TryAdd + Save; this handler only decides what happens for the
+    /// user once that succeeds -- flash the edge and play the capture cue. A dedup no-op (the
+    /// same text copied twice in a row) yields neither.
+    /// </summary>
+    private void OnClipboardCaptured(object? sender, CapturedClip clip)
+    {
+        if (_pipeline is null || _indicator is null)
+        {
+            return;
+        }
+
+        if (_pipeline.Process(clip))
+        {
+            _indicator.Flash(Settings.IndicatorStyle, Settings.Edge);
+            Sounds.PlayCapture();
+        }
     }
 
     private void OnOpenSettingsRequested()
