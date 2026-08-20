@@ -44,4 +44,76 @@ public class ShelfViewModelTests : IDisposable
         Assert.Empty(vm.Cards);
         Assert.Single(vm.PinnedCards);
     }
+
+    // -- v1.1 Task B: unified image classification -----------------------------------------
+    //
+    // A lone image-extension file counts as 画像 (Images), not ファイル (Files); a lone video
+    // stays ファイル; a stack (2+ paths) always stays ファイル even if every path is an image.
+    // MatchesFilter and the Count* fields must agree on all three, since they are computed from
+    // the same helper (one-resolution rule) -- see ShelfViewModel.IsSingleImageFile.
+
+    [StaFact]
+    public void Single_image_file_counts_as_Images_not_Files()
+    {
+        Add(ClipKind.Files, @"C:\pics\photo.png");
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(1, vm.CountImages);
+        Assert.Equal(0, vm.CountFiles);
+
+        vm.Filter = CardFilter.Images;
+        Assert.Single(vm.Cards);
+
+        vm.Filter = CardFilter.Files;
+        Assert.Empty(vm.Cards);
+    }
+
+    [StaFact]
+    public void Single_video_file_counts_as_Files_not_Images()
+    {
+        Add(ClipKind.Files, @"C:\mov\clip.mp4");
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(0, vm.CountImages);
+        Assert.Equal(1, vm.CountFiles);
+
+        vm.Filter = CardFilter.Files;
+        Assert.Single(vm.Cards);
+
+        vm.Filter = CardFilter.Images;
+        Assert.Empty(vm.Cards);
+    }
+
+    [StaFact]
+    public void Two_file_image_stack_counts_as_Files_not_Images()
+    {
+        var paths = new[] { @"C:\pics\a.png", @"C:\pics\b.png" };
+        _store.TryAdd(ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0]);
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(0, vm.CountImages);
+        Assert.Equal(1, vm.CountFiles);
+
+        vm.Filter = CardFilter.Files;
+        Assert.Single(vm.Cards);
+
+        vm.Filter = CardFilter.Images;
+        Assert.Empty(vm.Cards);
+    }
+
+    [StaFact]
+    public void Kind_Image_blob_still_counts_as_Images_unchanged()
+    {
+        var item = new ClipItem
+        {
+            Kind = ClipKind.Image,
+            CreatedAtUtc = DateTime.UtcNow,
+            ContentHash = 1,
+        };
+        _store.TryAdd(item);
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(1, vm.CountImages);
+        Assert.Equal(0, vm.CountFiles);
+    }
 }

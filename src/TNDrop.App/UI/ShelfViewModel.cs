@@ -254,8 +254,8 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         _countAll = searched.Count;
         _countText = searched.Count(i => i.Kind == ClipKind.Text);
         _countLinks = searched.Count(i => i.Kind == ClipKind.Link);
-        _countImages = searched.Count(i => i.Kind == ClipKind.Image);
-        _countFiles = searched.Count(i => i.Kind == ClipKind.Files);
+        _countImages = searched.Count(i => i.Kind == ClipKind.Image || IsSingleImageFile(i));
+        _countFiles = searched.Count(i => i.Kind == ClipKind.Files && !IsSingleImageFile(i));
 
         var visible = searched.Where(i => MatchesFilter(i, _filter)).ToList();
 
@@ -303,10 +303,24 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         CardFilter.All => true,
         CardFilter.Text => item.Kind == ClipKind.Text,
         CardFilter.Links => item.Kind == ClipKind.Link,
-        CardFilter.Images => item.Kind == ClipKind.Image,
-        CardFilter.Files => item.Kind == ClipKind.Files,
+        CardFilter.Images => item.Kind == ClipKind.Image || IsSingleImageFile(item),
+        CardFilter.Files => item.Kind == ClipKind.Files && !IsSingleImageFile(item),
         _ => true,
     };
+
+    /// <summary>
+    /// SINGLE RESOLUTION for "does this item count as 画像 instead of ファイル": both
+    /// <see cref="MatchesFilter"/> (Images/Files branches) and the Count* computation in
+    /// <see cref="Rebuild"/> call this one helper, so a filter tab and its own count badge can
+    /// never disagree about which cards are which (the CLAUDE.md rule against deciding related
+    /// fields separately). A stack (2+ paths) is deliberately excluded even when every path is an
+    /// image -- per the v1.1 Global Constraints, only a LONE image file reclassifies as 画像; a
+    /// stack always stays ファイル.
+    /// </summary>
+    private static bool IsSingleImageFile(ClipItem item) =>
+        item.Kind == ClipKind.Files &&
+        item.Paths.Count == 1 &&
+        MediaKind.Classify(item.Paths[0]) == MediaCategory.Image;
 
     private static bool MatchesSearch(ClipItem item, string search)
     {

@@ -138,10 +138,23 @@
                        HorizontalAlignment="Left"
                        Visibility="Collapsed" />
 
-                <!-- Files, single item -->
+                <!-- Files, single item, non-media (IsMediaFile==False): left-slot icon + name.
+                     The left slot defaults to the shell extension icon (FileIconContent, lazily
+                     loaded by CardViewModel.FileIcon); FileIconContent/FileIconGlyph swap via the
+                     "FileIcon is null" trigger below, so a shell that has nothing to offer falls
+                     back to the original generic-page glyph instead of an empty square. -->
                 <StackPanel x:Name="FilesSingleContent" Visibility="Collapsed">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#128196;" FontSize="{DynamicResource CardFontSize}" Margin="0,0,6,0" />
+                        <Grid Width="32" Height="32" Margin="0,0,6,0">
+                            <Image x:Name="FileIconContent"
+                                   Source="{Binding FileIcon}"
+                                   Width="32" Height="32" />
+                            <TextBlock x:Name="FileIconGlyph"
+                                       Text="&#128196;"
+                                       FontSize="{DynamicResource CardFontSize}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Visibility="Collapsed" />
+                        </Grid>
                         <TextBlock Text="{Binding Title}"
                                    FontSize="{DynamicResource CardFontSize}"
                                    Foreground="{StaticResource Card.Foreground}"
@@ -154,7 +167,60 @@
                                TextTrimming="CharacterEllipsis" />
                 </StackPanel>
 
-                <!-- Files, stack (2+ items): layered-paper icon + count badge -->
+                <!-- Files, single item, media (IsMediaFile==True): image or video, shown as a
+                     large shell thumbnail in the same visual family as ImageContent above (full
+                     card width, capped height, rounded corners) with the file name below on one
+                     line. A Border with an ImageBrush Background is used instead of a plain Image
+                     element so the corners come out rounded: WPF clips a Border's Background to
+                     its own CornerRadius geometry for free, no code-behind clip needed. Height is
+                     a fixed value (not MaxHeight): unlike ImageContent (an Image element, which
+                     sizes itself from the source and MaxHeight only caps that), a Border painted
+                     via brush has no intrinsic size at all, so it needs an explicit box for
+                     UniformToFill to fill and crop against. -->
+                <Grid x:Name="MediaFileContent" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0"
+                            Height="160"
+                            HorizontalAlignment="Stretch"
+                            CornerRadius="8">
+                        <Border.Background>
+                            <ImageBrush ImageSource="{Binding Thumbnail}" Stretch="UniformToFill" />
+                        </Border.Background>
+
+                        <!-- Video-only overlay so a video's large thumbnail (often just a generic
+                             shell icon, since not every codec has a real preview handler) still
+                             reads as "video" rather than "image". -->
+                        <Border x:Name="VideoBadge"
+                                Width="24" Height="24"
+                                CornerRadius="12"
+                                Background="#B0000000"
+                                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                Margin="0,0,6,6"
+                                Visibility="Collapsed">
+                            <TextBlock Text="&#9654;" FontSize="10" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </Border>
+
+                    <TextBlock Grid.Row="1"
+                               Text="{Binding Title}"
+                               ToolTip="{Binding Title}"
+                               FontSize="{DynamicResource CardFontSize}"
+                               Foreground="{StaticResource Card.Foreground}"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis"
+                               Margin="0,6,0,0" />
+                </Grid>
+
+                <!-- Files, stack (2+ items): layered-paper icon + count badge, with the first
+                     path's shell icon (CardViewModel.FileIcon) drawn on the frontmost layer when
+                     available. StackIcon stays Collapsed (plain layered squares, as before) when
+                     FileIcon is null, since the stack never had a text-glyph fallback to begin
+                     with. -->
                 <Grid x:Name="FilesStackContent" Visibility="Collapsed">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -170,6 +236,9 @@
                                 Margin="4,2,0,0" />
                         <Border Background="{StaticResource Card.StackLayer3}" CornerRadius="4"
                                 Width="26" Height="30" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                        <Image x:Name="StackIcon"
+                               Source="{Binding FileIcon}"
+                               Width="18" Height="18" />
                         <Border Background="{StaticResource Card.Badge}" CornerRadius="8"
                                 Width="16" Height="16" HorizontalAlignment="Right" VerticalAlignment="Bottom">
                             <TextBlock Text="{Binding StackCount}"
@@ -263,6 +332,26 @@
             <DataTrigger Binding="{Binding IsStack}" Value="True">
                 <Setter TargetName="FilesSingleContent" Property="Visibility" Value="Collapsed" />
                 <Setter TargetName="FilesStackContent" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <!-- Also listed after the Files DataTrigger, for the same reason: a lone media file
+                 (image or video) overrides the default FilesSingleContent look with the large
+                 thumbnail. Mutually exclusive with IsStack (a media file always has exactly one
+                 path), so the two triggers never fight over the same target. -->
+            <DataTrigger Binding="{Binding IsMediaFile}" Value="True">
+                <Setter TargetName="FilesSingleContent" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="MediaFileContent" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Media}" Value="Video">
+                <Setter TargetName="VideoBadge" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <!-- Shell-icon-missing fallbacks: the left-slot icon (single non-media file) and the
+                 stack's frontmost-layer icon both default to showing CardViewModel.FileIcon, and
+                 fall back to the pre-existing look (generic glyph / plain layered squares) when
+                 the shell had nothing to offer for that path. -->
+            <DataTrigger Binding="{Binding FileIcon}" Value="{x:Null}">
+                <Setter TargetName="FileIconContent" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="FileIconGlyph" Property="Visibility" Value="Visible" />
+                <Setter TargetName="StackIcon" Property="Visibility" Value="Collapsed" />
             </DataTrigger>
             <Trigger SourceName="CardRoot" Property="IsMouseOver" Value="True">
                 <Setter TargetName="CardRoot" Property="Background" Value="{StaticResource Card.HoverBackground}" />
