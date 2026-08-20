@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using TNDrop.Core;
 
 namespace TNDrop.Services;
 
@@ -27,9 +28,15 @@ public sealed class ThumbnailService
     private readonly string _blobsDir;
     private readonly HashSet<string> _warnedMissing = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _warnLock = new();
-    private readonly Dictionary<string, ImageSource> _thumbCache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly LinkedList<string> _thumbCacheOrder = new();
-    private readonly object _cacheLock = new();
+
+    // Shared LruCache rather than a private copy: the hand-rolled version here paired an
+    // OrdinalIgnoreCase dictionary with a LinkedList<string> whose Remove is ordinal, so a hit
+    // under different casing would orphan an order node and let eviction drop live entries. That
+    // was unreachable in practice -- these keys are GUID file names this class generates itself,
+    // always the same casing -- but the identical bug was live in ShellImaging, so both now use
+    // the one node-based implementation that cannot desync. See LruCache's remarks.
+    private readonly LruCache<ImageSource> _thumbCache =
+        new(ThumbCacheCapacity, StringComparer.OrdinalIgnoreCase);
 
     public ThumbnailService(string blobsDir)
     {
@@ -120,8 +127,7 @@ public sealed class ThumbnailService
             return null;
         }
 
-        var cached = TryGetCached(thumbFile);
-        if (cached is not null)
+        if (_thumbCache.TryGet(thumbFile, out var cached))
         {
             return cached;
         }
@@ -146,50 +152,13 @@ public sealed class ThumbnailService
             bitmap.EndInit();
             bitmap.Freeze();
 
-            AddToCache(thumbFile, bitmap);
+            _thumbCache.Set(thumbFile, bitmap);
             return bitmap;
         }
         catch (Exception ex)
         {
             FileLogger.Instance?.Warn(Module, $"Failed to load thumbnail '{thumbFile}': {ex.Message}");
             return null;
-        }
-    }
-
-    private ImageSource? TryGetCached(string thumbFile)
-    {
-        lock (_cacheLock)
-        {
-            if (!_thumbCache.TryGetValue(thumbFile, out var cached))
-            {
-                return null;
-            }
-
-            // Touch: move to the front so it's the last thing evicted.
-            _thumbCacheOrder.Remove(thumbFile);
-            _thumbCacheOrder.AddFirst(thumbFile);
-            return cached;
-        }
-    }
-
-    private void AddToCache(string thumbFile, ImageSource image)
-    {
-        lock (_cacheLock)
-        {
-            if (_thumbCache.ContainsKey(thumbFile))
-            {
-                _thumbCacheOrder.Remove(thumbFile);
-            }
-
-            _thumbCache[thumbFile] = image;
-            _thumbCacheOrder.AddFirst(thumbFile);
-
-            while (_thumbCacheOrder.Count > ThumbCacheCapacity)
-            {
-                var oldest = _thumbCacheOrder.Last!.Value;
-                _thumbCacheOrder.RemoveLast();
-                _thumbCache.Remove(oldest);
-            }
         }
     }
 

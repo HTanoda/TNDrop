@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using TNDrop.Core;
 using TNDrop.Services;
 
 namespace TNDrop.Platform;
@@ -73,8 +74,19 @@ public static class ShellImaging
         ".exe", ".lnk", ".url", ".ico", ".cur", ".ani", ".scr", ".dll", ".msc", ".cpl",
     };
 
-    private static readonly LruImageCache IconCache = new(CacheCapacity);
-    private static readonly LruImageCache ThumbnailCache = new(CacheCapacity);
+    /// <summary>
+    /// Keys are Windows paths, file names and extensions, hence OrdinalIgnoreCase. A cached null
+    /// is a memoised *failure*: re-asking the shell for an image it already refused, once per card
+    /// per rebuild, is exactly the stall this class exists to avoid. Thumbnail keys carry the
+    /// file's last-write time, so a failure there clears itself as soon as the file changes; an
+    /// icon failure is keyed by extension and so sticks for the session, which is the intent (a
+    /// type with no icon handler will not grow one mid-session).
+    /// </summary>
+    private static readonly LruCache<ImageSource?> IconCache =
+        new(CacheCapacity, StringComparer.OrdinalIgnoreCase);
+
+    private static readonly LruCache<ImageSource?> ThumbnailCache =
+        new(CacheCapacity, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// The shell's preview image for <paramref name="path"/>, at most
@@ -249,6 +261,10 @@ public static class ShellImaging
                     hbitmap = IntPtr.Zero;
                 }
 
+                // Retitle before the retry: a failure logged from here means BOTH the thumbnail
+                // and the icon fallback came back empty, which is a different (and more serious)
+                // story than "this type simply has no thumbnail handler".
+                op = "thumbnail+icon fallback";
                 hr = factory.GetImage(size, SIIGBF_ICONONLY, out hbitmap);
             }
 
@@ -339,68 +355,6 @@ public static class ShellImaging
             ex is null
                 ? $"shell {op} extraction returned nothing"
                 : $"shell {op} extraction failed ({ex.GetType().Name})");
-    }
-
-    /// <summary>
-    /// Least-recently-used image cache. A null value is a cached *failure*: re-asking the shell
-    /// for an image it already refused, once per card per rebuild, is exactly the stall this class
-    /// exists to avoid. Thumbnail keys carry the file's last-write time, so a failure there clears
-    /// itself as soon as the file changes; an icon failure is keyed by extension and so sticks for
-    /// the session, which is the intent (a type with no icon handler will not grow one).
-    /// </summary>
-    private sealed class LruImageCache
-    {
-        private readonly Dictionary<string, ImageSource?> _map = new(StringComparer.OrdinalIgnoreCase);
-        private readonly LinkedList<string> _order = new();
-        private readonly object _lock = new();
-        private readonly int _capacity;
-
-        public LruImageCache(int capacity) => _capacity = capacity;
-
-        public bool TryGet(string key, out ImageSource? value)
-        {
-            lock (_lock)
-            {
-                if (!_map.TryGetValue(key, out value))
-                {
-                    return false;
-                }
-
-                _order.Remove(key);
-                _order.AddFirst(key);
-                return true;
-            }
-        }
-
-        public void Set(string key, ImageSource? value)
-        {
-            lock (_lock)
-            {
-                if (_map.ContainsKey(key))
-                {
-                    _order.Remove(key);
-                }
-
-                _map[key] = value;
-                _order.AddFirst(key);
-
-                while (_order.Count > _capacity)
-                {
-                    var oldest = _order.Last!.Value;
-                    _order.RemoveLast();
-                    _map.Remove(oldest);
-                }
-            }
-        }
-
-        public void Clear()
-        {
-            lock (_lock)
-            {
-                _map.Clear();
-                _order.Clear();
-            }
-        }
     }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
