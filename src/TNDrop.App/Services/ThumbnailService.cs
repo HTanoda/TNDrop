@@ -17,9 +17,19 @@ public sealed class ThumbnailService
     private const string Module = "ThumbnailService";
     private const int ThumbnailMaxWidth = 320;
 
+    // ShelfViewModel rebuilds Cards/PinnedCards (and therefore every CardViewModel) from scratch
+    // on every ItemStore.Changed, so without this cache the same on-disk thumbnail gets
+    // re-decoded on every background clipboard event even though the file itself never changed.
+    // Keyed by thumb file name; capped with simple least-recently-used eviction so a long-running
+    // shelf doesn't grow this unbounded.
+    private const int ThumbCacheCapacity = 64;
+
     private readonly string _blobsDir;
     private readonly HashSet<string> _warnedMissing = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _warnLock = new();
+    private readonly Dictionary<string, ImageSource> _thumbCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly LinkedList<string> _thumbCacheOrder = new();
+    private readonly object _cacheLock = new();
 
     public ThumbnailService(string blobsDir)
     {
@@ -85,6 +95,12 @@ public sealed class ThumbnailService
             return null;
         }
 
+        var cached = TryGetCached(thumbFile);
+        if (cached is not null)
+        {
+            return cached;
+        }
+
         var path = Path.Combine(_blobsDir, thumbFile);
 
         try
@@ -104,12 +120,51 @@ public sealed class ThumbnailService
             bitmap.StreamSource = stream;
             bitmap.EndInit();
             bitmap.Freeze();
+
+            AddToCache(thumbFile, bitmap);
             return bitmap;
         }
         catch (Exception ex)
         {
             FileLogger.Instance?.Warn(Module, $"Failed to load thumbnail '{thumbFile}': {ex.Message}");
             return null;
+        }
+    }
+
+    private ImageSource? TryGetCached(string thumbFile)
+    {
+        lock (_cacheLock)
+        {
+            if (!_thumbCache.TryGetValue(thumbFile, out var cached))
+            {
+                return null;
+            }
+
+            // Touch: move to the front so it's the last thing evicted.
+            _thumbCacheOrder.Remove(thumbFile);
+            _thumbCacheOrder.AddFirst(thumbFile);
+            return cached;
+        }
+    }
+
+    private void AddToCache(string thumbFile, ImageSource image)
+    {
+        lock (_cacheLock)
+        {
+            if (_thumbCache.ContainsKey(thumbFile))
+            {
+                _thumbCacheOrder.Remove(thumbFile);
+            }
+
+            _thumbCache[thumbFile] = image;
+            _thumbCacheOrder.AddFirst(thumbFile);
+
+            while (_thumbCacheOrder.Count > ThumbCacheCapacity)
+            {
+                var oldest = _thumbCacheOrder.Last!.Value;
+                _thumbCacheOrder.RemoveLast();
+                _thumbCache.Remove(oldest);
+            }
         }
     }
 

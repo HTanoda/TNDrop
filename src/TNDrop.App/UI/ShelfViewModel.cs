@@ -125,6 +125,19 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// Raised immediately before a store-driven rebuild (i.e. one triggered by
+    /// <see cref="ItemStore.Changed"/> -- a background clipboard capture, a pin toggle, a
+    /// delete -- as opposed to the user changing <see cref="Filter"/> or <see cref="SearchText"/>,
+    /// where jumping the list back to the top is expected). ShelfWindow uses this pair to save and
+    /// restore the card list's scroll position around the Cards/PinnedCards Clear()+repopulate,
+    /// which would otherwise silently reset scroll to the top on every background change.
+    /// </summary>
+    internal event Action? StoreRebuilding;
+
+    /// <summary>Raised immediately after a store-driven rebuild completes. See <see cref="StoreRebuilding"/>.</summary>
+    internal event Action? StoreRebuilt;
+
     private void OnStoreChanged()
     {
         // ItemStore.Changed can be raised from a worker thread (e.g. the clipboard monitor) as
@@ -134,12 +147,19 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
         if (dispatcher is null || dispatcher.CheckAccess())
         {
-            Rebuild();
+            RebuildFromStore();
         }
         else
         {
-            dispatcher.Invoke(Rebuild);
+            dispatcher.Invoke(RebuildFromStore);
         }
+    }
+
+    private void RebuildFromStore()
+    {
+        StoreRebuilding?.Invoke();
+        Rebuild();
+        StoreRebuilt?.Invoke();
     }
 
     private void Rebuild()

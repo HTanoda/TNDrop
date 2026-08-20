@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -58,6 +59,9 @@ public partial class ShelfWindow : Window
     private (Button Button, CardFilter Filter, string Label, Func<int> Count)[] _filterTabs =
         Array.Empty<(Button, CardFilter, string, Func<int>)>();
 
+    private ScrollViewer? _cardsScrollViewer;
+    private double _savedCardsScrollOffset = -1;
+
     public ShelfWindow()
     {
         InitializeComponent();
@@ -83,8 +87,13 @@ public partial class ShelfWindow : Window
         return brush;
     }
 
-    /// <summary>True while the pointer is over the shelf. Drives the retract timer.</summary>
-    public bool IsPointerInside => _pointerInside || IsMouseOver;
+    /// <summary>
+    /// True while the pointer is over the shelf, or while keyboard focus is inside it (typing in
+    /// the search box). Drives the retract timer -- without the keyboard-focus half, a user who
+    /// clicks into the search box and then types without the mouse moving would get retracted out
+    /// from under them mid-sentence once the existing hover countdown elapses.
+    /// </summary>
+    public bool IsPointerInside => _pointerInside || IsMouseOver || IsKeyboardFocusWithin;
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -308,6 +317,13 @@ public partial class ShelfWindow : Window
         // open once more and then never close again.
         _pointerInside = false;
         _retractTimer.Stop();
+
+        // Whatever temporarily allowed real activation for the search box (see
+        // OnSearchBoxPreviewMouseLeftButtonDown) must not survive the shelf going away, or the
+        // *next* slide-in would start pre-activated instead of NOACTIVATE. Idempotent if the
+        // search box was never focused this time around.
+        WindowStyles.SetNoActivate(this, true);
+        Keyboard.ClearFocus();
     }
 
     /// <summary>
@@ -381,6 +397,13 @@ public partial class ShelfWindow : Window
         SearchBox.TextChanged += OnSearchTextChanged;
         OnSearchTextChanged(SearchBox, null!);
 
+        // The shelf never activates on its own (WS_EX_NOACTIVATE, see OnSourceInitialized) so
+        // typing normally goes to whichever app was focused before the shelf slid in. Clicking
+        // the search box is the one deliberate exception the design calls for: grant real
+        // activation just long enough to type a query, then revoke it once focus leaves.
+        SearchBox.PreviewMouseLeftButtonDown += OnSearchBoxPreviewMouseLeftButtonDown;
+        SearchBox.LostKeyboardFocus += OnSearchBoxLostKeyboardFocus;
+
         ClearButton.Content = Strings.ClearButton;
         ClearButton.Click += OnClearButtonClick;
 
@@ -395,6 +418,13 @@ public partial class ShelfWindow : Window
                 UpdateFilterTabs();
             }
         };
+
+        // Store-driven rebuilds (a background clipboard capture, a pin toggle from elsewhere,
+        // etc.) Clear()+repopulate Cards, which resets the ListBox's scroll to the top. Save/
+        // restore the offset around exactly those rebuilds -- not around Filter/SearchText
+        // changes, where jumping to the top is the expected, user-initiated behavior.
+        _shelfViewModel.StoreRebuilding += OnStoreRebuilding;
+        _shelfViewModel.StoreRebuilt += OnStoreRebuilt;
 
         UpdateFilterTabs();
         UpdatePinnedVisibility();
@@ -518,5 +548,88 @@ public partial class ShelfWindow : Window
         {
             _shelfViewModel.ClearVisible();
         }
+    }
+
+    /// <summary>
+    /// Grants the search box a deliberate, temporary exception to "the shelf never steals focus":
+    /// strip WS_EX_NOACTIVATE, force real activation, then move WPF keyboard focus into the box.
+    /// WS_EX_NOACTIVATE only suppresses activation as a *side effect of this click* (the
+    /// WM_MOUSEACTIVATE decision for it is already made by the time this handler runs) -- the
+    /// explicit SetForegroundWindow call is what actually makes the window (and therefore the
+    /// search box) receive real keyboard input afterward.
+    /// </summary>
+    private void OnSearchBoxPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        WindowStyles.SetNoActivate(this, false);
+        WindowStyles.BringToForeground(this);
+        Keyboard.Focus(SearchBox);
+    }
+
+    /// <summary>
+    /// Revokes the temporary activation exception once the user is done with the search box
+    /// (clicked elsewhere, tabbed away, or the shelf itself is going away). Re-arms the retract
+    /// countdown too: while focus was in the box, IsPointerInside was held true by
+    /// IsKeyboardFocusWithin even if the mouse had drifted off the shelf.
+    /// </summary>
+    private void OnSearchBoxLostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        WindowStyles.SetNoActivate(this, true);
+        ArmRetractIfPointerOutside();
+    }
+
+    private void OnStoreRebuilding()
+    {
+        var sv = GetCardsScrollViewer();
+        _savedCardsScrollOffset = sv?.VerticalOffset ?? -1;
+    }
+
+    private void OnStoreRebuilt()
+    {
+        if (_savedCardsScrollOffset < 0)
+        {
+            return;
+        }
+
+        var offset = _savedCardsScrollOffset;
+        _savedCardsScrollOffset = -1;
+
+        // Deferred to Loaded priority: Cards was just Clear()-and-repopulated, and
+        // ScrollableHeight/ExtentHeight only reflect the new item count after the layout pass
+        // that follows runs, not synchronously here.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var sv = GetCardsScrollViewer();
+            if (sv is null)
+            {
+                return;
+            }
+
+            var clamped = Math.Max(0, Math.Min(offset, sv.ScrollableHeight));
+            sv.ScrollToVerticalOffset(clamped);
+        }), DispatcherPriority.Loaded);
+    }
+
+    private ScrollViewer? GetCardsScrollViewer() =>
+        _cardsScrollViewer ??= FindVisualChild<ScrollViewer>(CardsList);
+
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T typed)
+            {
+                return typed;
+            }
+
+            var found = FindVisualChild<T>(child);
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 }

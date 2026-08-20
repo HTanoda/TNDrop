@@ -152,12 +152,15 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Hover-only action bar: pin / delete -->
+                <!-- Hover-only action bar: pin / delete. Visibility (not just Opacity) is what
+                     gates this: an Opacity=0 element is still hit-testable in WPF, which would
+                     let the invisible Delete button eat clicks/taps meant for whatever's behind
+                     it when the card isn't hovered. Collapsed removes it from hit-testing too. -->
                 <StackPanel x:Name="ActionBar"
                             Orientation="Horizontal"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Top"
-                            Opacity="0">
+                            Visibility="Collapsed">
                     <Button Content="&#128204;" Tag="Pin" Style="{StaticResource Card.ActionButton}" />
                     <Button Content="&#128465;" Tag="Delete" Style="{StaticResource Card.ActionButton}" />
                 </StackPanel>
@@ -185,7 +188,7 @@
             </DataTrigger>
             <Trigger SourceName="CardRoot" Property="IsMouseOver" Value="True">
                 <Setter TargetName="CardRoot" Property="Background" Value="{StaticResource Card.HoverBackground}" />
-                <Setter TargetName="ActionBar" Property="Opacity" Value="1" />
+                <Setter TargetName="ActionBar" Property="Visibility" Value="Visible" />
             </Trigger>
         </DataTemplate.Triggers>
     </DataTemplate>

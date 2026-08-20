@@ -34,11 +34,53 @@ public static class WindowStyles
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
         int x, int y, int cx, int cy, uint uFlags);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
     /// <summary>
     /// Adds WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE to the window. Safe to call before the
     /// window is shown: the HWND is created on demand. Failures are logged, never thrown.
     /// </summary>
     public static void MakeToolWindowNoActivate(System.Windows.Window w)
+    {
+        WithHwnd(w, hwnd => ApplyExStyle(hwnd, current => current | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE),
+            "MakeToolWindowNoActivate");
+    }
+
+    /// <summary>
+    /// Adds or removes just the WS_EX_NOACTIVATE bit, leaving WS_EX_TOOLWINDOW (out of Alt+Tab)
+    /// untouched. Used to grant the shelf's search box a temporary, deliberate exception to the
+    /// "never steals focus" rule -- see ShelfWindow's search-box focus handlers. The window must
+    /// already have an HWND (i.e. have been shown at least once via EnsureHandle); calling this
+    /// before that is a no-op logged as an error, since unlike MakeToolWindowNoActivate this is a
+    /// runtime toggle, not one-time setup.
+    /// </summary>
+    public static void SetNoActivate(System.Windows.Window w, bool noActivate)
+    {
+        WithHwnd(w, hwnd => ApplyExStyle(hwnd, current => noActivate
+            ? current | WS_EX_NOACTIVATE
+            : current & ~WS_EX_NOACTIVATE), "SetNoActivate");
+    }
+
+    /// <summary>
+    /// Forces the window to the foreground regardless of its WS_EX_NOACTIVATE style -- that style
+    /// only suppresses activation as a side effect of the user clicking the window, not an
+    /// explicit SetForegroundWindow call. Callers should still strip WS_EX_NOACTIVATE first (see
+    /// <see cref="SetNoActivate"/>) so the window stays properly activated/focusable afterward.
+    /// </summary>
+    public static void BringToForeground(System.Windows.Window w)
+    {
+        WithHwnd(w, hwnd =>
+        {
+            if (!SetForegroundWindow(hwnd))
+            {
+                FileLogger.Instance?.Warn(Module, $"SetForegroundWindow failed (Win32 error {Marshal.GetLastWin32Error()})");
+            }
+        }, "BringToForeground");
+    }
+
+    private static void WithHwnd(System.Windows.Window w, Action<IntPtr> action, string opName)
     {
         if (w is null)
             return;
@@ -52,19 +94,19 @@ public static class WindowStyles
 
             if (hwnd == IntPtr.Zero)
             {
-                FileLogger.Instance?.Error(Module, "window has no HWND; extended styles not applied");
+                FileLogger.Instance?.Error(Module, $"{opName}: window has no HWND; not applied");
                 return;
             }
 
-            Apply(hwnd);
+            action(hwnd);
         }
         catch (Exception ex)
         {
-            FileLogger.Instance?.Error(Module, "MakeToolWindowNoActivate failed", ex);
+            FileLogger.Instance?.Error(Module, $"{opName} failed", ex);
         }
     }
 
-    private static void Apply(IntPtr hwnd)
+    private static void ApplyExStyle(IntPtr hwnd, Func<long, long> transform)
     {
         Marshal.SetLastSystemError(0);
         var current = GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
@@ -78,7 +120,7 @@ public static class WindowStyles
             }
         }
 
-        var updated = current | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+        var updated = transform(current);
         if (updated == current)
             return;
 
