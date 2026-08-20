@@ -77,7 +77,8 @@ public static class SoundSynth
         }
 
         // Calculate fade lengths in samples (5ms = 220.5 samples at 44.1kHz)
-        int fadeSamples = (int)(SampleRate * 5 / 1000);
+        // Clamp to half the duration to prevent overlap for short sounds
+        int fadeSamples = Math.Min((int)(SampleRate * 5 / 1000), numSamples / 2);
 
         double phase = 0;
 
