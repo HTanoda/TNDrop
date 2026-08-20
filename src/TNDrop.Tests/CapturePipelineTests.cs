@@ -55,4 +55,24 @@ public class CapturePipelineTests : IDisposable
         Assert.True(File.Exists(Path.Combine(store.BlobsDir, item.ImageFile!)));
         Assert.True(File.Exists(Path.Combine(store.BlobsDir, item.ThumbFile!)));
     }
+
+    // Regression: ProcessImage used to call ThumbnailService.SaveImage (writing a blob + thumb
+    // to disk) BEFORE checking dedup, so a duplicate image capture permanently orphaned two PNG
+    // files on every repeat (nothing scans blobs/ for files no ClipItem references). The fix
+    // hashes the encoded PNG bytes first and skips the save entirely when it matches the current
+    // head, so a duplicate must leave exactly the first capture's two files behind -- not four.
+    [StaFact]
+    public void Duplicate_image_does_not_orphan_blob_files()
+    {
+        var store = new ItemStore(_dir);
+        var p = NewPipeline(store);
+        var bmp = BitmapSource.Create(4, 4, 96, 96, System.Windows.Media.PixelFormats.Bgr32, null,
+                                      new byte[4 * 4 * 4], 16);
+
+        Assert.True(p.Process(new CapturedClip { Kind = ClipKind.Image, Image = bmp }));
+        Assert.False(p.Process(new CapturedClip { Kind = ClipKind.Image, Image = bmp }));
+
+        Assert.Single(store.Items);
+        Assert.Equal(2, Directory.GetFiles(store.BlobsDir).Length);
+    }
 }

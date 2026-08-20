@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Text;
 using TNDrop.Core;
 using TNDrop.Platform;
@@ -110,8 +109,22 @@ public sealed class CapturePipeline
             return false;
         }
 
-        var pngBytes = EncodePng(clip.Image);
-        var (imageFile, thumbFile) = _thumbs.SaveImage(clip.Image);
+        // Encode the full-size PNG exactly once: these are the bytes both hashed for dedup AND
+        // (when not a duplicate) written verbatim as the blob by ThumbnailService, so the saved
+        // file and the hash can never disagree with each other.
+        var pngBytes = ThumbnailService.EncodePng(clip.Image);
+        var hash = ItemStore.Fnv1a(pngBytes);
+
+        // Pre-check against the current head BEFORE touching disk: TryAdd would reject this same
+        // hash anyway, and SaveImage's blob + thumbnail writes are not free. Without this check,
+        // copying the same image twice in a row would permanently orphan two PNG files on every
+        // repeat -- nothing scans blobs/ for files no ClipItem references.
+        if (_store.HeadContentHash == hash)
+        {
+            return false;
+        }
+
+        var (imageFile, thumbFile) = _thumbs.SaveImage(pngBytes, clip.Image);
 
         var item = new ClipItem
         {
@@ -119,19 +132,9 @@ public sealed class CapturePipeline
             ImageFile = imageFile,
             ThumbFile = thumbFile,
             CreatedAtUtc = DateTime.UtcNow,
-            ContentHash = ItemStore.Fnv1a(pngBytes),
+            ContentHash = hash,
         };
 
         return _store.TryAdd(item);
-    }
-
-    private static byte[] EncodePng(System.Windows.Media.Imaging.BitmapSource image)
-    {
-        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
-        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
-
-        using var stream = new MemoryStream();
-        encoder.Save(stream);
-        return stream.ToArray();
     }
 }

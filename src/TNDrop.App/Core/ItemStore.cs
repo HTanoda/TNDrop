@@ -66,6 +66,22 @@ public sealed partial class ItemStore
 
     public bool LoadFailed { get; private set; }
 
+    // Cheap pre-check for callers that would otherwise do expensive work (encoding/saving an
+    // image blob, for instance) before finding out TryAdd would reject it as a duplicate of the
+    // current head anyway. Null when the store is empty. Reads the same _items[0] TryAdd itself
+    // compares against, under the same lock, so it can never disagree with what TryAdd decides
+    // immediately afterward (single-threaded capture path -- see CapturePipeline).
+    public ulong? HeadContentHash
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _items.Count > 0 ? _items[0].ContentHash : (ulong?)null;
+            }
+        }
+    }
+
     // Rejects when ContentHash matches the CURRENT HEAD item's hash (items[0] is
     // newest); otherwise inserts at the head. Save is the caller's responsibility.
     public bool TryAdd(ClipItem item)
