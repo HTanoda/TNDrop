@@ -36,10 +36,23 @@ public class FileLoggerTests : IDisposable
     public void Error_includes_exception_type_and_message()
     {
         var log = new FileLogger(_dir, () => new DateTime(2026, 8, 20, 1, 0, 0));
-        log.Error("clip", "capture failed", new InvalidOperationException("boom"));
+
+        Exception? caughtEx = null;
+        try
+        {
+            throw new InvalidOperationException("boom");
+        }
+        catch (Exception ex)
+        {
+            caughtEx = ex;
+        }
+
+        log.Error("clip", "capture failed", caughtEx);
         var text = File.ReadAllText(Path.Combine(_dir, "app-20260820.log"));
         Assert.Contains("[ERROR] clip: capture failed", text);
         Assert.Contains("InvalidOperationException", text);
         Assert.Contains("boom", text);
+        // Verify stack trace is included
+        Assert.Contains("   at ", text);
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Text;
 
@@ -9,6 +10,7 @@ public sealed class FileLogger
     private readonly string _logDir;
     private readonly Func<DateTime> _clock;
     private readonly object _lock = new();
+    private static readonly Encoding _utf8NoBom = new UTF8Encoding(false);
 
     public FileLogger(string logDir, Func<DateTime>? clock = null)
     {
@@ -47,8 +49,8 @@ public sealed class FileLogger
             try
             {
                 var now = _clock();
-                var date = now.ToString("yyyyMMdd");
-                var time = now.ToString("yyyy-MM-dd HH:mm:ss");
+                var date = now.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+                var time = now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
                 var filename = Path.Combine(_logDir, $"app-{date}.log");
 
                 var sb = new StringBuilder();
@@ -58,9 +60,23 @@ public sealed class FileLogger
                 {
                     sb.AppendLine();
                     sb.Append($"  {ex.GetType().Name}: {ex.Message}");
+
+                    if (!string.IsNullOrEmpty(ex.StackTrace))
+                    {
+                        sb.AppendLine();
+                        var stackLines = ex.StackTrace.Split(new[] { Environment.NewLine }, StringSplitOptions.None);
+                        foreach (var line in stackLines)
+                        {
+                            if (!string.IsNullOrWhiteSpace(line))
+                            {
+                                sb.Append($"    {line}");
+                                sb.AppendLine();
+                            }
+                        }
+                    }
                 }
 
-                File.AppendAllText(filename, sb.ToString() + Environment.NewLine, Encoding.UTF8);
+                File.AppendAllText(filename, sb.ToString() + Environment.NewLine, _utf8NoBom);
             }
             catch
             {
