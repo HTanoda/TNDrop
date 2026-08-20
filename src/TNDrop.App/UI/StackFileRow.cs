@@ -118,7 +118,9 @@ public sealed class StackFileRow
         {
             // It exists (PathExists just said so) but we cannot size it -- a permission-denied
             // share, a path we cannot stat. Render it as a directory: present, no size.
-            FileLogger.Instance?.Warn(Module, $"could not read the size of a stacked path: {ex.Message}");
+            // ex.Message embeds the full path, so log only the exception type -- clipboard-derived
+            // paths must not land in logs/app-YYYYMMDD.log.
+            FileLogger.Instance?.Warn(Module, $"could not read the size of a stacked path: {ex.GetType().Name}");
             return (true, true, 0);
         }
     }

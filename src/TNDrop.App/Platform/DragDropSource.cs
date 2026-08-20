@@ -284,7 +284,9 @@ public static class DragDropSource
         catch (Exception ex)
         {
             // A path on a disconnected network share can throw rather than return false.
-            FileLogger.Instance?.Warn(Module, $"existence check failed for '{path}': {ex.Message}");
+            // Never log the path itself or ex.Message (which can embed it) -- clipboard-derived
+            // paths are user content and must not land in logs/app-YYYYMMDD.log.
+            FileLogger.Instance?.Warn(Module, $"existence check failed: {ex.GetType().Name}");
             return false;
         }
     }

@@ -716,6 +716,11 @@ public partial class ShelfWindow : Window
                 break;
         }
 
+        // Persist immediately, same rationale as ShelfViewModel.RemoveSelected: a per-card
+        // pin/delete has no other save point before exit, and a crash must not resurrect a
+        // deleted item or lose a pin.
+        _itemStore.Save();
+
         e.Handled = true;
     }
 

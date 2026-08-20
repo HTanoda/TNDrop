@@ -131,4 +131,62 @@ public class ItemStoreOperationsTests : IDisposable
         Assert.True(_store.Items[0].Pinned);
         Assert.False(File.Exists(blob));
     }
+
+    private (ClipItem Item, string ImagePath, string ThumbPath) AddImageWithBlobs(string tag)
+    {
+        Directory.CreateDirectory(_store.BlobsDir);
+        var imageFile = $"{tag}-full.png";
+        var thumbFile = $"{tag}-thumb.png";
+        var imagePath = Path.Combine(_store.BlobsDir, imageFile);
+        var thumbPath = Path.Combine(_store.BlobsDir, thumbFile);
+        File.WriteAllBytes(imagePath, new byte[] { 1 });
+        File.WriteAllBytes(thumbPath, new byte[] { 2 });
+
+        var item = new ClipItem
+        {
+            Kind = ClipKind.Image,
+            ImageFile = imageFile,
+            ThumbFile = thumbFile,
+            CreatedAtUtc = DateTime.UtcNow,
+            ContentHash = ItemStore.Fnv1a(System.Text.Encoding.UTF8.GetBytes(tag)),
+        };
+        _store.TryAdd(item);
+        return (item, imagePath, thumbPath);
+    }
+
+    [Fact]
+    public void Remove_deletes_image_blobs()
+    {
+        var (item, imagePath, thumbPath) = AddImageWithBlobs("remove");
+
+        _store.Remove(item.Id);
+
+        Assert.Empty(_store.Items);
+        Assert.False(File.Exists(imagePath));
+        Assert.False(File.Exists(thumbPath));
+    }
+
+    [Fact]
+    public void RemoveMany_deletes_image_blobs()
+    {
+        var (item, imagePath, thumbPath) = AddImageWithBlobs("removemany");
+
+        _store.RemoveMany(new[] { item.Id });
+
+        Assert.Empty(_store.Items);
+        Assert.False(File.Exists(imagePath));
+        Assert.False(File.Exists(thumbPath));
+    }
+
+    [Fact]
+    public void RemoveAll_deletes_image_blobs()
+    {
+        var (item, imagePath, thumbPath) = AddImageWithBlobs("removeall");
+
+        _store.RemoveAll(i => i.Id == item.Id);
+
+        Assert.Empty(_store.Items);
+        Assert.False(File.Exists(imagePath));
+        Assert.False(File.Exists(thumbPath));
+    }
 }

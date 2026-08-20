@@ -122,37 +122,54 @@ public sealed partial class ItemStore
         return result;
     }
 
+    // Removes the item and, if it was an Image, its ImageFile/ThumbFile blobs from disk --
+    // same blob-deletion path PurgeOlderThan uses, so a user-initiated delete is a real delete
+    // (see DeleteBlobsFor).
     public void Remove(string id)
     {
+        List<ClipItem> removed;
+
         lock (_lock)
         {
+            removed = _items.Where(i => i.Id == id).ToList();
             _items.RemoveAll(i => i.Id == id);
         }
 
+        DeleteBlobsFor(removed);
         Changed?.Invoke();
     }
 
+    // Batch counterpart of Remove -- same blob cleanup, for RemoveSelected/multi-select delete.
     public void RemoveMany(IEnumerable<string> ids)
     {
         var idSet = new HashSet<string>(ids);
+        List<ClipItem> removed;
 
         lock (_lock)
         {
+            removed = _items.Where(i => idSet.Contains(i.Id)).ToList();
             _items.RemoveAll(i => idSet.Contains(i.Id));
         }
 
+        DeleteBlobsFor(removed);
         Changed?.Invoke();
     }
 
     // Filter-driven "clear" support. Pinned items are NOT excluded here; the
-    // caller decides whether to keep pinned items out of the predicate.
+    // caller decides whether to keep pinned items out of the predicate. Same blob cleanup as
+    // Remove/RemoveMany -- predicate is invoked twice (selection snapshot, then RemoveAll's own
+    // scan) so it must stay a pure read of the item, which every current caller already is.
     public void RemoveAll(Func<ClipItem, bool> predicate)
     {
+        List<ClipItem> removed;
+
         lock (_lock)
         {
+            removed = _items.Where(i => predicate(i)).ToList();
             _items.RemoveAll(i => predicate(i));
         }
 
+        DeleteBlobsFor(removed);
         Changed?.Invoke();
     }
 
@@ -294,11 +311,7 @@ public sealed partial class ItemStore
             }
         }
 
-        foreach (var item in removed)
-        {
-            DeleteBlobIfPresent(item.ImageFile);
-            DeleteBlobIfPresent(item.ThumbFile);
-        }
+        DeleteBlobsFor(removed);
 
         if (removed.Count > 0)
         {
@@ -306,6 +319,19 @@ public sealed partial class ItemStore
         }
 
         return removed.Count;
+    }
+
+    // Single blob-deletion path shared by Remove/RemoveMany/RemoveAll/PurgeOlderThan: any code
+    // path that drops items from _items routes their Image blobs through here so a delete is
+    // never "removed from the list but still on disk". Non-Image items have no ImageFile/
+    // ThumbFile and are no-ops.
+    private void DeleteBlobsFor(List<ClipItem> items)
+    {
+        foreach (var item in items)
+        {
+            DeleteBlobIfPresent(item.ImageFile);
+            DeleteBlobIfPresent(item.ThumbFile);
+        }
     }
 
     private void DeleteBlobIfPresent(string? fileName)

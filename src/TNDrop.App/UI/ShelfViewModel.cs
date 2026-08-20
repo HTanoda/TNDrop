@@ -172,7 +172,8 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
 
     /// <summary>Deletes every unpinned item matching the current filter+search -- i.e. exactly
     /// what's in <see cref="Cards"/> right now. Caller (ShelfWindow) is responsible for
-    /// confirming with the user first.</summary>
+    /// confirming with the user first. Persists immediately, same rationale as
+    /// <see cref="RemoveSelected"/>: a crash before exit must not resurrect a cleared item.</summary>
     public void ClearVisible()
     {
         var ids = Cards.Select(c => c.Id).ToList();
@@ -182,6 +183,7 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         }
 
         _store.RemoveMany(ids);
+        _store.Save();
     }
 
     private static ThumbnailService? CreateThumbnailService(ItemStore store)
