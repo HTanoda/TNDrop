@@ -1,0 +1,34 @@
+<Window x:Class="TNDrop.UI.EdgeTriggerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="TNDrop Edge Trigger"
+        WindowStyle="None"
+        WindowStartupLocation="Manual"
+        AllowsTransparency="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        Focusable="False"
+        SizeToContent="Manual"
+        UseLayoutRounding="True"
+        Left="0" Top="0" Width="3" Height="400"
+        Background="#01000000">
+    <!-- Background is #01 alpha, not Transparent: a fully transparent window is not hit-tested,
+         and hit-testing this band is the whole point of the window. -->
+    <Grid>
+        <Rectangle x:Name="HintBeacon"
+                   Width="2"
+                   HorizontalAlignment="Left"
+                   IsHitTestVisible="False"
+                   Visibility="Collapsed">
+            <Rectangle.Fill>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Offset="0.0" Color="#00FFFFFF" />
+                    <GradientStop Offset="0.5" Color="#40FFFFFF" />
+                    <GradientStop Offset="1.0" Color="#00FFFFFF" />
+                </LinearGradientBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+    </Grid>
+</Window>

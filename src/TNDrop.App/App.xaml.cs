@@ -14,8 +14,8 @@ using TNDrop.UI;
 namespace TNDrop;
 
 /// <summary>
-/// App entry point: single-instance guard, crash logging, i18n, and the tray icon that is
-/// the whole UI surface until Task 9 adds the clipboard window.
+/// App entry point: single-instance guard, crash logging, i18n, the tray icon, and the two
+/// always-alive windows (edge trigger band and the sliding shelf).
 /// </summary>
 public partial class App : System.Windows.Application
 {
@@ -25,6 +25,8 @@ public partial class App : System.Windows.Application
     private Mutex? _singleInstanceMutex;
     private bool _mutexOwned;
     private TrayIcon? _trayIcon;
+    private ShelfWindow? _shelf;
+    private EdgeTriggerWindow? _edgeTrigger;
 
     public static string DataDir { get; private set; } = string.Empty;
 
@@ -102,7 +104,22 @@ public partial class App : System.Windows.Application
                 _trayIcon.ShowBalloon(Strings.AppName, Strings.StoreLoadFailed);
             }
 
-            // (6) Window creation is added in Task 9+.
+            // (6) Shelf + edge trigger. Created hidden; the trigger band is only shown while
+            // hover-to-open is enabled.
+            _shelf = new ShelfWindow();
+            _edgeTrigger = new EdgeTriggerWindow();
+
+            _shelf.ApplySettings(Settings);
+            _shelf.IsVisibleChanged += OnShelfVisibleChanged;
+
+            _edgeTrigger.ApplySettings(Settings);
+            _edgeTrigger.SetHintVisible(Settings.EdgeHintEnabled);
+            _edgeTrigger.Triggered += OnEdgeTriggered;
+
+            if (Settings.HoverEnabled)
+            {
+                _edgeTrigger.Show();
+            }
         }
         catch (Exception ex)
         {
@@ -167,6 +184,48 @@ public partial class App : System.Windows.Application
     {
         Settings.HoverEnabled = value;
         SaveSettings();
+
+        if (value)
+        {
+            _edgeTrigger?.Show();
+        }
+        else
+        {
+            _edgeTrigger?.Hide();
+            _shelf?.SlideOut();
+        }
+    }
+
+    private void OnEdgeTriggered()
+    {
+        if (!Settings.HoverEnabled)
+        {
+            return;
+        }
+
+        _shelf?.SlideIn();
+    }
+
+    /// <summary>
+    /// The trigger band sits on top of the strip of screen edge the shelf covers when it is out.
+    /// Leaving it visible would let it swallow the pointer at the very edge, which reads to the
+    /// shelf as "pointer left" and retracts it under the user's cursor. So: shelf out, band away.
+    /// </summary>
+    private void OnShelfVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (_edgeTrigger is null)
+        {
+            return;
+        }
+
+        if (_shelf is not null && _shelf.IsVisible)
+        {
+            _edgeTrigger.Hide();
+        }
+        else if (Settings.HoverEnabled)
+        {
+            _edgeTrigger.Show();
+        }
     }
 
     private void OnIncognitoChanged(bool value)
