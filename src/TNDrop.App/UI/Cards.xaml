@@ -24,6 +24,10 @@
     <SolidColorBrush x:Key="Card.Badge" Color="#FF5B8DEF" />
     <SolidColorBrush x:Key="Card.ActionHover" Color="#40FFFFFF" />
 
+    <!-- Multi-select indicator (Task 15). Same accent as the Task 13/14 drop/merge highlight
+         (#0A84FF) for visual consistency across the shelf's "this is active" affordances. -->
+    <SolidColorBrush x:Key="Card.SelectedAccent" Color="#FF0A84FF" />
+
     <!-- The clickable "open this in the browser" hotspot on a Link card: the chain glyph + the
          bold domain line. Everything else on a link card re-copies the URL like any other card,
          so the hotspot has to look different from the rest - hence the hand cursor and the
@@ -200,6 +204,36 @@
                     <Button Content="&#128204;" Tag="Pin" Style="{StaticResource Card.ActionButton}" />
                     <Button Content="&#128465;" Tag="Delete" Style="{StaticResource Card.ActionButton}" />
                 </StackPanel>
+
+                <!-- Multi-select indicator (Task 15): an accent border overlay + a checkmark badge,
+                     toggled by CardViewModel.Selected. Deliberately a SEPARATE element from
+                     CardRoot's own BorderBrush rather than reusing it: Task 14's merge highlight
+                     sets CardRoot.BorderBrush imperatively in code-behind (a local value, which
+                     outranks a template trigger's setter), so sharing the property would let a
+                     drag-hover silently erase the selected indicator underneath it. -->
+                <Border x:Name="SelectionOverlay"
+                        BorderBrush="{StaticResource Card.SelectedAccent}"
+                        BorderThickness="2"
+                        CornerRadius="8"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed" />
+                <Border x:Name="SelectionCheck"
+                        Width="18"
+                        Height="18"
+                        CornerRadius="9"
+                        Background="{StaticResource Card.SelectedAccent}"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,2,2"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed">
+                    <TextBlock Text="&#10003;"
+                               FontSize="11"
+                               FontWeight="Bold"
+                               Foreground="White"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
             </Grid>
         </Border>
 
@@ -226,6 +260,10 @@
                 <Setter TargetName="CardRoot" Property="Background" Value="{StaticResource Card.HoverBackground}" />
                 <Setter TargetName="ActionBar" Property="Visibility" Value="Visible" />
             </Trigger>
+            <DataTrigger Binding="{Binding Selected}" Value="True">
+                <Setter TargetName="SelectionOverlay" Property="Visibility" Value="Visible" />
+                <Setter TargetName="SelectionCheck" Property="Visibility" Value="Visible" />
+            </DataTrigger>
         </DataTemplate.Triggers>
     </DataTemplate>
 
@@ -251,6 +289,35 @@
     <Style x:Key="Card.PinnedContainerStyle" TargetType="ContentPresenter">
         <Setter Property="Width" Value="200" />
         <Setter Property="Margin" Value="0,0,8,0" />
+    </Style>
+
+    <!-- Batch action bar button (Task 15): same dark pill chrome as the footer's Clear button,
+         factored out here so the four buttons in ShelfWindow's SelectionBar don't each need their
+         own inline <Button.Resources> Border-CornerRadius override. -->
+    <Style x:Key="SelectionBarButtonStyle" TargetType="Button">
+        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="Margin" Value="0,0,6,0" />
+        <Setter Property="Background" Value="{StaticResource Card.Background}" />
+        <Setter Property="Foreground" Value="{StaticResource Card.Foreground}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="8"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           TextElement.Foreground="{TemplateBinding Foreground}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource Card.HoverBackground}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- Filter tab pill. Label text + count badge is built in ShelfWindow.xaml.cs (it needs to

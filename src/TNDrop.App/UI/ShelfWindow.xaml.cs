@@ -525,6 +525,15 @@ public partial class ShelfWindow : Window
         ClearButton.Content = Strings.ClearButton;
         ClearButton.Click += OnClearButtonClick;
 
+        SelectAllButton.Content = Strings.SelectAll;
+        CopySelectedButton.Content = Strings.CopySelected;
+        DeleteSelectedButton.Content = Strings.DeleteSelected;
+        ClearSelectionButton.Content = Strings.ClearSelection;
+        SelectAllButton.Click += (_, _) => _shelfViewModel?.SelectAllVisible();
+        CopySelectedButton.Click += OnCopySelectedClick;
+        DeleteSelectedButton.Click += OnDeleteSelectedClick;
+        ClearSelectionButton.Click += (_, _) => _shelfViewModel?.ClearSelection();
+
         CardsList.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(OnCardActionClick));
         PinnedList.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(OnCardActionClick));
 
@@ -566,6 +575,11 @@ public partial class ShelfWindow : Window
             {
                 UpdateFilterTabs();
             }
+
+            if (e.PropertyName is null or nameof(ShelfViewModel.SelectionMode) or nameof(ShelfViewModel.SelectedCount))
+            {
+                UpdateSelectionBar();
+            }
         };
 
         // Store-driven rebuilds (a background clipboard capture, a pin toggle from elsewhere,
@@ -577,6 +591,7 @@ public partial class ShelfWindow : Window
 
         UpdateFilterTabs();
         UpdatePinnedVisibility();
+        UpdateSelectionBar();
     }
 
     private void SetFilter(CardFilter filter)
@@ -638,6 +653,20 @@ public partial class ShelfWindow : Window
         PinnedScroll.Visibility = _shelfViewModel is not null && _shelfViewModel.PinnedCards.Count > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    /// <summary>Shows/hides the batch action bar and refreshes its count label from
+    /// <see cref="ShelfViewModel.SelectionMode"/>/<see cref="ShelfViewModel.SelectedCount"/>.</summary>
+    private void UpdateSelectionBar()
+    {
+        if (_shelfViewModel is null)
+        {
+            return;
+        }
+
+        SelectionBar.Visibility = _shelfViewModel.SelectionMode ? Visibility.Visible : Visibility.Collapsed;
+        SelectedCountText.Text = string.Format(
+            CultureInfo.CurrentUICulture, Strings.SelectedCountFormat, _shelfViewModel.SelectedCount);
     }
 
     private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
@@ -832,6 +861,19 @@ public partial class ShelfWindow : Window
 
         if (card is null || _isDragging || IsWithinActionButton(e.OriginalSource))
         {
+            return;
+        }
+
+        // Multi-select (Task 15): Ctrl+click always toggles selection instead of the card's normal
+        // click action (re-copy / open-link / expand-stack), and once at least one card IS selected
+        // a plain click toggles too -- entering selection mode turns every subsequent click into a
+        // selection gesture until the user explicitly clears it. Checked before the Link/stack
+        // branches below so a stack's Ctrl+click selects rather than opening its flyout.
+        var ctrlHeld = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+        if (ctrlHeld || (_shelfViewModel?.SelectionMode ?? false))
+        {
+            _shelfViewModel?.ToggleSelected(card.Id);
+            e.Handled = true;
             return;
         }
 
@@ -1671,6 +1713,96 @@ public partial class ShelfWindow : Window
         {
             _shelfViewModel.ClearVisible();
         }
+    }
+
+    /// <summary>
+    /// "選択をコピー": text-only selection joins with newlines into SetText; files/stacks-only
+    /// combines every path into one SetFiles; a mix of the two copies the files only (files take
+    /// priority over text) and adds a transient "N files copied" note, since silently dropping the
+    /// text half would otherwise look like nothing happened to it. Image cards in the selection are
+    /// not carried by either path -- there is no brief-specified way to combine an image with text
+    /// or file paths on the clipboard.
+    /// </summary>
+    private void OnCopySelectedClick(object sender, RoutedEventArgs e)
+    {
+        if (_shelfViewModel is null)
+        {
+            return;
+        }
+
+        var items = _shelfViewModel.GetSelectedItems();
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        var fileItems = items.Where(i => i.Kind == ClipKind.Files).ToList();
+        var textItems = items.Where(i => i.Kind == ClipKind.Text || i.Kind == ClipKind.Link).ToList();
+        var mixed = fileItems.Count > 0 && fileItems.Count < items.Count;
+
+        bool copied;
+        if (fileItems.Count > 0)
+        {
+            var paths = fileItems.SelectMany(DragDropSource.ExistingPaths).ToArray();
+            copied = SetClipboardFiles(paths);
+
+            if (copied && mixed)
+            {
+                ShowStatus(string.Format(CultureInfo.CurrentUICulture, Strings.FilesCopiedFormat, paths.Length));
+            }
+        }
+        else if (textItems.Count > 0)
+        {
+            var text = string.Join(Environment.NewLine, textItems.Select(i => i.Text ?? string.Empty));
+
+            // Before the write, not after: the clipboard notification can arrive before SetText returns.
+            global::TNDrop.App.Monitor?.SuppressNext();
+            ClipboardIo.SetText(text);
+            copied = true;
+        }
+        else
+        {
+            // Selection is images only (or empty after filtering): nothing this bar knows how to
+            // combine onto one clipboard payload.
+            copied = false;
+        }
+
+        if (!copied)
+        {
+            ShowStatus(Strings.FileMissing);
+            return;
+        }
+
+        ConfirmCopy();
+    }
+
+    /// <summary>
+    /// "選択を削除": no confirmation dialog -- the batch bar itself is the explicit step, unlike the
+    /// footer's "Clear" which can silently wipe an entire filtered view. Confirmed instead with the
+    /// same flash the footer's Clear and click-to-copy already use, plus the delete sound.
+    /// </summary>
+    private void OnDeleteSelectedClick(object sender, RoutedEventArgs e)
+    {
+        if (_shelfViewModel is null || _shelfViewModel.SelectedCount == 0)
+        {
+            return;
+        }
+
+        _shelfViewModel.RemoveSelected();
+        ConfirmDelete();
+    }
+
+    /// <summary>The delete counterpart to <see cref="ConfirmCopy"/>: same indicator flash, the
+    /// delete sound instead of the capture one.</summary>
+    private static void ConfirmDelete()
+    {
+        var settings = global::TNDrop.App.Settings;
+        if (settings is not null)
+        {
+            global::TNDrop.App.Indicator?.Flash(settings.IndicatorStyle, settings.Edge);
+        }
+
+        global::TNDrop.App.Sounds?.PlayDelete();
     }
 
     /// <summary>

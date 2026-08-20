@@ -134,4 +134,22 @@
   <data name="StackLimit" xml:space="preserve">
     <value>A stack holds up to 10 files</value>
   </data>
+  <data name="SelectAll" xml:space="preserve">
+    <value>Select All</value>
+  </data>
+  <data name="CopySelected" xml:space="preserve">
+    <value>Copy Selected</value>
+  </data>
+  <data name="DeleteSelected" xml:space="preserve">
+    <value>Delete Selected</value>
+  </data>
+  <data name="ClearSelection" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="SelectedCountFormat" xml:space="preserve">
+    <value>{0} selected</value>
+  </data>
+  <data name="FilesCopiedFormat" xml:space="preserve">
+    <value>{0} files copied</value>
+  </data>
 </root>

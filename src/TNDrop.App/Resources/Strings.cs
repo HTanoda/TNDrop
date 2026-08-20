@@ -44,6 +44,12 @@ internal static class Strings
     public static string ActionDelete => Get(nameof(ActionDelete));
     public static string FileMissing => Get(nameof(FileMissing));
     public static string StackLimit => Get(nameof(StackLimit));
+    public static string SelectAll => Get(nameof(SelectAll));
+    public static string CopySelected => Get(nameof(CopySelected));
+    public static string DeleteSelected => Get(nameof(DeleteSelected));
+    public static string ClearSelection => Get(nameof(ClearSelection));
+    public static string SelectedCountFormat => Get(nameof(SelectedCountFormat));
+    public static string FilesCopiedFormat => Get(nameof(FilesCopiedFormat));
 
     private static string Get(string key) =>
         Manager.GetString(key, CultureInfo.CurrentUICulture) ?? key;

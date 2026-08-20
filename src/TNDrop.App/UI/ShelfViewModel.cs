@@ -94,6 +94,82 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
 
     public int CountFiles => _countFiles;
 
+    /// <summary>True while at least one card (visible or pinned) has <see cref="CardViewModel.Selected"/>
+    /// set. Drives the batch action bar in ShelfWindow.</summary>
+    public bool SelectionMode => SelectedCount > 0;
+
+    /// <summary>Count of currently selected cards across both <see cref="Cards"/> and
+    /// <see cref="PinnedCards"/>.</summary>
+    public int SelectedCount => Cards.Concat(PinnedCards).Count(c => c.Selected);
+
+    /// <summary>Flips the Selected flag of the card with this Id, wherever it lives (visible or
+    /// pinned) -- Ctrl+click and "plain click while in selection mode" both route through this,
+    /// so the two gestures can never disagree about what toggling means.</summary>
+    public void ToggleSelected(string id)
+    {
+        var card = FindCard(id);
+        if (card is null)
+        {
+            return;
+        }
+
+        card.Selected = !card.Selected;
+        RaiseSelectionChanged();
+    }
+
+    /// <summary>Selects every card in <see cref="Cards"/> -- i.e. exactly what the current
+    /// filter+search shows -- and nothing else. Pinned cards are deliberately left alone: "全選択"
+    /// selects the visible unpinned deck, matching <see cref="ClearVisible"/>'s own scope.</summary>
+    public void SelectAllVisible()
+    {
+        foreach (var card in Cards)
+        {
+            card.Selected = true;
+        }
+
+        RaiseSelectionChanged();
+    }
+
+    /// <summary>Deselects every card, visible or pinned.</summary>
+    public void ClearSelection()
+    {
+        foreach (var card in Cards.Concat(PinnedCards))
+        {
+            card.Selected = false;
+        }
+
+        RaiseSelectionChanged();
+    }
+
+    /// <summary>The underlying <see cref="ClipItem"/> of every currently selected card.</summary>
+    public List<ClipItem> GetSelectedItems() =>
+        Cards.Concat(PinnedCards).Where(c => c.Selected).Select(c => c.Item).ToList();
+
+    /// <summary>Removes every selected item from the store (pinned or not -- an explicit selection
+    /// overrides the pin) and persists immediately, since a batch delete has no other save point.
+    /// A no-op when nothing is selected. <see cref="SelectionMode"/> returns to false afterwards
+    /// because the removed ids no longer exist for the following rebuild to preserve.</summary>
+    public void RemoveSelected()
+    {
+        var ids = Cards.Concat(PinnedCards).Where(c => c.Selected).Select(c => c.Id).ToList();
+        if (ids.Count == 0)
+        {
+            return;
+        }
+
+        _store.RemoveMany(ids);
+        _store.Save();
+    }
+
+    private CardViewModel? FindCard(string id) =>
+        Cards.FirstOrDefault(c => c.Id == id) ?? PinnedCards.FirstOrDefault(c => c.Id == id);
+
+    private void RaiseSelectionChanged()
+    {
+        OnPropertyChanged(nameof(SelectionMode));
+        OnPropertyChanged(nameof(SelectedCount));
+    }
+
     /// <summary>Deletes every unpinned item matching the current filter+search -- i.e. exactly
     /// what's in <see cref="Cards"/> right now. Caller (ShelfWindow) is responsible for
     /// confirming with the user first.</summary>
@@ -201,6 +277,12 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CountLinks));
         OnPropertyChanged(nameof(CountImages));
         OnPropertyChanged(nameof(CountFiles));
+
+        // A rebuild can change SelectedCount/SelectionMode even though nothing here calls
+        // ToggleSelected/etc: a selected item can be removed by another path (the per-card Delete
+        // button, a merge), or narrowed out of Cards by a Filter/SearchText change. Selected is
+        // preserved by Id above; anything not carried over here must still update the bar.
+        RaiseSelectionChanged();
     }
 
     private CardViewModel MakeCard(ClipItem item, HashSet<string> selectedIds)

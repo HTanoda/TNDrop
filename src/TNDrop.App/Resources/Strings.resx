@@ -134,4 +134,22 @@
   <data name="StackLimit" xml:space="preserve">
     <value>1 つのスタックは 10 件までです</value>
   </data>
+  <data name="SelectAll" xml:space="preserve">
+    <value>全選択</value>
+  </data>
+  <data name="CopySelected" xml:space="preserve">
+    <value>選択をコピー</value>
+  </data>
+  <data name="DeleteSelected" xml:space="preserve">
+    <value>選択を削除</value>
+  </data>
+  <data name="ClearSelection" xml:space="preserve">
+    <value>解除</value>
+  </data>
+  <data name="SelectedCountFormat" xml:space="preserve">
+    <value>選択中: {0} 件</value>
+  </data>
+  <data name="FilesCopiedFormat" xml:space="preserve">
+    <value>ファイル {0} 件をコピーしました</value>
+  </data>
 </root>

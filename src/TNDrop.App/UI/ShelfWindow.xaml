@@ -36,6 +36,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <TextBlock x:Name="PlaceholderTitle"
@@ -120,7 +121,31 @@
                 </ListBox.ItemsPanel>
             </ListBox>
 
-            <Grid x:Name="Footer" Grid.Row="5" Margin="0,10,0,0">
+            <!-- Batch action bar (Task 15): shown only while ShelfViewModel.SelectionMode is true
+                 (toggled in code-behind, see UpdateSelectionBar; every other imperative on/off
+                 switch in this window, e.g. UpdatePinnedVisibility, follows the same pattern
+                 rather than a XAML binding+converter for a single boolean). -->
+            <Grid x:Name="SelectionBar" Grid.Row="5" Margin="0,0,0,10" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="SelectAllButton" Grid.Column="0" Style="{StaticResource SelectionBarButtonStyle}" />
+                <Button x:Name="CopySelectedButton" Grid.Column="1" Style="{StaticResource SelectionBarButtonStyle}" />
+                <Button x:Name="DeleteSelectedButton" Grid.Column="2" Style="{StaticResource SelectionBarButtonStyle}" />
+                <Button x:Name="ClearSelectionButton" Grid.Column="3" Style="{StaticResource SelectionBarButtonStyle}" />
+                <TextBlock x:Name="SelectedCountText"
+                           Grid.Column="4"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"
+                           FontSize="11"
+                           Foreground="#FFA5A5AD" />
+            </Grid>
+
+            <Grid x:Name="Footer" Grid.Row="6" Margin="0,10,0,0">
                 <!-- Two columns rather than one overlapping cell: the status line has to trim
                      against the Clear button instead of sliding underneath it, and that needs a
                      real width constraint. -->
