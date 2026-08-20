@@ -51,6 +51,49 @@ public class ItemStoreOperationsTests : IDisposable
     }
 
     [Fact]
+    public void TryMergeFiles_keeps_a_pinned_source_protected()
+    {
+        // The merge DELETES the source item. Without OR-ing the flag, dragging a pinned card onto
+        // an unpinned one would hand the user's protected paths to a card PurgeOlderThan is free
+        // to delete -- the pin would be silently revoked by a gesture that never mentions pinning.
+        var target = ItemStore.BuildFileItems(new[] { @"C:\t1" }, DateTime.UtcNow)[0];
+        var source = ItemStore.BuildFileItems(new[] { @"C:\s1" }, DateTime.UtcNow)[0];
+        source.Pinned = true;
+
+        _store.TryAdd(target); _store.TryAdd(source);
+        Assert.True(_store.TryMergeFiles(target.Id, source.Id));
+
+        var merged = _store.Items.Single();
+        Assert.Equal(target.Id, merged.Id);
+        Assert.True(merged.Pinned);
+        Assert.Equal(new[] { @"C:\t1", @"C:\s1" }, merged.Paths);
+    }
+
+    [Fact]
+    public void TryMergeFiles_leaves_an_unpinned_source_unpinned()
+    {
+        // The contrast case: OR-ing must not turn every merge into a pin.
+        var target = ItemStore.BuildFileItems(new[] { @"C:\t1" }, DateTime.UtcNow)[0];
+        var source = ItemStore.BuildFileItems(new[] { @"C:\s1" }, DateTime.UtcNow)[0];
+
+        _store.TryAdd(target); _store.TryAdd(source);
+        Assert.True(_store.TryMergeFiles(target.Id, source.Id));
+        Assert.False(_store.Items.Single().Pinned);
+    }
+
+    [Fact]
+    public void TryMergeFiles_keeps_a_pinned_target_pinned()
+    {
+        var target = ItemStore.BuildFileItems(new[] { @"C:\t1" }, DateTime.UtcNow)[0];
+        target.Pinned = true;
+        var source = ItemStore.BuildFileItems(new[] { @"C:\s1" }, DateTime.UtcNow)[0];
+
+        _store.TryAdd(target); _store.TryAdd(source);
+        Assert.True(_store.TryMergeFiles(target.Id, source.Id));
+        Assert.True(_store.Items.Single().Pinned);
+    }
+
+    [Fact]
     public void TryMergeFiles_fails_when_over_cap()
     {
         var a = ItemStore.BuildFileItems(Enumerable.Range(1, 9).Select(i => $@"C:\a{i}").ToArray(), DateTime.UtcNow)[0];

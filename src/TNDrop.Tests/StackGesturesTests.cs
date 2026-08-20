@@ -74,6 +74,35 @@ public class StackGesturesTests
         Assert.True(StackGestures.IsInSplitZone(Work, EdgeSide.Left, 8, 500, bandDip: 10));
     }
 
+    // ---- shelf containment (the flyout's "is the pointer still on the shelf?") --------------
+
+    [Theory]
+    [InlineData(0, 60, true)]        // the outermost pixel column of an edge-flush shelf
+    [InlineData(339, 60, true)]
+    [InlineData(340, 60, true)]      // the far edge counts too
+    [InlineData(341, 60, false)]
+    [InlineData(-1, 60, false)]
+    [InlineData(170, 52, true)]      // top edge
+    [InlineData(170, 51, false)]
+    [InlineData(170, 988, true)]     // bottom edge
+    [InlineData(170, 989, false)]
+    public void Contains(double x, double y, bool expected)
+    {
+        // The shelf as ShelfPlacement.ShelfRect places it on Work: 340 wide, 90% tall, centred.
+        var shelf = ShelfPlacement.ShelfRect(Work, EdgeSide.Left);
+        Assert.Equal(52, shelf.Y);
+        Assert.Equal(936, shelf.H);
+        Assert.Equal(expected, StackGestures.Contains(shelf, x, y));
+    }
+
+    [Fact]
+    public void Contains_is_relative_to_the_given_rect()
+    {
+        var shelf = ShelfPlacement.ShelfRect(SecondMonitor, EdgeSide.Right);
+        Assert.False(StackGestures.Contains(shelf, 10, 500));
+        Assert.True(StackGestures.Contains(shelf, 3000, 500));
+    }
+
     // ---- ShouldSplit -----------------------------------------------------------------------
 
     [Theory]

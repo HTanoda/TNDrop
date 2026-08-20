@@ -54,6 +54,21 @@ public static class StackGestures
     }
 
     /// <summary>
+    /// Plain rectangle containment, in the same DIP space as <paramref name="rect"/>. Edges count
+    /// as inside: the shelf is flush against the screen edge, so its outermost column of pixels is
+    /// exactly where the pointer sits when the user reaches for it.
+    ///
+    /// <para>Used to answer "is the pointer on the shelf?" from the cursor position rather than
+    /// from <c>IsMouseOver</c>. That distinction is load-bearing: while the stack flyout is open it
+    /// holds a <c>StaysOpen="False"</c> Popup's SubTree mouse capture, and WPF then reports the
+    /// shelf window as NOT moused-over even with the pointer sitting on the card the flyout
+    /// belongs to.</para>
+    /// </summary>
+    public static bool Contains(ShelfPlacement.Rect rect, double xDip, double yDip) =>
+        xDip >= rect.X && xDip <= rect.X + rect.W &&
+        yDip >= rect.Y && yDip <= rect.Y + rect.H;
+
+    /// <summary>
     /// Whether dropping <paramref name="source"/> onto <paramref name="target"/> is a merge the
     /// shelf should offer -- i.e. whether the drop cursor shows Copy and the target card lights up.
     ///

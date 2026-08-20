@@ -113,9 +113,11 @@ public partial class ShelfWindow : Window
     private StackFlyout? _stackFlyout;
     private Border? _mergeHighlight;
 
-    // Latched when the press lands, read when the release decides whether the click is an open or
-    // a close. It cannot be re-derived at release time: see OnCardPreviewMouseLeftButtonDown.
-    private bool _flyoutWasShowingPressedCard;
+    // Id of the card the flyout was showing when the press landed, read when the release decides
+    // whether the click is an open or a close. It cannot be re-derived at release time: see
+    // OnCardPreviewMouseLeftButtonDown. An Id rather than a bool so the latch can only ever answer
+    // for the card it was taken on, without depending on _pressedCard still being that card.
+    private string? _flyoutShownAtPressId;
 
     public ShelfWindow()
     {
@@ -137,6 +139,12 @@ public partial class ShelfWindow : Window
         // any one child -- DragEnter/Over/Leave/Drop are bubbling routed events, so whichever
         // descendant is actually under the pointer (a card, the search box, empty Grid space)
         // still reaches here.
+        //
+        // KEEP THESE AS `+=`. Task 14's card-level merge handlers preempt them by marking the
+        // event handled, and that only works because these are registered without
+        // handledEventsToo. Switching any of them to AddHandler(..., handledEventsToo: true)
+        // would silently resurrect the shelf-wide accept border underneath a merge and let
+        // OnShelfDrop run a second time on a drop a card has already consumed.
         DragEnter += OnShelfDragEnter;
         DragOver += OnShelfDragOver;
         DragLeave += OnShelfDragLeave;
@@ -678,7 +686,7 @@ public partial class ShelfWindow : Window
     private void OnCardPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _pressedCard = null;
-        _flyoutWasShowingPressedCard = false;
+        _flyoutShownAtPressId = null;
 
         // The action bar's own buttons own their clicks (see OnCardActionClick). Swallowing them
         // here would make Delete re-copy the card instead of deleting it.
@@ -701,7 +709,7 @@ public partial class ShelfWindow : Window
         // showing this card?" always answers false and the toggle would re-open the very flyout
         // the press just dismissed. Measured: the live probe's close-on-second-click check failed
         // exactly that way before this existed.
-        _flyoutWasShowingPressedCard = _stackFlyout is not null && _stackFlyout.IsShowing(card.Id);
+        _flyoutShownAtPressId = _stackFlyout is not null && _stackFlyout.IsShowing(card.Id) ? card.Id : null;
 
         // Capture BEFORE arming _pressedCard, not after. Taking the mouse makes WPF re-evaluate
         // where the pointer is and can synthesize a MouseMove there and then -- which lands in
@@ -973,8 +981,10 @@ public partial class ShelfWindow : Window
         var flyout = new StackFlyout
         {
             // The flyout knows nothing about monitors; this is the only place the resolved work
-            // area, its DPI scale and the configured edge all exist together.
+            // area, its DPI scale, the placed shelf rect and the configured edge all exist
+            // together. Both probes read one cursor conversion (CursorDip).
             CursorInSplitZone = IsCursorInSplitZone,
+            CursorOverShelf = IsCursorOverShelf,
         };
 
         flyout.FileActivated += OnStackFileActivated;
@@ -1002,8 +1012,10 @@ public partial class ShelfWindow : Window
 
         // Either answer means "this click is the close half of the toggle": the flyout is still
         // open for this card, or it was when the press landed and the capture change has since
-        // closed it (see the latch in OnCardPreviewMouseLeftButtonDown).
-        if (_flyoutWasShowingPressedCard || flyout.IsShowing(card.Id))
+        // closed it (see the latch in OnCardPreviewMouseLeftButtonDown). The latch is compared by
+        // Id, so a latch taken on a different card can never swallow this one's open.
+        if (string.Equals(_flyoutShownAtPressId, card.Id, StringComparison.Ordinal) ||
+            flyout.IsShowing(card.Id))
         {
             flyout.IsOpen = false;
             return;
@@ -1103,18 +1115,22 @@ public partial class ShelfWindow : Window
     }
 
     /// <summary>
-    /// True when the mouse cursor is, right now, inside the split band along the configured screen
-    /// edge. Called once per row drag, immediately after the drag returns.
-    /// <para>The cursor comes back in physical pixels and the work area is in DIPs, so it is
-    /// divided by the very scale <see cref="MonitorGeometry.Resolve"/> used to produce that work
-    /// area -- the two must be converted with the same number or the band lands in the wrong
-    /// place on a scaled display.</para>
+    /// The mouse cursor in the same DIP space as <see cref="_area"/> and <see cref="_rect"/>, or
+    /// null when it cannot be read (or the shelf has never been placed, so there is no space to
+    /// express it in).
+    ///
+    /// <para>ONE conversion feeding every cursor-based question the stack UX asks -- the split
+    /// band and "is the pointer on the shelf?" are two readings of the same position and must not
+    /// be derived by two different sums. The cursor comes back in physical pixels and the geometry
+    /// is in DIPs, so it is divided by the very scale <see cref="MonitorGeometry.Resolve"/> used to
+    /// produce that geometry; converted with any other number the answers land in the wrong place
+    /// on a scaled display.</para>
     /// </summary>
-    private bool IsCursorInSplitZone()
+    private (double X, double Y)? CursorDip()
     {
         if (!_placed)
         {
-            return false;
+            return null;
         }
 
         try
@@ -1123,19 +1139,53 @@ public partial class ShelfWindow : Window
             var scaleX = _area.ScaleX > 0 ? _area.ScaleX : 1.0;
             var scaleY = _area.ScaleY > 0 ? _area.ScaleY : 1.0;
 
-            return StackGestures.IsInSplitZone(
-                new ShelfPlacement.Rect(_area.X, _area.Y, _area.W, _area.H),
-                _edge,
-                cursor.X / scaleX,
-                cursor.Y / scaleY);
+            return (cursor.X / scaleX, cursor.Y / scaleY);
         }
         catch (Exception ex)
         {
-            // Reading the cursor is a Win32 call; a failure here must mean "not a split", never a
-            // crash at the end of a drag.
+            // Reading the cursor is a Win32 call; a failure here must degrade to "don't know",
+            // never crash at the end of a drag or inside a timer tick.
             FileLogger.Instance?.Warn(Module, $"could not read the cursor position: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// True when the cursor is, right now, inside the split band along the configured screen edge.
+    /// Called once per row drag, immediately after the drag returns.
+    /// </summary>
+    private bool IsCursorInSplitZone()
+    {
+        if (CursorDip() is not { } cursor)
+        {
             return false;
         }
+
+        return StackGestures.IsInSplitZone(
+            new ShelfPlacement.Rect(_area.X, _area.Y, _area.W, _area.H),
+            _edge, cursor.X, cursor.Y);
+    }
+
+    /// <summary>
+    /// True when the cursor is over the shelf's placed rectangle. The flyout's auto-close asks this
+    /// instead of reading <see cref="UIElement.IsMouseOver"/>.
+    ///
+    /// <para>That is not a stylistic choice. While the flyout is open it holds a
+    /// <c>StaysOpen="False"</c> Popup's SubTree mouse capture -- the same mechanism that closes the
+    /// popup when the shelf takes the gesture capture (see the latch in
+    /// <see cref="OnCardPreviewMouseLeftButtonDown"/>) -- and WPF then reports this window as NOT
+    /// moused-over even with the pointer parked on the very card the flyout belongs to. An
+    /// IsMouseOver term would therefore be dead the whole time it mattered, and the flyout would
+    /// close itself under a stationary cursor about a second after opening.</para>
+    /// </summary>
+    private bool IsCursorOverShelf()
+    {
+        if (!IsVisible || _slidingOut)
+        {
+            return false;
+        }
+
+        return CursorDip() is { } cursor && StackGestures.Contains(_rect, cursor.X, cursor.Y);
     }
 
     /// <summary>A flyout row was clicked: put that one file on the clipboard.</summary>

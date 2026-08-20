@@ -45,7 +45,6 @@ public partial class StackFlyout : Popup
 
     private ClipItem? _stackItem;
     private List<string> _paths = new();
-    private Window? _owner;
     private int _hoverMisses;
 
     // Row press/drag classification, the same shape as ShelfWindow's card gesture: a press records
@@ -86,6 +85,14 @@ public partial class StackFlyout : Popup
     /// area, its DPI scale and the configured edge. Null (designer/tests) means no split ever.
     /// </summary>
     public Func<bool>? CursorInSplitZone { get; set; }
+
+    /// <summary>
+    /// Answers "is the pointer on the shelf right now?" for the auto-close below. Supplied by
+    /// ShelfWindow, which tests the cursor position against the shelf's placed rectangle -- see
+    /// ShelfWindow.IsCursorOverShelf for why <see cref="UIElement.IsMouseOver"/> cannot be used
+    /// here. Null (designer/tests) means the flyout only counts its own hover.
+    /// </summary>
+    public Func<bool>? CursorOverShelf { get; set; }
 
     /// <summary>A row was clicked: put that one file on the clipboard. Argument is the full path.</summary>
     public event Action<string>? FileActivated;
@@ -128,7 +135,6 @@ public partial class StackFlyout : Popup
         HorizontalOffset = edge == EdgeSide.Left ? 6 : -6;
 
         PlacementTarget = placementTarget;
-        _owner = Window.GetWindow(placementTarget);
 
         _hoverMisses = 0;
         IsOpen = true;
@@ -194,6 +200,14 @@ public partial class StackFlyout : Popup
     /// flyout -- either one, taken literally, would close the flyout the instant the user reached
     /// for it. Asking "is the pointer on either of us?" a few times a second has no such gap.</para>
     ///
+    /// <para>The two halves of that question are asked differently, and deliberately so. This
+    /// popup's own hover is a plain hit test (<c>Child.IsMouseOver</c>) because hit-testing inside
+    /// the captured subtree still works normally. The SHELF's half cannot be: holding SubTree
+    /// capture makes WPF report the shelf window as not moused-over even with the pointer sitting
+    /// on the card, so it is answered from the cursor position instead
+    /// (<see cref="CursorOverShelf"/>). Measured -- with an IsMouseOver term there, a flyout closed
+    /// itself under a stationary cursor parked on its own card within ~0.8 s.</para>
+    ///
     /// <para>This is what keeps the shelf dismissable at all: the shelf suppresses its retract
     /// countdown while the flyout is open (see ShelfWindow.IsPointerInside), so without a way for
     /// the flyout to close on its own, walking away from an expanded stack would leave the shelf
@@ -216,7 +230,7 @@ public partial class StackFlyout : Popup
         }
 
         var overFlyout = Child is FrameworkElement child && child.IsMouseOver;
-        var overShelf = _owner is not null && _owner.IsMouseOver;
+        var overShelf = CursorOverShelf?.Invoke() ?? false;
 
         if (overFlyout || overShelf || IsKeyboardFocusWithin)
         {

@@ -190,6 +190,12 @@ public sealed partial class ItemStore
     // target's (duplicates excluded). Fails without changing anything if the
     // combined count would exceed 10. On success, source is removed and
     // target's hash is recomputed.
+    //
+    // Pinning is OR-ed, not inherited from the target. A merge deletes the
+    // source item, so a pinned source folded into an unpinned target would
+    // silently hand its files to a card PurgeOlderThan is free to delete --
+    // the user pinned those paths, and dragging one card onto another is not
+    // a request to unprotect them.
     public bool TryMergeFiles(string targetId, string sourceId)
     {
         lock (_lock)
@@ -223,6 +229,7 @@ public sealed partial class ItemStore
 
             target.Paths = mergedPaths;
             target.ContentHash = Fnv1a(Encoding.UTF8.GetBytes(string.Join("\n", mergedPaths)));
+            target.Pinned |= source.Pinned;
             _items.Remove(source);
         }
 
