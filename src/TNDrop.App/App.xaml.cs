@@ -100,24 +100,32 @@ public partial class App : System.Windows.Application
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
-        // (2b) Shutdown signal: created only after the single-instance mutex winner is decided
-        // (step (1), above) and FileLogger is up (step (2), just above), so its callback always
-        // has a live logger. Fires on a thread-pool thread -- RunOnUiThread marshals onto the
-        // dispatcher before calling Shutdown(), same as OnDisplaySettingsChanged does.
-        _shutdownSignal = new ShutdownSignal(ShutdownRequestEventName, () =>
-        {
-            FileLogger.Instance?.Info(Module, "shutdown requested by installer");
-            RunOnUiThread(Shutdown);
-        });
-
-        // (3)-(6) run under a single guard: a throw anywhere in here would otherwise be
+        // (2b), (3)-(6) run under a single guard: a throw anywhere in here would otherwise be
         // caught by DispatcherUnhandledException (WPF pumps OnStartup on the Dispatcher),
         // which sets e.Handled = true and lets OnStartup return early -- with the mutex
         // already held, no tray icon, and ShutdownMode="OnExplicitShutdown", that would
         // leave an unkillable-by-normal-means headless zombie process. Catch here instead
         // and shut down explicitly so OnExit still runs and the process actually exits.
+        // ShutdownSignal's own constructor (below, step (2b)) can throw too -- e.g.
+        // WaitHandleCannotBeOpenedException/UnauthorizedAccessException if an incompatible
+        // named object already occupies ShutdownRequestEventName -- so it belongs inside this
+        // guard rather than before it; a throw before the guard would reproduce exactly the
+        // zombie-process failure mode this try/catch exists to avoid.
         try
         {
+            // (2b) Shutdown signal: created only after the single-instance mutex winner is
+            // decided (step (1), above) and FileLogger is up (step (2), just above), so its
+            // callback always has a live logger. Fires on a thread-pool thread -- RunOnUiThread
+            // marshals onto the dispatcher before calling Shutdown(), same as
+            // OnDisplaySettingsChanged does. Does not depend on Settings/Store, so it can sit
+            // anywhere in this try block; placed first since it is conceptually still startup
+            // plumbing rather than app state.
+            _shutdownSignal = new ShutdownSignal(ShutdownRequestEventName, () =>
+            {
+                FileLogger.Instance?.Info(Module, "shutdown requested by installer");
+                RunOnUiThread(Shutdown);
+            });
+
             // (3) Settings + UI culture, before any UI string is read.
             SettingsStore = new SettingsStore(DataDir);
             Settings = SettingsStore.Load();
