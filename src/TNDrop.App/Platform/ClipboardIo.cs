@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -25,6 +26,20 @@ public static class ClipboardIo
     private const int MaxAttempts = 5;
     private const int BaseDelayMs = 50;
 
+    // Budget for the RAW WIN32 fallback read only (ReadHistoryFlagValueFromWin32) -- deliberately
+    // smaller than MaxAttempts. That fallback runs synchronously on the UI Dispatcher thread inside
+    // ReadOnce(), which is itself retried up to MaxAttempts times by Retry<T> on ExternalException.
+    // Nesting the file's usual 5-attempt/50ms*2^n inner loop inside that outer retry gave a
+    // worst-case stall of roughly MaxAttempts * (a full 5-attempt backoff, ~750ms of sleeps) =~
+    // 4.5s of a blocked UI thread if the clipboard stayed transiently uncooperative the whole time.
+    // Capping this inner budget to 2 attempts (one 50ms sleep) bounds the worst case to roughly
+    // MaxAttempts * 50ms =~ 250ms even if every outer retry hits the fallback. The cost of giving
+    // up early is exactly one screenshot read as "unreadable" (fail-open: NOT excluded, see
+    // EvaluatePrivacy) rather than as its true value -- and this fallback is now rare in practice,
+    // since ReadHistoryFlagValue's fast path (below) reads the value off the already-captured
+    // IDataObject with no live clipboard access at all in the common case.
+    private const int HistoryFlagMaxAttempts = 2;
+
     // Single source of truth for the three format NAMES: PrivacyFormats (the enumerable other
     // code/tests inspect) and EvaluatePrivacy (the logic that decides on them) both read from
     // these same three constants, so the two can never drift apart.
@@ -32,7 +47,7 @@ public static class ClipboardIo
     private const string HistoryFormat = "CanIncludeInClipboardHistory";
     private const string ViewerIgnoreFormat = "Clipboard Viewer Ignore";
 
-    public static readonly string[] PrivacyFormats = { ExcludeFormat, HistoryFormat, ViewerIgnoreFormat };
+    public static readonly IReadOnlyList<string> PrivacyFormats = new[] { ExcludeFormat, HistoryFormat, ViewerIgnoreFormat };
 
     /// <summary>Result of <see cref="EvaluatePrivacy"/>: whether to exclude, and (for logging) which format matched.</summary>
     public readonly record struct PrivacyEvaluation(bool Excluded, string? MatchedFormat);
@@ -119,27 +134,61 @@ public static class ClipboardIo
 
     /// <summary>
     /// Which of <see cref="PrivacyFormats"/> are actually on <paramref name="data"/> right now.
-    /// <para><b>Deliberately checks each name via <see cref="WpfDataObject.GetDataPresent(string)"/>
-    /// instead of scanning <see cref="WpfDataObject.GetFormats()"/></b>: verified experimentally
-    /// (real clipboard, [StaFact]) that GetFormats() can OMIT a custom registered format that was
-    /// appended to the clipboard by a second OpenClipboard/SetClipboardData call after the first
-    /// app already established the OLE data object (exactly the pattern real privacy-flag-setting
-    /// apps use: set the payload via one clipboard write, then reopen and stamp the marker format
-    /// without EmptyClipboard) -- while GetDataPresent(name) for that SAME format correctly returns
-    /// true. Scanning GetFormats() for these three names would have silently never matched any of
-    /// them for such content, defeating both the old presence-based checks and the new value-based
-    /// one. Checking each of the three known names directly sidesteps that gap entirely.</para>
+    /// <para><b>Unions two independent detection channels</b> rather than relying on either alone,
+    /// because each has a gap the other covers:</para>
+    /// <list type="bullet">
+    /// <item><see cref="WpfDataObject.GetDataPresent(string)"/> per name -- verified experimentally
+    /// (real clipboard, [StaFact]) that <see cref="WpfDataObject.GetFormats()"/> can OMIT a custom
+    /// registered format that was appended to the clipboard by a second OpenClipboard/
+    /// SetClipboardData call after the first app already established the OLE data object (exactly
+    /// the pattern real privacy-flag-setting apps use: set the payload via one clipboard write, then
+    /// reopen and stamp the marker format without EmptyClipboard) -- while GetDataPresent(name) for
+    /// that SAME format correctly returns true. Scanning GetFormats() ALONE for these three names
+    /// would have silently never matched any of them for such content.</item>
+    /// <item><see cref="WpfDataObject.GetFormats()"/> intersected with the three known names -- the
+    /// reverse gap: GetDataPresent probes under WPF's own fixed set of allowed TYMEDs, so a foreign
+    /// data object that advertises one of these formats via EnumFormatEtc under a TYMED outside that
+    /// set answers GetFormats() "yes" but GetDataPresent(name) "no". Relying on GetDataPresent ALONE
+    /// (the v1.2-task-G-first-pass approach, which section-1's finding above superseded) would then
+    /// silently un-exclude content v1 correctly excluded on presence.</item>
+    /// </list>
+    /// <para>These formats are fail-closed by design (presence -- or, for HistoryFormat, a readable
+    /// zero value -- must never go undetected just because one particular API surface missed it), so
+    /// the union is deliberate: either channel seeing a format is enough to report it as present.</para>
     /// </summary>
-    private static IEnumerable<string> PrivacyFormatsPresentOn(WpfDataObject data) =>
-        PrivacyFormats.Where(data.GetDataPresent);
+    private static IEnumerable<string> PrivacyFormatsPresentOn(WpfDataObject data)
+    {
+        var viaPresence = PrivacyFormats.Where(data.GetDataPresent);
+        var viaEnumeration = SafeGetFormats(data)
+            .Where(f => f is not null && PrivacyFormats.Contains(f, StringComparer.OrdinalIgnoreCase));
+
+        return viaPresence.Union(viaEnumeration, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// <see cref="WpfDataObject.GetFormats()"/> can return null (undocumented, but seen from a
+    /// failed/empty COM data object); never let that null propagate into a LINQ pipeline. Not
+    /// wrapped in try/catch: GetFormats() throwing is exactly the class of transient COM failure
+    /// <see cref="Retry{T}"/> already retries the whole <see cref="ReadOnce"/> call for.
+    /// </summary>
+    private static string[] SafeGetFormats(WpfDataObject data) => data.GetFormats() ?? Array.Empty<string>();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetClipboardSequenceNumber();
 
     private static CapturedClip? ReadOnce()
     {
+        // Captured BEFORE GetDataObject() so the raw Win32 fallback (see ReadHistoryFlagValue) can
+        // detect whether the clipboard changed underneath this read -- see its remarks.
+        var sequenceAtSnapshot = GetClipboardSequenceNumber();
+
         WpfDataObject? data = WpfClipboard.GetDataObject();
         if (data is null)
             return null;
 
-        var evaluation = EvaluatePrivacy(PrivacyFormatsPresentOn(data), ReadHistoryFlagValue);
+        var evaluation = EvaluatePrivacy(
+            PrivacyFormatsPresentOn(data),
+            () => ReadHistoryFlagValue(data, sequenceAtSnapshot));
         if (evaluation.Excluded)
         {
             // Diagnostic per the brief: format NAME only -- never content, size, or paths.
@@ -207,28 +256,78 @@ public static class ClipboardIo
     private static extern UIntPtr GlobalSize(IntPtr hMem);
 
     /// <summary>
-    /// Reads the DWORD payload of the CanIncludeInClipboardHistory clipboard format straight off
-    /// the live Win32 clipboard: RegisterClipboardFormat to resolve the format id, OpenClipboard
-    /// (retried with the same 5-attempts/50ms*2^n backoff as <see cref="Retry{T}"/> -- OpenClipboard
-    /// fails, not throws, when another process holds the clipboard open, so it needs its own loop
-    /// rather than reusing Retry's exception-catching one) + GetClipboardData + GlobalLock/GlobalSize
-    /// (>= 4 bytes) to read the value, GlobalUnlock, CloseClipboard in finally.
-    /// Returns null on ANY failure (format not registered, clipboard never opens, handle missing,
-    /// payload too small) -- per <see cref="EvaluatePrivacy"/>, null means "do not exclude".
+    /// Reads the DWORD payload of the CanIncludeInClipboardHistory clipboard format.
+    /// <para><b>Fast path (the common case, no live clipboard access at all):</b> ask the SAME
+    /// <paramref name="data"/> object <see cref="ReadOnce"/> already captured for its data under
+    /// this format name. Verified experimentally (real clipboard, [StaFact]): for a custom
+    /// HGLOBAL-backed format WPF has no built-in type mapping for, <c>IDataObject.GetData</c>
+    /// returns a <see cref="MemoryStream"/> over the raw bytes -- reading that costs nothing further
+    /// and, critically, comes from the EXACT SAME clipboard generation as the privacy check and the
+    /// Files/Text/Image branches in <see cref="ReadOnce"/>, avoiding the single-generation
+    /// principle violation a second live clipboard read would otherwise introduce (decision and
+    /// content must never be read from two different clipboard "generations" -- see the class
+    /// remarks on <see cref="ReadOnce"/>'s Bitmap branch for the established precedent).</para>
+    /// <para><b>Fallback (rare):</b> if the format did not arrive as a MemoryStream on
+    /// <paramref name="data"/> (e.g. this call came from the GetFormats()-only detection channel in
+    /// <see cref="PrivacyFormatsPresentOn"/>, where GetDataPresent -- and therefore GetData -- says
+    /// no), reopen the LIVE clipboard via <see cref="ReadHistoryFlagValueFromWin32"/>. That
+    /// necessarily reintroduces a TOCTOU window against <paramref name="data"/>'s generation, so it
+    /// is guarded by <paramref name="sequenceAtSnapshot"/> (the sequence number captured
+    /// immediately before <c>WpfClipboard.GetDataObject()</c> produced <paramref name="data"/>): a
+    /// mismatch after the raw read means the clipboard changed in between, and the value is
+    /// discarded (fail-open, i.e. treated the same as an unreadable value).</para>
     /// </summary>
-    internal static uint? ReadHistoryFlagValue()
+    private static uint? ReadHistoryFlagValue(WpfDataObject data, uint sequenceAtSnapshot)
+    {
+        try
+        {
+            if (data.GetData(HistoryFormat) is MemoryStream stream)
+            {
+                var bytes = stream.ToArray();
+                if (bytes.Length >= sizeof(uint))
+                    return BitConverter.ToUInt32(bytes, 0);
+
+                return null; // payload present but too small -- unreadable, do not exclude
+            }
+        }
+        catch
+        {
+            // Fall through to the raw fallback below.
+        }
+
+        return ReadHistoryFlagValueFromWin32(sequenceAtSnapshot);
+    }
+
+    /// <summary>
+    /// Raw Win32 fallback for <see cref="ReadHistoryFlagValue"/>: RegisterClipboardFormat to
+    /// resolve the format id, OpenClipboard (retried up to <see cref="HistoryFlagMaxAttempts"/>
+    /// times with the file's usual 50ms*2^n backoff -- OpenClipboard fails, not throws, when
+    /// another process holds the clipboard open, so it needs its own loop rather than reusing
+    /// <see cref="Retry{T}"/>'s exception-catching one) + GetClipboardData + GlobalLock/GlobalSize
+    /// (>= 4 bytes) to read the value, GlobalUnlock, CloseClipboard in finally.
+    /// <para>TOCTOU guard: re-reads <see cref="GetClipboardSequenceNumber"/> immediately after the
+    /// raw read and compares it to <paramref name="sequenceAtSnapshot"/> (captured before the
+    /// caller's <c>GetDataObject()</c>); a mismatch discards the value -- the clipboard changed
+    /// underneath this read, so what was just read may not belong to the content the rest of
+    /// <see cref="ReadOnce"/> is about to process.</para>
+    /// Returns null on ANY failure (format not registered, clipboard never opens, handle missing,
+    /// payload too small, sequence number mismatch) -- per <see cref="EvaluatePrivacy"/>, null means
+    /// "do not exclude".
+    /// </summary>
+    private static uint? ReadHistoryFlagValueFromWin32(uint sequenceAtSnapshot)
     {
         var format = RegisterClipboardFormat(HistoryFormat);
         if (format == 0)
             return null;
 
-        for (var attempt = 0; attempt < MaxAttempts; attempt++)
+        for (var attempt = 0; attempt < HistoryFlagMaxAttempts; attempt++)
         {
             if (OpenClipboard(IntPtr.Zero))
             {
                 try
                 {
-                    return ReadDwordHandle(GetClipboardData(format));
+                    var value = ReadDwordHandle(GetClipboardData(format));
+                    return GetClipboardSequenceNumber() == sequenceAtSnapshot ? value : null;
                 }
                 finally
                 {
@@ -236,7 +335,7 @@ public static class ClipboardIo
                 }
             }
 
-            if (attempt == MaxAttempts - 1)
+            if (attempt == HistoryFlagMaxAttempts - 1)
             {
                 FileLogger.Instance?.Warn(Module,
                     $"OpenClipboard failed while reading {HistoryFormat} value (Win32 error {Marshal.GetLastWin32Error()})");
