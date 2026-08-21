@@ -121,6 +121,13 @@
                             <ComboBox x:Name="AutoDeleteCombo" Width="220" HorizontalAlignment="Left" />
                         </StackPanel>
 
+                        <CheckBox x:Name="PurgeUnpinnedOnRestartCheckBox" />
+
+                        <StackPanel Style="{StaticResource Settings.FieldGroup}">
+                            <TextBlock x:Name="HistoryCapacityLabelText" Style="{StaticResource Settings.SectionLabel}" />
+                            <ComboBox x:Name="HistoryCapacityCombo" Width="160" HorizontalAlignment="Left" />
+                        </StackPanel>
+
                         <CheckBox x:Name="MoveToTopCheckBox" />
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
@@ -170,6 +177,8 @@
                                 <RadioButton x:Name="TriggerAlignBottomRadio" GroupName="TriggerAlign" />
                             </StackPanel>
                         </StackPanel>
+
+                        <CheckBox x:Name="TriggerHintCheckBox" />
                     </StackPanel>
                 </ScrollViewer>
 
@@ -185,6 +194,8 @@
                                 <RadioButton x:Name="TextScaleLargeRadio" GroupName="TextScale" />
                             </StackPanel>
                         </StackPanel>
+
+                        <CheckBox x:Name="IndicatorEnabledCheckBox" />
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
                             <TextBlock x:Name="IndicatorStyleLabelText" Style="{StaticResource Settings.SectionLabel}" />
@@ -204,8 +215,6 @@
                             </StackPanel>
                             <TextBlock x:Name="LanguageRestartNoteText" Style="{StaticResource Settings.HintText}" />
                         </StackPanel>
-
-                        <CheckBox x:Name="EdgeHintCheckBox" />
                     </StackPanel>
                 </ScrollViewer>
             </Grid>

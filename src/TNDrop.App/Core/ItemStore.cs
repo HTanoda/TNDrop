@@ -321,6 +321,61 @@ public sealed partial class ItemStore
         return removed.Count;
     }
 
+    // Keeps the newest `max` UNPINNED items and removes any older unpinned ones beyond that;
+    // pinned items are never counted against the cap and never removed here, matching
+    // PurgeOlderThan's own "pinned is protected" contract. _items is newest-first, so walking it
+    // in order and counting only unpinned items as they're seen naturally keeps the newest ones
+    // first and marks the rest (regardless of how many pinned items are interleaved between
+    // them) for removal. Blob cleanup goes through the same DeleteBlobsFor path as
+    // Remove/RemoveMany/RemoveAll/PurgeOlderThan; Changed is raised once, only when something was
+    // actually removed. Called by CapturePipeline after a successful TryAdd and before Save, with
+    // the raw (Func-injected) AppSettings.HistoryCapacity value -- this method does not itself
+    // clamp `max` into [Min,Max]Capacity (SettingsStore.Load does that for the persisted setting),
+    // so a caller can still ask for an arbitrarily small or large cap, which is what the tests use.
+    public int TrimUnpinnedToCapacity(int max)
+    {
+        var capacity = Math.Max(0, max);
+        List<ClipItem> removed;
+
+        lock (_lock)
+        {
+            var keptUnpinned = 0;
+            removed = new List<ClipItem>();
+
+            foreach (var item in _items)
+            {
+                if (item.Pinned)
+                {
+                    continue;
+                }
+
+                if (keptUnpinned < capacity)
+                {
+                    keptUnpinned++;
+                }
+                else
+                {
+                    removed.Add(item);
+                }
+            }
+
+            if (removed.Count > 0)
+            {
+                var removedIds = new HashSet<string>(removed.Select(i => i.Id));
+                _items.RemoveAll(i => removedIds.Contains(i.Id));
+            }
+        }
+
+        DeleteBlobsFor(removed);
+
+        if (removed.Count > 0)
+        {
+            Changed?.Invoke();
+        }
+
+        return removed.Count;
+    }
+
     // Single blob-deletion path shared by Remove/RemoveMany/RemoveAll/PurgeOlderThan: any code
     // path that drops items from _items routes their Image blobs through here so a delete is
     // never "removed from the list but still on disk". Non-Image items have no ImageFile/

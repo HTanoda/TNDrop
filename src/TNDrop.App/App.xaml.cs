@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -128,6 +129,21 @@ public partial class App : System.Windows.Application
             Store = new ItemStore(DataDir);
             Store.Load();
 
+            // (4b) Restart purge (v1.2 Task E): if the user asked for it, drop every unpinned item
+            // right after Load, before anything else (tray, shelf, pipeline) can read the store.
+            // Counted up front rather than trusting RemoveAll's return value (it has none) --
+            // logged as a count only, never paths or content, per the logging rule in CLAUDE.md.
+            if (Settings.PurgeUnpinnedOnRestart)
+            {
+                var unpinnedCount = Store.Items.Count(i => !i.Pinned);
+                if (unpinnedCount > 0)
+                {
+                    Store.RemoveAll(i => !i.Pinned);
+                    Store.Save();
+                    FileLogger.Instance?.Info(Module, $"restart purge removed {unpinnedCount} unpinned item(s)");
+                }
+            }
+
             // (5) Tray / monitor / sound.
             _trayIcon = new TrayIcon();
             _trayIcon.SetHoverEnabled(Settings.HoverEnabled);
@@ -171,7 +187,7 @@ public partial class App : System.Windows.Application
             _shelf.IsVisibleChanged += OnShelfVisibleChanged;
 
             _edgeTrigger.ApplySettings(Settings);
-            _edgeTrigger.SetHintVisible(Settings.EdgeHintEnabled);
+            _edgeTrigger.SetHintEnabled(Settings.EdgeHintEnabled);
             _edgeTrigger.Triggered += OnEdgeTriggered;
             _edgeTrigger.DragTriggered += OnEdgeDragTriggered;
 
@@ -452,9 +468,28 @@ public partial class App : System.Windows.Application
             return false;
         }
 
-        Indicator.Flash(Settings.IndicatorStyle, Settings.Edge);
+        FlashIndicator(Settings.IndicatorStyle, Settings.Edge);
         Sounds.PlayCapture();
         return true;
+    }
+
+    /// <summary>
+    /// The one gate for <see cref="IndicatorWindow.Flash"/> (v1.2 Task E): every caller that wants
+    /// to flash the capture/copy/delete confirmation -- this class's own
+    /// <see cref="NotifyManualCapture"/>, ShelfWindow's ConfirmCopy/ConfirmDelete, and
+    /// SettingsWindow's indicator-style test flash -- goes through here instead of touching
+    /// <see cref="Indicator"/> directly, so <c>IndicatorEnabled=false</c> only has to be checked
+    /// in one place to suppress all of them at once. Sound is a separate call at every one of
+    /// those call sites and is deliberately untouched by this gate.
+    /// </summary>
+    public static void FlashIndicator(IndicatorStyle style, EdgeSide edge)
+    {
+        if (!Settings.IndicatorEnabled)
+        {
+            return;
+        }
+
+        Indicator?.Flash(style, edge);
     }
 
     /// <summary>
@@ -613,8 +648,34 @@ public partial class App : System.Windows.Application
 
         if (System.Windows.Application.Current is App app)
         {
-            app._edgeTrigger?.SetHintVisible(value);
+            app._edgeTrigger?.SetHintEnabled(value);
         }
+    }
+
+    /// <summary>Restart-time purge toggle (v1.2 Task E): only persisted here -- the purge itself
+    /// runs once, at the NEXT startup (see OnStartup's "(4b)" step), not live from this call.</summary>
+    public static void SetPurgeUnpinnedOnRestart(bool value)
+    {
+        Settings.PurgeUnpinnedOnRestart = value;
+        SaveSettings();
+    }
+
+    /// <summary>History capacity (v1.2 Task E): takes effect on the next capture, via
+    /// CapturePipeline reading Settings.HistoryCapacity fresh through its Func -- no live trim is
+    /// triggered here, matching AutoDelete's own "policy changes apply on the next tick/capture,
+    /// not immediately" contract.</summary>
+    public static void SetHistoryCapacity(int value)
+    {
+        Settings.HistoryCapacity = value;
+        SaveSettings();
+    }
+
+    /// <summary>Indicator on/off (v1.2 Task E): see <see cref="FlashIndicator"/> for the one place
+    /// this is actually enforced.</summary>
+    public static void SetIndicatorEnabled(bool value)
+    {
+        Settings.IndicatorEnabled = value;
+        SaveSettings();
     }
 
     /// <summary>

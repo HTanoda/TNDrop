@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using TNDrop.Core;
 using TNDrop.Platform;
 using TNDrop.Services;
@@ -19,9 +20,17 @@ public partial class EdgeTriggerWindow : Window
     /// <summary>Placement passes allowed per ApplySettings call. See the re-entrancy latch there.</summary>
     private const int MaxPlacementPasses = 2;
 
+    /// <summary>Poll rate for the proximity hint (v1.2 Task E). Cheap (one Win32 cursor read plus
+    /// pure arithmetic) so 250ms costs nothing worth avoiding, but frequent enough that the
+    /// beacon feels responsive as the pointer approaches.</summary>
+    private static readonly TimeSpan HintPollInterval = TimeSpan.FromMilliseconds(250);
+
     private AppSettings? _settings;
     private bool _applying;
     private bool _reapplyRequested;
+
+    private readonly DispatcherTimer _hintTimer;
+    private bool _hintFeatureEnabled;
 
     /// <summary>Raised when the pointer enters the band.</summary>
     public event Action? Triggered;
@@ -51,6 +60,19 @@ public partial class EdgeTriggerWindow : Window
         // on an already-shown shelf just re-runs the animation from where it is.
         DragEnter += OnBandDrag;
         DragOver += OnBandDrag;
+
+        // Proximity hint (v1.2 Task E): the timer only ever runs while this window is visible.
+        // App only calls Show() on this window while HoverEnabled is on, no fullscreen app is up
+        // and the shelf itself is not out (see App.SetHoverEnabled/OnShelfVisibleChanged/
+        // OnFullscreenChanged) -- so IsVisible already IS "HoverEnabled && !fullscreen && shelf
+        // hidden" with no second copy of that gate needed here. See SetHintEnabled.
+        IsVisibleChanged += (_, _) => UpdateHintTimerState();
+
+        _hintTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher.CurrentDispatcher)
+        {
+            Interval = HintPollInterval,
+        };
+        _hintTimer.Tick += OnHintTimerTick;
 
         // Create the HWND now. ApplySettings runs before the window is ever shown and its
         // device-pixel snap needs a handle; without this the first placement silently skips it.
@@ -151,9 +173,77 @@ public partial class EdgeTriggerWindow : Window
         DragTriggered?.Invoke();
     }
 
-    /// <summary>Shows or hides the faint 2px beacon that hints where the shelf lives.</summary>
+    /// <summary>Shows or hides the faint 2px beacon that hints where the shelf lives. The display
+    /// primitive: callers that decide WHEN it should be lit (currently only
+    /// <see cref="OnHintTimerTick"/>/<see cref="UpdateHintTimerState"/> below) go through this,
+    /// not HintBeacon.Visibility directly.</summary>
     public void SetHintVisible(bool visible)
         => HintBeacon.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>
+    /// Turns the proximity hint feature on/off (AppSettings.EdgeHintEnabled). While enabled AND
+    /// this window is visible, <see cref="_hintTimer"/> polls the cursor every
+    /// <see cref="HintPollInterval"/> and drives <see cref="SetHintVisible"/> via
+    /// <see cref="ShelfPlacement.IsNearTriggerButOutside"/> -- lit only when the pointer is near
+    /// the configured edge but at the wrong height to actually be in the hot zone. Disabling it
+    /// (or the window going invisible -- see <see cref="UpdateHintTimerState"/>) stops the timer
+    /// AND force-hides the beacon, so it can never be left lit with nothing polling to turn it
+    /// back off.
+    /// </summary>
+    public void SetHintEnabled(bool enabled)
+    {
+        _hintFeatureEnabled = enabled;
+        UpdateHintTimerState();
+
+        if (!enabled)
+        {
+            SetHintVisible(false);
+        }
+    }
+
+    private void UpdateHintTimerState()
+    {
+        if (_hintFeatureEnabled && IsVisible)
+        {
+            _hintTimer.Start();
+        }
+        else
+        {
+            _hintTimer.Stop();
+            SetHintVisible(false);
+        }
+    }
+
+    private void OnHintTimerTick(object? sender, EventArgs e)
+    {
+        if (_settings is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var area = MonitorGeometry.Resolve(_settings.MonitorDeviceName, this);
+            var workArea = new ShelfPlacement.Rect(area.X, area.Y, area.W, area.H);
+            var triggerRect = ShelfPlacement.TriggerRect(
+                workArea, _settings.Edge, _settings.TriggerProximityPx, _settings.HotZonePercent, _settings.TriggerAlign);
+
+            var (cursorX, cursorY) = MonitorGeometry.CursorDip(area);
+
+            var show = ShelfPlacement.IsNearTriggerButOutside(
+                workArea, triggerRect, _settings.Edge, _settings.TriggerProximityPx, cursorX, cursorY);
+
+            SetHintVisible(show);
+        }
+        catch (Exception ex)
+        {
+            // A timer tick, not a user action -- degrade to "hint off" and keep polling rather
+            // than let one bad cursor/monitor read kill the beacon (or the app) for the rest of
+            // the session.
+            FileLogger.Instance?.Warn(Module, $"proximity hint check failed: {ex.Message}");
+            SetHintVisible(false);
+        }
+    }
 
     private void OnDpiChanged(object sender, System.Windows.DpiChangedEventArgs e)
     {

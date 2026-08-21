@@ -56,6 +56,14 @@ public sealed class CapturePipeline
 
         if (added)
         {
+            // Trim BEFORE Save, not after: TryAdd already added the new item(s) to _store's
+            // in-memory list above, so trimming now and saving once afterward persists both the
+            // add and the trim in a single write -- a trim-then-save-again would just be a second
+            // (redundant) disk write of the same end state. HistoryCapacity is read fresh off
+            // _settings() rather than captured once at construction so a settings-window change
+            // takes effect on the very next capture, matching AutoDeleteService's own
+            // Func<T>-injection rationale.
+            _store.TrimUnpinnedToCapacity(_settings().HistoryCapacity);
             _store.Save();
             ItemCaptured?.Invoke();
         }

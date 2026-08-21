@@ -1710,7 +1710,7 @@ public partial class ShelfWindow : Window
         var settings = global::TNDrop.App.Settings;
         if (settings is not null)
         {
-            global::TNDrop.App.Indicator?.Flash(settings.IndicatorStyle, settings.Edge);
+            global::TNDrop.App.FlashIndicator(settings.IndicatorStyle, settings.Edge);
         }
 
         global::TNDrop.App.Sounds?.PlayCapture();
@@ -1974,7 +1974,7 @@ public partial class ShelfWindow : Window
         var settings = global::TNDrop.App.Settings;
         if (settings is not null)
         {
-            global::TNDrop.App.Indicator?.Flash(settings.IndicatorStyle, settings.Edge);
+            global::TNDrop.App.FlashIndicator(settings.IndicatorStyle, settings.Edge);
         }
 
         global::TNDrop.App.Sounds?.PlayDelete();

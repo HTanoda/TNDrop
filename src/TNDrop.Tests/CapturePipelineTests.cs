@@ -75,4 +75,40 @@ public class CapturePipelineTests : IDisposable
         Assert.Single(store.Items);
         Assert.Equal(2, Directory.GetFiles(store.BlobsDir).Length);
     }
+
+    // v1.2 Task E: TrimUnpinnedToCapacity runs after every successful add, before Save, so one
+    // Save persists both the new item and the trim.
+    [StaFact]
+    public void Process_trims_history_to_the_configured_capacity()
+    {
+        var store = new ItemStore(_dir);
+        var p = new CapturePipeline(store, new ThumbnailService(store.BlobsDir), () => new AppSettings { HistoryCapacity = 3 });
+
+        Assert.True(p.Process(new CapturedClip { Kind = ClipKind.Text, Text = "one" }));
+        Assert.True(p.Process(new CapturedClip { Kind = ClipKind.Text, Text = "two" }));
+        Assert.True(p.Process(new CapturedClip { Kind = ClipKind.Text, Text = "three" }));
+        Assert.True(p.Process(new CapturedClip { Kind = ClipKind.Text, Text = "four" }));
+
+        Assert.Equal(3, store.Items.Count);
+        Assert.Equal(new[] { "four", "three", "two" }, store.Items.Select(i => i.Text));
+    }
+
+    [StaFact]
+    public void Process_never_trims_pinned_items()
+    {
+        var store = new ItemStore(_dir);
+        var p = new CapturePipeline(store, new ThumbnailService(store.BlobsDir), () => new AppSettings { HistoryCapacity = 1 });
+
+        p.Process(new CapturedClip { Kind = ClipKind.Text, Text = "pin-me" });
+        store.SetPinned(store.Items[0].Id, true);
+
+        p.Process(new CapturedClip { Kind = ClipKind.Text, Text = "second" });
+        p.Process(new CapturedClip { Kind = ClipKind.Text, Text = "third" });
+
+        // Capacity 1 keeps only the single newest UNPINNED item ("third"); the pinned item is
+        // never counted against the cap and never removed.
+        Assert.Equal(2, store.Items.Count);
+        Assert.Contains(store.Items, i => i.Text == "pin-me" && i.Pinned);
+        Assert.Contains(store.Items, i => i.Text == "third");
+    }
 }

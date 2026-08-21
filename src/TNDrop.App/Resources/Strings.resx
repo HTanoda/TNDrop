@@ -194,6 +194,15 @@
   <data name="SettingsMoveToTopOnCopy" xml:space="preserve">
     <value>貼り付け後に先頭へ移動する</value>
   </data>
+  <data name="SettingsPurgeUnpinnedOnRestart" xml:space="preserve">
+    <value>再起動時にピン留め以外を消去</value>
+  </data>
+  <data name="SettingsHistoryCapacity" xml:space="preserve">
+    <value>履歴の容量</value>
+  </data>
+  <data name="SettingsHistoryCapacityFormat" xml:space="preserve">
+    <value>{0} 件</value>
+  </data>
   <data name="SettingsRetractDelay" xml:space="preserve">
     <value>格納までの時間</value>
   </data>
@@ -263,6 +272,9 @@
   <data name="SettingsIndicatorStyleCorner" xml:space="preserve">
     <value>コーナー</value>
   </data>
+  <data name="SettingsIndicatorEnabled" xml:space="preserve">
+    <value>コピーインジケーター</value>
+  </data>
   <data name="SettingsLanguage" xml:space="preserve">
     <value>言語</value>
   </data>
@@ -275,8 +287,8 @@
   <data name="SettingsLanguageRestartNote" xml:space="preserve">
     <value>変更は次回起動時に適用されます</value>
   </data>
-  <data name="SettingsEdgeHint" xml:space="preserve">
-    <value>エッジヒントを表示する</value>
+  <data name="SettingsTriggerHint" xml:space="preserve">
+    <value>トリガー位置ヒント</value>
   </data>
   <data name="SettingsPercentFormat" xml:space="preserve">
     <value>{0}%</value>

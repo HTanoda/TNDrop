@@ -189,4 +189,100 @@ public class ItemStoreOperationsTests : IDisposable
         Assert.False(File.Exists(imagePath));
         Assert.False(File.Exists(thumbPath));
     }
+
+    // ---- TrimUnpinnedToCapacity (v1.2 Task E) --------------------------------------------------
+
+    [Fact]
+    public void TrimUnpinnedToCapacity_under_capacity_removes_nothing()
+    {
+        _store.TryAdd(Text("a")); _store.TryAdd(Text("b")); _store.TryAdd(Text("c"));
+
+        var removed = _store.TrimUnpinnedToCapacity(5);
+
+        Assert.Equal(0, removed);
+        Assert.Equal(3, _store.Items.Count);
+    }
+
+    [Fact]
+    public void TrimUnpinnedToCapacity_at_capacity_removes_nothing()
+    {
+        _store.TryAdd(Text("a")); _store.TryAdd(Text("b")); _store.TryAdd(Text("c"));
+
+        var removed = _store.TrimUnpinnedToCapacity(3);
+
+        Assert.Equal(0, removed);
+        Assert.Equal(3, _store.Items.Count);
+    }
+
+    [Fact]
+    public void TrimUnpinnedToCapacity_over_capacity_removes_oldest_and_keeps_newest()
+    {
+        // TryAdd inserts at head, so "d" (added last) is newest -- Items[0].
+        _store.TryAdd(Text("a")); _store.TryAdd(Text("b"));
+        _store.TryAdd(Text("c")); _store.TryAdd(Text("d"));
+
+        var removed = _store.TrimUnpinnedToCapacity(2);
+
+        Assert.Equal(2, removed);
+        Assert.Equal(2, _store.Items.Count);
+        Assert.Equal(new[] { "d", "c" }, _store.Items.Select(i => i.Text));
+    }
+
+    [Fact]
+    public void TrimUnpinnedToCapacity_excludes_pinned_from_the_count_and_never_removes_them()
+    {
+        var oldest = Text("oldest");
+        var pinned = Text("pinned");
+        var newer1 = Text("newer1");
+        var newer2 = Text("newer2");
+
+        _store.TryAdd(oldest);
+        _store.TryAdd(pinned);
+        _store.SetPinned(pinned.Id, true);
+        _store.TryAdd(newer1);
+        _store.TryAdd(newer2);
+
+        // Newest-first: newer2, newer1, pinned, oldest. Capacity 2 counts only unpinned items, so
+        // newer2/newer1 are kept, "oldest" is the one excess unpinned item, and "pinned" survives
+        // untouched even though it sits between the kept and removed unpinned items.
+        var removed = _store.TrimUnpinnedToCapacity(2);
+
+        Assert.Equal(1, removed);
+        var remaining = _store.Items.Select(i => i.Text).ToList();
+        Assert.DoesNotContain("oldest", remaining);
+        Assert.Contains("pinned", remaining);
+        Assert.Contains("newer1", remaining);
+        Assert.Contains("newer2", remaining);
+    }
+
+    [Fact]
+    public void TrimUnpinnedToCapacity_deletes_blobs_for_removed_images()
+    {
+        var (dropped, droppedImagePath, droppedThumbPath) = AddImageWithBlobs("dropped");
+        var (kept, _, _) = AddImageWithBlobs("kept");
+
+        // "dropped" was added first (older); "kept" second (newer) -- Items[0] is kept.
+        var removed = _store.TrimUnpinnedToCapacity(1);
+
+        Assert.Equal(1, removed);
+        Assert.Single(_store.Items);
+        Assert.Equal(kept.Id, _store.Items[0].Id);
+        Assert.False(File.Exists(droppedImagePath));
+        Assert.False(File.Exists(droppedThumbPath));
+    }
+
+    [Fact]
+    public void TrimUnpinnedToCapacity_zero_capacity_removes_all_unpinned()
+    {
+        var pinned = Text("pinned");
+        _store.TryAdd(pinned);
+        _store.SetPinned(pinned.Id, true);
+        _store.TryAdd(Text("a")); _store.TryAdd(Text("b"));
+
+        var removed = _store.TrimUnpinnedToCapacity(0);
+
+        Assert.Equal(2, removed);
+        Assert.Single(_store.Items);
+        Assert.True(_store.Items[0].Pinned);
+    }
 }

@@ -103,6 +103,23 @@ public static class MonitorGeometry
         }
     }
 
+    /// <summary>
+    /// The mouse cursor's position converted into the same DIP space as <paramref name="area"/> --
+    /// physical pixels divided by the monitor's own scale, the same division <see cref="Resolve"/>
+    /// used to produce <paramref name="area"/> in the first place. Only meaningful when the
+    /// caller's question is about THAT monitor: a cursor sitting on a differently-scaled monitor
+    /// is not corrected for here (callers that care, like EdgeTriggerWindow's proximity hint,
+    /// resolve <paramref name="area"/> from the same configured-monitor name they're testing the
+    /// cursor against).
+    /// </summary>
+    public static (double X, double Y) CursorDip(WorkArea area)
+    {
+        var scaleX = area.ScaleX > 0 ? area.ScaleX : 1.0;
+        var scaleY = area.ScaleY > 0 ? area.ScaleY : 1.0;
+        var cursor = System.Windows.Forms.Cursor.Position;
+        return (cursor.X / scaleX, cursor.Y / scaleY);
+    }
+
     private static System.Windows.Forms.Screen FindScreen(string? deviceName)
     {
         var all = System.Windows.Forms.Screen.AllScreens;

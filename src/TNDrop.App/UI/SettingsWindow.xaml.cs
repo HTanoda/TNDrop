@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -50,6 +51,7 @@ public partial class SettingsWindow : Window
 
     private sealed record MonitorOption(string? DeviceName, string Display);
     private sealed record AutoDeleteOption(AutoDeletePolicy Value, string Display);
+    private sealed record HistoryCapacityOption(int Value, string Display);
 
     public SettingsWindow()
     {
@@ -172,6 +174,46 @@ public partial class SettingsWindow : Window
             global::TNDrop.App.SetAutoDelete(option.Value);
         };
 
+        // Restart purge + history capacity (v1.2 Task E), placed directly under 自動削除 per the
+        // brief: both are "how much history sticks around", so they read as one group with it.
+        PurgeUnpinnedOnRestartCheckBox.Content = Strings.SettingsPurgeUnpinnedOnRestart;
+        WireCheckBox(PurgeUnpinnedOnRestartCheckBox, settings.PurgeUnpinnedOnRestart,
+            global::TNDrop.App.SetPurgeUnpinnedOnRestart);
+
+        HistoryCapacityLabelText.Text = Strings.SettingsHistoryCapacity;
+        var historyCapacityOptions = new[]
+        {
+            new HistoryCapacityOption(100, string.Format(CultureInfo.CurrentUICulture, Strings.SettingsHistoryCapacityFormat, 100)),
+            new HistoryCapacityOption(250, string.Format(CultureInfo.CurrentUICulture, Strings.SettingsHistoryCapacityFormat, 250)),
+            new HistoryCapacityOption(500, string.Format(CultureInfo.CurrentUICulture, Strings.SettingsHistoryCapacityFormat, 500)),
+            new HistoryCapacityOption(1000, string.Format(CultureInfo.CurrentUICulture, Strings.SettingsHistoryCapacityFormat, 1000)),
+        };
+        HistoryCapacityCombo.ItemsSource = historyCapacityOptions;
+        HistoryCapacityCombo.DisplayMemberPath = nameof(HistoryCapacityOption.Display);
+        HistoryCapacityCombo.SelectedValuePath = nameof(HistoryCapacityOption.Value);
+        HistoryCapacityCombo.SelectedValue = settings.HistoryCapacity;
+        if (HistoryCapacityCombo.SelectedItem is null)
+        {
+            // A loaded value outside the four offered options (SettingsStore.Load clamps into
+            // [100,1000] but an in-between int, e.g. 400, is still a legal loaded value -- see its
+            // doc comment) has no exact match here; fall back to the closest offered option rather
+            // than showing a blank combo, without silently rewriting the user's actual setting.
+            var closest = historyCapacityOptions
+                .OrderBy(o => Math.Abs(o.Value - settings.HistoryCapacity))
+                .First();
+            HistoryCapacityCombo.SelectedValue = closest.Value;
+        }
+
+        HistoryCapacityCombo.SelectionChanged += (_, _) =>
+        {
+            if (_initializing || HistoryCapacityCombo.SelectedItem is not HistoryCapacityOption option)
+            {
+                return;
+            }
+
+            global::TNDrop.App.SetHistoryCapacity(option.Value);
+        };
+
         RetractDelayLabelText.Text = Strings.SettingsRetractDelay;
         RetractDelaySlider.Minimum = 300;
         RetractDelaySlider.Maximum = 2000;
@@ -279,6 +321,13 @@ public partial class SettingsWindow : Window
         TriggerAlignTopRadio.Checked += (_, _) => OnTriggerAlignChanged(TriggerAlign.Top);
         TriggerAlignCenterRadio.Checked += (_, _) => OnTriggerAlignChanged(TriggerAlign.Center);
         TriggerAlignBottomRadio.Checked += (_, _) => OnTriggerAlignChanged(TriggerAlign.Bottom);
+
+        // Moved here from 外観 (v1.2 Task E): now that it also lights while the pointer is merely
+        // NEAR the edge (not just after entering the hot zone -- see EdgeTriggerWindow.SetHintEnabled),
+        // it reads as a positioning aid rather than an appearance choice. AppSettings.EdgeHintEnabled
+        // itself is unchanged (see its doc comment) -- only the label and its page moved.
+        TriggerHintCheckBox.Content = Strings.SettingsTriggerHint;
+        WireCheckBox(TriggerHintCheckBox, settings.EdgeHintEnabled, global::TNDrop.App.SetEdgeHintEnabled);
     }
 
     private void BuildMonitorCombo(AppSettings settings)
@@ -407,6 +456,13 @@ public partial class SettingsWindow : Window
         TextScaleMediumRadio.Checked += (_, _) => OnTextScaleChanged(TextScale.Medium);
         TextScaleLargeRadio.Checked += (_, _) => OnTextScaleChanged(TextScale.Large);
 
+        // Indicator on/off (v1.2 Task E), placed above the style picker: turning it off disables
+        // (greys out) the style radios below since a style choice is moot when nothing is ever
+        // going to flash -- see UpdateIndicatorStyleEnabled.
+        IndicatorEnabledCheckBox.Content = Strings.SettingsIndicatorEnabled;
+        WireCheckBox(IndicatorEnabledCheckBox, settings.IndicatorEnabled, OnIndicatorEnabledChanged);
+        UpdateIndicatorStyleEnabled(settings.IndicatorEnabled);
+
         IndicatorStyleLabelText.Text = Strings.SettingsIndicatorStyle;
         IndicatorBeaconRadio.Content = Strings.SettingsIndicatorStyleBeacon;
         IndicatorBarRadio.Content = Strings.SettingsIndicatorStyleBar;
@@ -435,9 +491,22 @@ public partial class SettingsWindow : Window
         LanguageEnRadio.IsChecked = !isJapanese;
         LanguageJaRadio.Checked += (_, _) => OnLanguageChanged("ja");
         LanguageEnRadio.Checked += (_, _) => OnLanguageChanged("en");
+    }
 
-        EdgeHintCheckBox.Content = Strings.SettingsEdgeHint;
-        WireCheckBox(EdgeHintCheckBox, settings.EdgeHintEnabled, global::TNDrop.App.SetEdgeHintEnabled);
+    private void OnIndicatorEnabledChanged(bool value)
+    {
+        global::TNDrop.App.SetIndicatorEnabled(value);
+        UpdateIndicatorStyleEnabled(value);
+    }
+
+    /// <summary>Nice-to-have: the style picker looks (and behaves) disabled while the indicator
+    /// itself is off, since picking a style nothing will ever show is a meaningless choice.</summary>
+    private void UpdateIndicatorStyleEnabled(bool enabled)
+    {
+        IndicatorBeaconRadio.IsEnabled = enabled;
+        IndicatorBarRadio.IsEnabled = enabled;
+        IndicatorPulseRadio.IsEnabled = enabled;
+        IndicatorCornerRadio.IsEnabled = enabled;
     }
 
     private void OnTextScaleChanged(TextScale scale)
@@ -460,7 +529,7 @@ public partial class SettingsWindow : Window
         }
 
         global::TNDrop.App.SetIndicatorStyle(style);
-        global::TNDrop.App.Indicator?.Flash(style, global::TNDrop.App.Settings.Edge);
+        global::TNDrop.App.FlashIndicator(style, global::TNDrop.App.Settings.Edge);
     }
 
     private void OnLanguageChanged(string language)

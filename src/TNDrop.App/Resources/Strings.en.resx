@@ -194,6 +194,15 @@
   <data name="SettingsMoveToTopOnCopy" xml:space="preserve">
     <value>Move to top after copying</value>
   </data>
+  <data name="SettingsPurgeUnpinnedOnRestart" xml:space="preserve">
+    <value>Clear unpinned items on restart</value>
+  </data>
+  <data name="SettingsHistoryCapacity" xml:space="preserve">
+    <value>History capacity</value>
+  </data>
+  <data name="SettingsHistoryCapacityFormat" xml:space="preserve">
+    <value>{0} items</value>
+  </data>
   <data name="SettingsRetractDelay" xml:space="preserve">
     <value>Time until it retracts</value>
   </data>
@@ -263,6 +272,9 @@
   <data name="SettingsIndicatorStyleCorner" xml:space="preserve">
     <value>Corner</value>
   </data>
+  <data name="SettingsIndicatorEnabled" xml:space="preserve">
+    <value>Copy indicator</value>
+  </data>
   <data name="SettingsLanguage" xml:space="preserve">
     <value>Language</value>
   </data>
@@ -275,8 +287,8 @@
   <data name="SettingsLanguageRestartNote" xml:space="preserve">
     <value>Changes apply the next time the app starts</value>
   </data>
-  <data name="SettingsEdgeHint" xml:space="preserve">
-    <value>Show the edge hint</value>
+  <data name="SettingsTriggerHint" xml:space="preserve">
+    <value>Trigger position hint</value>
   </data>
   <data name="SettingsPercentFormat" xml:space="preserve">
     <value>{0}%</value>

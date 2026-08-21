@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -32,8 +33,17 @@ public sealed class SettingsStore
                 WriteIndented = true,
                 Converters = { new JsonStringEnumConverter() }
             };
-            var settings = JsonSerializer.Deserialize<AppSettings>(json, options);
-            return settings ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(json, options) ?? new AppSettings();
+
+            // Clamp regardless of where the value came from: a settings.json hand-edited (or
+            // left over from a build with a different allowed range) could carry a HistoryCapacity
+            // outside [Min,Max]. TrimUnpinnedToCapacity itself takes whatever int it's given
+            // as-is (tests rely on that for small capacities), so this is the one place a
+            // corrupt/out-of-range persisted value gets corrected before anything reads it.
+            settings.HistoryCapacity = Math.Clamp(
+                settings.HistoryCapacity, AppSettings.MinHistoryCapacity, AppSettings.MaxHistoryCapacity);
+
+            return settings;
         }
         catch
         {

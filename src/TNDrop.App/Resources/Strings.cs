@@ -68,6 +68,9 @@ internal static class Strings
     public static string SettingsAutoDeleteHours24Option => Get(nameof(SettingsAutoDeleteHours24Option));
     public static string SettingsAutoDeleteDays7Option => Get(nameof(SettingsAutoDeleteDays7Option));
     public static string SettingsMoveToTopOnCopy => Get(nameof(SettingsMoveToTopOnCopy));
+    public static string SettingsPurgeUnpinnedOnRestart => Get(nameof(SettingsPurgeUnpinnedOnRestart));
+    public static string SettingsHistoryCapacity => Get(nameof(SettingsHistoryCapacity));
+    public static string SettingsHistoryCapacityFormat => Get(nameof(SettingsHistoryCapacityFormat));
     public static string SettingsRetractDelay => Get(nameof(SettingsRetractDelay));
     public static string SettingsEdge => Get(nameof(SettingsEdge));
     public static string SettingsEdgeLeft => Get(nameof(SettingsEdgeLeft));
@@ -91,11 +94,12 @@ internal static class Strings
     public static string SettingsIndicatorStyleBar => Get(nameof(SettingsIndicatorStyleBar));
     public static string SettingsIndicatorStylePulse => Get(nameof(SettingsIndicatorStylePulse));
     public static string SettingsIndicatorStyleCorner => Get(nameof(SettingsIndicatorStyleCorner));
+    public static string SettingsIndicatorEnabled => Get(nameof(SettingsIndicatorEnabled));
     public static string SettingsLanguage => Get(nameof(SettingsLanguage));
     public static string SettingsLanguageJa => Get(nameof(SettingsLanguageJa));
     public static string SettingsLanguageEn => Get(nameof(SettingsLanguageEn));
     public static string SettingsLanguageRestartNote => Get(nameof(SettingsLanguageRestartNote));
-    public static string SettingsEdgeHint => Get(nameof(SettingsEdgeHint));
+    public static string SettingsTriggerHint => Get(nameof(SettingsTriggerHint));
     public static string SettingsPercentFormat => Get(nameof(SettingsPercentFormat));
     public static string SettingsPixelFormat => Get(nameof(SettingsPixelFormat));
     public static string SettingsMillisecondsFormat => Get(nameof(SettingsMillisecondsFormat));
