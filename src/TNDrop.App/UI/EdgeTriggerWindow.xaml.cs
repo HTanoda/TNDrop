@@ -20,9 +20,11 @@ public partial class EdgeTriggerWindow : Window
     /// <summary>Placement passes allowed per ApplySettings call. See the re-entrancy latch there.</summary>
     private const int MaxPlacementPasses = 2;
 
-    /// <summary>Poll rate for the proximity hint (v1.2 Task E). Cheap (one Win32 cursor read plus
-    /// pure arithmetic) so 250ms costs nothing worth avoiding, but frequent enough that the
-    /// beacon feels responsive as the pointer approaches.</summary>
+    /// <summary>Poll rate for the proximity hint (v1.2 Task E). Cheap -- one Win32 cursor read
+    /// (<see cref="MonitorGeometry.CursorDip"/>) plus pure arithmetic against the geometry cached
+    /// by <see cref="Place"/> -- so 250ms costs nothing worth avoiding, but frequent enough that
+    /// the beacon feels responsive as the pointer approaches. It does NOT re-resolve the monitor
+    /// or recompute the trigger rect on every tick; see the fields below and Place's doc comment.</summary>
     private static readonly TimeSpan HintPollInterval = TimeSpan.FromMilliseconds(250);
 
     private AppSettings? _settings;
@@ -31,6 +33,13 @@ public partial class EdgeTriggerWindow : Window
 
     private readonly DispatcherTimer _hintTimer;
     private bool _hintFeatureEnabled;
+
+    /// <summary>Geometry snapshot for the proximity-hint timer, refreshed only when <see cref="Place"/>
+    /// runs (ApplySettings / DPI change / display-settings change) -- NOT on every 250ms tick. See
+    /// <see cref="OnHintTimerTick"/>.</summary>
+    private MonitorGeometry.WorkArea? _hintArea;
+    private ShelfPlacement.Rect _hintWorkArea;
+    private ShelfPlacement.Rect _hintTriggerRect;
 
     /// <summary>Raised when the pointer enters the band.</summary>
     public event Action? Triggered;
@@ -131,9 +140,9 @@ public partial class EdgeTriggerWindow : Window
     private void Place(AppSettings s)
     {
         var area = MonitorGeometry.Resolve(s.MonitorDeviceName, this);
+        var workArea = new ShelfPlacement.Rect(area.X, area.Y, area.W, area.H);
         var rect = ShelfPlacement.TriggerRect(
-            new ShelfPlacement.Rect(area.X, area.Y, area.W, area.H),
-            s.Edge, s.TriggerProximityPx, s.HotZonePercent, s.TriggerAlign);
+            workArea, s.Edge, s.TriggerProximityPx, s.HotZonePercent, s.TriggerAlign);
 
         Width = rect.W;
         Height = rect.H;
@@ -147,6 +156,16 @@ public partial class EdgeTriggerWindow : Window
         MonitorGeometry.SnapToDeviceRect(this,
             rect.X * area.ScaleX, rect.Y * area.ScaleY,
             rect.W * area.ScaleX, rect.H * area.ScaleY);
+
+        // Cache for OnHintTimerTick (v1.2 Task E, fix round 1): the tick used to call
+        // MonitorGeometry.Resolve (a Screen.AllScreens allocation plus a GetDpiForMonitor
+        // P/Invoke) and recompute TriggerRect on every single 250ms poll just to read the cursor
+        // against them. Place() already re-runs on every actual geometry change -- ApplySettings,
+        // DPI change, display-settings change -- so caching here means the tick only ever needs a
+        // fresh Cursor.Position against whatever this snapshot last computed.
+        _hintArea = area;
+        _hintWorkArea = workArea;
+        _hintTriggerRect = rect;
 
         FileLogger.Instance?.Info(Module,
             $"placed on {area.DeviceName} scale {area.ScaleX:0.##} at " +
@@ -193,12 +212,10 @@ public partial class EdgeTriggerWindow : Window
     public void SetHintEnabled(bool enabled)
     {
         _hintFeatureEnabled = enabled;
+        // UpdateHintTimerState already force-hides the beacon whenever the effective condition
+        // (_hintFeatureEnabled && IsVisible) is false, which covers "just disabled" unconditionally
+        // -- a second SetHintVisible(false) here would just repeat that same call.
         UpdateHintTimerState();
-
-        if (!enabled)
-        {
-            SetHintVisible(false);
-        }
     }
 
     private void UpdateHintTimerState()
@@ -216,30 +233,32 @@ public partial class EdgeTriggerWindow : Window
 
     private void OnHintTimerTick(object? sender, EventArgs e)
     {
-        if (_settings is null)
+        // _hintArea (and workArea/triggerRect alongside it) is only populated once Place() has
+        // run at least once -- ApplySettings always calls it synchronously, and the timer itself
+        // cannot start before ApplySettings has run (see UpdateHintTimerState/SetHintEnabled), so
+        // this is just defensive, not the expected steady-state path.
+        if (_settings is null || _hintArea is null)
         {
             return;
         }
 
         try
         {
-            var area = MonitorGeometry.Resolve(_settings.MonitorDeviceName, this);
-            var workArea = new ShelfPlacement.Rect(area.X, area.Y, area.W, area.H);
-            var triggerRect = ShelfPlacement.TriggerRect(
-                workArea, _settings.Edge, _settings.TriggerProximityPx, _settings.HotZonePercent, _settings.TriggerAlign);
-
-            var (cursorX, cursorY) = MonitorGeometry.CursorDip(area);
+            // Fresh cursor read against the CACHED geometry -- no MonitorGeometry.Resolve and no
+            // ShelfPlacement.TriggerRect on this hot path; see Place()'s doc comment for why that
+            // used to run 4x/second and doesn't need to.
+            var (cursorX, cursorY) = MonitorGeometry.CursorDip(_hintArea.Value);
 
             var show = ShelfPlacement.IsNearTriggerButOutside(
-                workArea, triggerRect, _settings.Edge, _settings.TriggerProximityPx, cursorX, cursorY);
+                _hintWorkArea, _hintTriggerRect, _settings.Edge, cursorX, cursorY);
 
             SetHintVisible(show);
         }
         catch (Exception ex)
         {
             // A timer tick, not a user action -- degrade to "hint off" and keep polling rather
-            // than let one bad cursor/monitor read kill the beacon (or the app) for the rest of
-            // the session.
+            // than let one bad cursor read kill the beacon (or the app) for the rest of the
+            // session.
             FileLogger.Instance?.Warn(Module, $"proximity hint check failed: {ex.Message}");
             SetHintVisible(false);
         }

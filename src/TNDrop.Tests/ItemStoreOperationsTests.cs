@@ -190,6 +190,33 @@ public class ItemStoreOperationsTests : IDisposable
         Assert.False(File.Exists(thumbPath));
     }
 
+    // v1.2 Task E: App.OnStartup's PurgeUnpinnedOnRestart step is exactly
+    // `Store.RemoveAll(i => !i.Pinned)` -- App itself can't be unit-tested (it needs a live WPF
+    // Application), so this pins the predicate it relies on: pinned items (of any kind) survive
+    // untouched, unpinned items (including an unpinned Image with real blob files on disk) are
+    // gone, and their blobs are deleted through the same DeleteBlobsFor path as every other
+    // removal.
+    [Fact]
+    public void RemoveAll_unpinned_predicate_matches_the_restart_purge_and_deletes_blobs()
+    {
+        var pinnedText = Text("keep-me");
+        _store.TryAdd(pinnedText);
+        _store.SetPinned(pinnedText.Id, true);
+
+        _store.TryAdd(Text("unpinned-text"));
+        var (droppedImage, imagePath, thumbPath) = AddImageWithBlobs("restart-purge-image");
+        Assert.False(droppedImage.Pinned);
+
+        _store.RemoveAll(i => !i.Pinned);
+
+        var remaining = _store.Items;
+        Assert.Single(remaining);
+        Assert.Equal(pinnedText.Id, remaining[0].Id);
+        Assert.True(remaining[0].Pinned);
+        Assert.False(File.Exists(imagePath));
+        Assert.False(File.Exists(thumbPath));
+    }
+
     // ---- TrimUnpinnedToCapacity (v1.2 Task E) --------------------------------------------------
 
     [Fact]

@@ -500,9 +500,14 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>Nice-to-have: the style picker looks (and behaves) disabled while the indicator
-    /// itself is off, since picking a style nothing will ever show is a meaningless choice.</summary>
+    /// itself is off, since picking a style nothing will ever show is a meaningless choice. The
+    /// label is included, not just the radios -- RadioButton's own template already dims on
+    /// IsEnabled=false, but TextBlock has no such template trigger, so the label needs its Opacity
+    /// set explicitly or it would be the one line in the group that stays full-brightness.</summary>
     private void UpdateIndicatorStyleEnabled(bool enabled)
     {
+        IndicatorStyleLabelText.IsEnabled = enabled;
+        IndicatorStyleLabelText.Opacity = enabled ? 1.0 : 0.4;
         IndicatorBeaconRadio.IsEnabled = enabled;
         IndicatorBarRadio.IsEnabled = enabled;
         IndicatorPulseRadio.IsEnabled = enabled;

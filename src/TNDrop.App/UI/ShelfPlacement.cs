@@ -71,19 +71,30 @@ public static class ShelfPlacement
 
     /// <summary>
     /// Whether the trigger proximity hint (v1.2 Task E) should light up: the pointer is within
-    /// <paramref name="proximityPx"/> + <see cref="HintProximityMarginPx"/> DIPs of
+    /// <paramref name="triggerRect"/>'s own width plus <see cref="HintProximityMarginPx"/> DIPs of
     /// <paramref name="edge"/> horizontally, on the target monitor vertically, but OUTSIDE
     /// <paramref name="triggerRect"/>'s own vertical span -- "right edge, wrong height".
     ///
-    /// <para>A cursor already inside <paramref name="triggerRect"/> (both horizontally and
-    /// vertically) returns false: by the time a caller could observe that, WPF's own MouseEnter
-    /// has already fired and opened the shelf (see EdgeTriggerWindow), so the hint has nothing
-    /// left to hint at.</para>
+    /// <para>Takes <paramref name="triggerRect"/>'s width as the one source of the real band's
+    /// size rather than re-deriving it from a separate <c>proximityPx</c> parameter --
+    /// <see cref="TriggerRect"/> already clamps that value; a second clamp here computing the same
+    /// quantity a second way is exactly the kind of drift a settings change to the clamp range
+    /// could silently break.</para>
+    ///
+    /// <para>The exclusion check below only tests the VERTICAL span, not horizontal, and that is
+    /// deliberate rather than an oversight: <paramref name="triggerRect"/>'s width is entirely
+    /// contained within the near-band tested first (the near-band adds a margin on top of it, never
+    /// subtracts), so any cursor that is both within the near-band AND within the trigger rect's
+    /// vertical span is -- by that containment -- also within the real trigger rect. There is no
+    /// horizontal case left to reject that the near-band and vertical checks don't already cover.
+    /// Such a cursor would have already fired WPF's own MouseEnter and opened the shelf (see
+    /// EdgeTriggerWindow), so the hint has nothing left to hint at by the time anything could ask
+    /// this function about it.</para>
     /// </summary>
     public static bool IsNearTriggerButOutside(Rect workArea, Rect triggerRect, EdgeSide edge,
-                                                int proximityPx, double cursorX, double cursorY)
+                                                double cursorX, double cursorY)
     {
-        var nearWidth = Math.Clamp(proximityPx, 1, 64) + HintProximityMarginPx;
+        var nearWidth = triggerRect.W + HintProximityMarginPx;
 
         var distFromEdge = edge == EdgeSide.Left
             ? cursorX - workArea.X
