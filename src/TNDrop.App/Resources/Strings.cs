@@ -120,6 +120,29 @@ internal static class Strings
     public static string SettingsPasteOnClick => Get(nameof(SettingsPasteOnClick));
     public static string SettingsPasteOnClickHint => Get(nameof(SettingsPasteOnClickHint));
 
+    // Per-item description lines (v1.2 Task C), one per setting across all three categories --
+    // generalizes the SettingsPasteOnClickHint pattern above. Always the fixed-size, explicit-
+    // color Settings.HintText style, never TextScale-linked (see that style's own comment).
+    public static string SettingsAutoStartDesc => Get(nameof(SettingsAutoStartDesc));
+    public static string SettingsSoundsEnabledDesc => Get(nameof(SettingsSoundsEnabledDesc));
+    public static string SettingsIncognitoDesc => Get(nameof(SettingsIncognitoDesc));
+    public static string SettingsHoverEnabledDesc => Get(nameof(SettingsHoverEnabledDesc));
+    public static string SettingsAutoDeleteDesc => Get(nameof(SettingsAutoDeleteDesc));
+    public static string SettingsPurgeUnpinnedOnRestartDesc => Get(nameof(SettingsPurgeUnpinnedOnRestartDesc));
+    public static string SettingsHistoryCapacityDesc => Get(nameof(SettingsHistoryCapacityDesc));
+    public static string SettingsMoveToTopOnCopyDesc => Get(nameof(SettingsMoveToTopOnCopyDesc));
+    public static string SettingsRetractDelayDesc => Get(nameof(SettingsRetractDelayDesc));
+    public static string SettingsEdgeDesc => Get(nameof(SettingsEdgeDesc));
+    public static string SettingsMonitorDesc => Get(nameof(SettingsMonitorDesc));
+    public static string SettingsHotZoneDesc => Get(nameof(SettingsHotZoneDesc));
+    public static string SettingsTriggerSensitivityDesc => Get(nameof(SettingsTriggerSensitivityDesc));
+    public static string SettingsTriggerAlignDesc => Get(nameof(SettingsTriggerAlignDesc));
+    public static string SettingsTriggerHintDesc => Get(nameof(SettingsTriggerHintDesc));
+    public static string SettingsTextScaleDesc => Get(nameof(SettingsTextScaleDesc));
+    public static string SettingsIndicatorEnabledDesc => Get(nameof(SettingsIndicatorEnabledDesc));
+    public static string SettingsIndicatorStyleDesc => Get(nameof(SettingsIndicatorStyleDesc));
+    public static string SettingsLanguageDesc => Get(nameof(SettingsLanguageDesc));
+
     private static string Get(string key) =>
         Manager.GetString(key, CultureInfo.CurrentUICulture) ?? key;
 }

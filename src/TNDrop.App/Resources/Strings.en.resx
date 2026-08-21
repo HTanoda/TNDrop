@@ -329,4 +329,61 @@
   <data name="SettingsPasteOnClickHint" xml:space="preserve">
     <value>Clicking a text or link card pastes it at the cursor in the app you were last using (nothing is pasted while a modifier key is held)</value>
   </data>
+  <data name="SettingsAutoStartDesc" xml:space="preserve">
+    <value>Launches TNDrop automatically when you sign in to Windows.</value>
+  </data>
+  <data name="SettingsSoundsEnabledDesc" xml:space="preserve">
+    <value>Plays a short sound effect for actions like copying or pinning.</value>
+  </data>
+  <data name="SettingsIncognitoDesc" xml:space="preserve">
+    <value>Copied items aren't saved to history while this is on.</value>
+  </data>
+  <data name="SettingsHoverEnabledDesc" xml:space="preserve">
+    <value>Move your cursor near the edge of the screen to slide the shelf open.</value>
+  </data>
+  <data name="SettingsAutoDeleteDesc" xml:space="preserve">
+    <value>Automatically removes unpinned items from history after the selected time.</value>
+  </data>
+  <data name="SettingsPurgeUnpinnedOnRestartDesc" xml:space="preserve">
+    <value>Clears all unpinned items every time TNDrop restarts.</value>
+  </data>
+  <data name="SettingsHistoryCapacityDesc" xml:space="preserve">
+    <value>The maximum number of items kept in history. Older items are removed once this limit is reached.</value>
+  </data>
+  <data name="SettingsMoveToTopOnCopyDesc" xml:space="preserve">
+    <value>Places newly copied items at the top of the history.</value>
+  </data>
+  <data name="SettingsRetractDelayDesc" xml:space="preserve">
+    <value>How long the shelf stays open after the cursor leaves it before it closes automatically.</value>
+  </data>
+  <data name="SettingsEdgeDesc" xml:space="preserve">
+    <value>Choose which side of the screen the shelf opens from.</value>
+  </data>
+  <data name="SettingsMonitorDesc" xml:space="preserve">
+    <value>If you use multiple monitors, choose which one shows the shelf.</value>
+  </data>
+  <data name="SettingsHotZoneDesc" xml:space="preserve">
+    <value>Sets how much of the screen edge, as a percentage of its height, can trigger the shelf.</value>
+  </data>
+  <data name="SettingsTriggerSensitivityDesc" xml:space="preserve">
+    <value>Adjusts how close the cursor must get to the edge to open the shelf. A higher value reacts more easily.</value>
+  </data>
+  <data name="SettingsTriggerAlignDesc" xml:space="preserve">
+    <value>Choose where along the screen edge the hot zone is positioned.</value>
+  </data>
+  <data name="SettingsTriggerHintDesc" xml:space="preserve">
+    <value>Shows a faint glow at the trigger position when the cursor approaches the edge.</value>
+  </data>
+  <data name="SettingsTextScaleDesc" xml:space="preserve">
+    <value>Adjusts the size of the text shown in the shelf.</value>
+  </data>
+  <data name="SettingsIndicatorEnabledDesc" xml:space="preserve">
+    <value>Briefly flashes at the screen edge when a copy completes.</value>
+  </data>
+  <data name="SettingsIndicatorStyleDesc" xml:space="preserve">
+    <value>Choose the shape of the indicator shown when a copy completes.</value>
+  </data>
+  <data name="SettingsLanguageDesc" xml:space="preserve">
+    <value>Choose the display language for the app.</value>
+  </data>
 </root>

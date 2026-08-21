@@ -132,11 +132,15 @@ public partial class SettingsWindow : Window
     private void BuildBehaviorPage(AppSettings settings)
     {
         AutoStartCheckBox.Content = Strings.SettingsAutoStart;
+        AutoStartDescText.Text = Strings.SettingsAutoStartDesc;
         SoundsCheckBox.Content = Strings.SettingsSoundsEnabled;
+        SoundsDescText.Text = Strings.SettingsSoundsEnabledDesc;
         // Reuses the tray's own incognito label: this checkbox and the tray menu item are two
         // controls for the exact same setting, so they should say the exact same thing.
         IncognitoCheckBox.Content = Strings.TrayIncognito;
+        IncognitoDescText.Text = Strings.SettingsIncognitoDesc;
         MoveToTopCheckBox.Content = Strings.SettingsMoveToTopOnCopy;
+        MoveToTopDescText.Text = Strings.SettingsMoveToTopOnCopyDesc;
 
         // クリックで貼り付け (v1.2 Task H): sits next to 貼り付け後に先頭へ移動する because the two
         // describe the same gesture -- what a plain click on a card does. Text/Link cards only;
@@ -150,6 +154,7 @@ public partial class SettingsWindow : Window
         // window is already open when the TRAY toggles hover, this box does not live-update; only
         // the reverse direction (a change made here reaching the tray checkbox) is covered.
         HoverCheckBox.Content = Strings.SettingsHoverEnabled;
+        HoverDescText.Text = Strings.SettingsHoverEnabledDesc;
 
         WireCheckBox(AutoStartCheckBox, settings.AutoStartEnabled, global::TNDrop.App.SetAutoStartEnabled);
         WireCheckBox(SoundsCheckBox, settings.SoundsEnabled, global::TNDrop.App.SetSoundsEnabled);
@@ -159,6 +164,7 @@ public partial class SettingsWindow : Window
         WireCheckBox(HoverCheckBox, settings.HoverEnabled, global::TNDrop.App.SetHoverEnabled);
 
         AutoDeleteLabelText.Text = Strings.SettingsAutoDelete;
+        AutoDeleteDescText.Text = Strings.SettingsAutoDeleteDesc;
         var autoDeleteOptions = new[]
         {
             new AutoDeleteOption(AutoDeletePolicy.Off, Strings.SettingsAutoDeleteOffOption),
@@ -184,10 +190,12 @@ public partial class SettingsWindow : Window
         // Restart purge + history capacity (v1.2 Task E), placed directly under 自動削除 per the
         // brief: both are "how much history sticks around", so they read as one group with it.
         PurgeUnpinnedOnRestartCheckBox.Content = Strings.SettingsPurgeUnpinnedOnRestart;
+        PurgeUnpinnedOnRestartDescText.Text = Strings.SettingsPurgeUnpinnedOnRestartDesc;
         WireCheckBox(PurgeUnpinnedOnRestartCheckBox, settings.PurgeUnpinnedOnRestart,
             global::TNDrop.App.SetPurgeUnpinnedOnRestart);
 
         HistoryCapacityLabelText.Text = Strings.SettingsHistoryCapacity;
+        HistoryCapacityDescText.Text = Strings.SettingsHistoryCapacityDesc;
         var historyCapacityOptions = new[]
         {
             new HistoryCapacityOption(100, string.Format(CultureInfo.CurrentUICulture, Strings.SettingsHistoryCapacityFormat, 100)),
@@ -222,6 +230,7 @@ public partial class SettingsWindow : Window
         };
 
         RetractDelayLabelText.Text = Strings.SettingsRetractDelay;
+        RetractDelayDescText.Text = Strings.SettingsRetractDelayDesc;
         RetractDelaySlider.Minimum = 300;
         RetractDelaySlider.Maximum = 2000;
         RetractDelaySlider.TickFrequency = 100;
@@ -275,6 +284,7 @@ public partial class SettingsWindow : Window
     private void BuildPositionPage(AppSettings settings)
     {
         EdgeLabelText.Text = Strings.SettingsEdge;
+        EdgeDescText.Text = Strings.SettingsEdgeDesc;
         EdgeLeftRadio.Content = Strings.SettingsEdgeLeft;
         EdgeRightRadio.Content = Strings.SettingsEdgeRight;
         EdgeLeftRadio.IsChecked = settings.Edge == EdgeSide.Left;
@@ -283,9 +293,11 @@ public partial class SettingsWindow : Window
         EdgeRightRadio.Checked += (_, _) => OnEdgeChanged(EdgeSide.Right);
 
         MonitorLabelText.Text = Strings.SettingsMonitor;
+        MonitorDescText.Text = Strings.SettingsMonitorDesc;
         BuildMonitorCombo(settings);
 
         HotZoneLabelText.Text = Strings.SettingsHotZone;
+        HotZoneDescText.Text = Strings.SettingsHotZoneDesc;
         HotZone25Radio.Content = string.Format(CultureInfo.CurrentUICulture, Strings.SettingsPercentFormat, 25);
         HotZone40Radio.Content = string.Format(CultureInfo.CurrentUICulture, Strings.SettingsPercentFormat, 40);
         HotZone60Radio.Content = string.Format(CultureInfo.CurrentUICulture, Strings.SettingsPercentFormat, 60);
@@ -297,6 +309,7 @@ public partial class SettingsWindow : Window
         HotZone60Radio.Checked += (_, _) => OnHotZoneChanged(60);
 
         TriggerSensitivityLabelText.Text = Strings.SettingsTriggerSensitivity;
+        TriggerSensitivityDescText.Text = Strings.SettingsTriggerSensitivityDesc;
         TriggerSensitivitySlider.Minimum = 1;
         TriggerSensitivitySlider.Maximum = 7;
         TriggerSensitivitySlider.TickFrequency = 1;
@@ -319,6 +332,7 @@ public partial class SettingsWindow : Window
         };
 
         TriggerAlignLabelText.Text = Strings.SettingsTriggerAlign;
+        TriggerAlignDescText.Text = Strings.SettingsTriggerAlignDesc;
         TriggerAlignTopRadio.Content = Strings.SettingsTriggerAlignTop;
         TriggerAlignCenterRadio.Content = Strings.SettingsTriggerAlignCenter;
         TriggerAlignBottomRadio.Content = Strings.SettingsTriggerAlignBottom;
@@ -334,6 +348,7 @@ public partial class SettingsWindow : Window
         // it reads as a positioning aid rather than an appearance choice. AppSettings.EdgeHintEnabled
         // itself is unchanged (see its doc comment) -- only the label and its page moved.
         TriggerHintCheckBox.Content = Strings.SettingsTriggerHint;
+        TriggerHintDescText.Text = Strings.SettingsTriggerHintDesc;
         WireCheckBox(TriggerHintCheckBox, settings.EdgeHintEnabled, global::TNDrop.App.SetEdgeHintEnabled);
     }
 
@@ -450,6 +465,7 @@ public partial class SettingsWindow : Window
     private void BuildAppearancePage(AppSettings settings)
     {
         TextScaleLabelText.Text = Strings.SettingsTextScale;
+        TextScaleDescText.Text = Strings.SettingsTextScaleDesc;
         TextScaleSmallRadio.Content = Strings.SettingsTextScaleSmall;
         TextScaleNormalRadio.Content = Strings.SettingsTextScaleNormal;
         TextScaleMediumRadio.Content = Strings.SettingsTextScaleMedium;
@@ -467,10 +483,12 @@ public partial class SettingsWindow : Window
         // (greys out) the style radios below since a style choice is moot when nothing is ever
         // going to flash -- see UpdateIndicatorStyleEnabled.
         IndicatorEnabledCheckBox.Content = Strings.SettingsIndicatorEnabled;
+        IndicatorEnabledDescText.Text = Strings.SettingsIndicatorEnabledDesc;
         WireCheckBox(IndicatorEnabledCheckBox, settings.IndicatorEnabled, OnIndicatorEnabledChanged);
         UpdateIndicatorStyleEnabled(settings.IndicatorEnabled);
 
         IndicatorStyleLabelText.Text = Strings.SettingsIndicatorStyle;
+        IndicatorStyleDescText.Text = Strings.SettingsIndicatorStyleDesc;
         IndicatorBeaconRadio.Content = Strings.SettingsIndicatorStyleBeacon;
         IndicatorBarRadio.Content = Strings.SettingsIndicatorStyleBar;
         IndicatorPulseRadio.Content = Strings.SettingsIndicatorStylePulse;
@@ -485,6 +503,7 @@ public partial class SettingsWindow : Window
         IndicatorCornerRadio.Checked += (_, _) => OnIndicatorStyleChanged(IndicatorStyle.Corner);
 
         LanguageLabelText.Text = Strings.SettingsLanguage;
+        LanguageDescText.Text = Strings.SettingsLanguageDesc;
         LanguageRestartNoteText.Text = Strings.SettingsLanguageRestartNote;
         LanguageJaRadio.Content = Strings.SettingsLanguageJa;
         LanguageEnRadio.Content = Strings.SettingsLanguageEn;
@@ -519,6 +538,12 @@ public partial class SettingsWindow : Window
         IndicatorBarRadio.IsEnabled = enabled;
         IndicatorPulseRadio.IsEnabled = enabled;
         IndicatorCornerRadio.IsEnabled = enabled;
+        // Same TextBlock caveat as the label above: RadioButton dims itself on IsEnabled=false
+        // via its own template trigger, but this description TextBlock (added in v1.2 Task C)
+        // has no such trigger and would otherwise stay full-brightness while everything else in
+        // the group visibly greys out.
+        IndicatorStyleDescText.IsEnabled = enabled;
+        IndicatorStyleDescText.Opacity = enabled ? 1.0 : 0.4;
     }
 
     private void OnTextScaleChanged(TextScale scale)

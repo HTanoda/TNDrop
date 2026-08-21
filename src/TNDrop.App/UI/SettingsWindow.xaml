@@ -54,8 +54,115 @@
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Settings.Foreground}" />
         </Style>
+        <!--
+            Explicit palette (Task C), full re-template rather than a Style setter: the default
+            ComboBox chrome (closed box AND dropdown popup) is drawn by Windows' native visual-
+            style renderer, not a lookless XAML template, so plain Background/Foreground Setters
+            on ComboBox are silently ignored by the chrome itself - confirmed empirically by the
+            Task C probe screenshot, which showed near-invisible pale text on an unstyled light-
+            grey box despite an explicit Foreground already being set. Ambient SystemColors brushes
+            (and, transitively, this native chrome) track the *current Windows theme/accent*, not
+            this window's own always-dark palette, which is exactly the failure mode this task
+            exists to close off. Same precedent as Scrollbars.xaml (Task F): give the control its
+            own lookless ControlTemplate so every color is a Setter here, not an ambient default.
+        -->
+        <Style x:Key="Settings.ComboBoxToggle" TargetType="ToggleButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="ClickMode" Value="Press" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="26" />
+                                </Grid.ColumnDefinitions>
+                                <Path Grid.Column="1"
+                                      Data="M0,0 L6,6 L12,0 Z"
+                                      Fill="{StaticResource Settings.SubForeground}"
+                                      Width="12" Height="6"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      Stretch="Uniform" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#55FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style TargetType="ComboBox">
             <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{StaticResource Settings.Foreground}" />
+            <Setter Property="Background" Value="#FF232329" />
+            <Setter Property="BorderBrush" Value="{StaticResource Settings.Border}" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid x:Name="Root" SnapsToDevicePixels="True">
+                            <ToggleButton x:Name="ToggleButtonPart"
+                                          Style="{StaticResource Settings.ComboBoxToggle}"
+                                          Background="{TemplateBinding Background}"
+                                          BorderBrush="{TemplateBinding BorderBrush}"
+                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+                            <ContentPresenter x:Name="ContentSite"
+                                              IsHitTestVisible="False"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Left"
+                                              VerticalAlignment="Center" />
+                            <Popup x:Name="Popup"
+                                   Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   PopupAnimation="Slide">
+                                <Border x:Name="DropDownBorder"
+                                        Background="#FF232329"
+                                        BorderBrush="{StaticResource Settings.Border}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                        Margin="0,4,0,0">
+                                    <ScrollViewer Margin="4" SnapsToDevicePixels="True">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Dropdown rows: same explicit-pair reasoning as the ComboBox chrome above. Reached by
+             the custom ItemsPresenter/ScrollViewer inside the Popup border. -->
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource Settings.Foreground}" />
+            <Setter Property="Background" Value="#FF232329" />
+            <Setter Property="Padding" Value="8,5" />
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="#FF34343D" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
         <Style x:Key="Settings.SectionLabel" TargetType="TextBlock">
             <Setter Property="FontSize" Value="13" />
@@ -118,33 +225,60 @@
                 <!-- 動作 -->
                 <ScrollViewer x:Name="BehaviorScroll" Padding="24,22,24,22" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
-                        <CheckBox x:Name="AutoStartCheckBox" />
-                        <CheckBox x:Name="SoundsCheckBox" />
-                        <CheckBox x:Name="IncognitoCheckBox" />
-                        <CheckBox x:Name="HoverCheckBox" />
+                        <!--
+                            Every checkbox item in this window follows the same shape (v1.2 Task
+                            C, generalized from the PasteOnClick pattern Task H introduced below):
+                            a StackPanel wraps the CheckBox (bottom margin trimmed to 2px) and an
+                            indented (20px, matching the checkbox's own label inset) HintText
+                            description underneath it. The shared CheckBox style's 14px bottom
+                            margin would otherwise open a gap between the box and its own
+                            explanation, so that margin moves onto the description instead.
+                        -->
+                        <StackPanel>
+                            <CheckBox x:Name="AutoStartCheckBox" Margin="0,0,0,2" />
+                            <TextBlock x:Name="AutoStartDescText" Style="{StaticResource Settings.HintText}" Margin="20,0,0,14" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel>
+                            <CheckBox x:Name="SoundsCheckBox" Margin="0,0,0,2" />
+                            <TextBlock x:Name="SoundsDescText" Style="{StaticResource Settings.HintText}" Margin="20,0,0,14" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel>
+                            <CheckBox x:Name="IncognitoCheckBox" Margin="0,0,0,2" />
+                            <TextBlock x:Name="IncognitoDescText" Style="{StaticResource Settings.HintText}" Margin="20,0,0,14" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel>
+                            <CheckBox x:Name="HoverCheckBox" Margin="0,0,0,2" />
+                            <TextBlock x:Name="HoverDescText" Style="{StaticResource Settings.HintText}" Margin="20,0,0,14" TextWrapping="Wrap" />
+                        </StackPanel>
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
                             <TextBlock x:Name="AutoDeleteLabelText" Style="{StaticResource Settings.SectionLabel}" />
                             <ComboBox x:Name="AutoDeleteCombo" Width="220" HorizontalAlignment="Left" />
+                            <TextBlock x:Name="AutoDeleteDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <CheckBox x:Name="PurgeUnpinnedOnRestartCheckBox" />
+                        <StackPanel>
+                            <CheckBox x:Name="PurgeUnpinnedOnRestartCheckBox" Margin="0,0,0,2" />
+                            <TextBlock x:Name="PurgeUnpinnedOnRestartDescText" Style="{StaticResource Settings.HintText}" Margin="20,0,0,14" TextWrapping="Wrap" />
+                        </StackPanel>
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
                             <TextBlock x:Name="HistoryCapacityLabelText" Style="{StaticResource Settings.SectionLabel}" />
                             <ComboBox x:Name="HistoryCapacityCombo" Width="160" HorizontalAlignment="Left" />
+                            <TextBlock x:Name="HistoryCapacityDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <CheckBox x:Name="MoveToTopCheckBox" />
+                        <StackPanel>
+                            <CheckBox x:Name="MoveToTopCheckBox" Margin="0,0,0,2" />
+                            <TextBlock x:Name="MoveToTopDescText" Style="{StaticResource Settings.HintText}" Margin="20,0,0,14" TextWrapping="Wrap" />
+                        </StackPanel>
 
                         <!-- クリックで貼り付け (v1.2 Task H). The one setting in this window that
                              sends keystrokes into OTHER applications, and the only one whose scope
                              (text/link cards, the previously focused app, suppressed while a
-                             modifier is held) cannot be guessed from its label, so it carries a
-                             hint line now rather than waiting for Task C's full descriptions.
-                             Wrapped in a StackPanel with the checkbox's bottom margin moved onto
-                             the hint: the shared CheckBox style's 14px gap would otherwise open up
-                             between the checkbox and its own explanation. -->
+                             modifier is held) cannot be guessed from its label, so it carried a
+                             hint line before Task C generalized the same pattern to every other
+                             item above and below it. -->
                         <StackPanel>
                             <CheckBox x:Name="PasteOnClickCheckBox" Margin="0,0,0,2" />
                             <TextBlock x:Name="PasteOnClickHintText"
@@ -157,6 +291,7 @@
                             <TextBlock x:Name="RetractDelayLabelText" Style="{StaticResource Settings.SectionLabel}" />
                             <Slider x:Name="RetractDelaySlider" Width="320" HorizontalAlignment="Left" />
                             <TextBlock x:Name="RetractDelayValueText" Style="{StaticResource Settings.HintText}" />
+                            <TextBlock x:Name="RetractDelayDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
@@ -170,11 +305,13 @@
                                 <RadioButton x:Name="EdgeLeftRadio" GroupName="Edge" />
                                 <RadioButton x:Name="EdgeRightRadio" GroupName="Edge" />
                             </StackPanel>
+                            <TextBlock x:Name="EdgeDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
                         </StackPanel>
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
                             <TextBlock x:Name="MonitorLabelText" Style="{StaticResource Settings.SectionLabel}" />
                             <ComboBox x:Name="MonitorCombo" Width="360" HorizontalAlignment="Left" />
+                            <TextBlock x:Name="MonitorDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
                         </StackPanel>
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
@@ -184,12 +321,14 @@
                                 <RadioButton x:Name="HotZone40Radio" GroupName="HotZone" />
                                 <RadioButton x:Name="HotZone60Radio" GroupName="HotZone" />
                             </StackPanel>
+                            <TextBlock x:Name="HotZoneDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
                         </StackPanel>
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
                             <TextBlock x:Name="TriggerSensitivityLabelText" Style="{StaticResource Settings.SectionLabel}" />
                             <Slider x:Name="TriggerSensitivitySlider" Width="220" HorizontalAlignment="Left" />
                             <TextBlock x:Name="TriggerSensitivityValueText" Style="{StaticResource Settings.HintText}" />
+                            <TextBlock x:Name="TriggerSensitivityDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
                         </StackPanel>
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
@@ -199,9 +338,13 @@
                                 <RadioButton x:Name="TriggerAlignCenterRadio" GroupName="TriggerAlign" />
                                 <RadioButton x:Name="TriggerAlignBottomRadio" GroupName="TriggerAlign" />
                             </StackPanel>
+                            <TextBlock x:Name="TriggerAlignDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <CheckBox x:Name="TriggerHintCheckBox" />
+                        <StackPanel>
+                            <CheckBox x:Name="TriggerHintCheckBox" Margin="0,0,0,2" />
+                            <TextBlock x:Name="TriggerHintDescText" Style="{StaticResource Settings.HintText}" Margin="20,0,0,14" TextWrapping="Wrap" />
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -216,9 +359,13 @@
                                 <RadioButton x:Name="TextScaleMediumRadio" GroupName="TextScale" />
                                 <RadioButton x:Name="TextScaleLargeRadio" GroupName="TextScale" />
                             </StackPanel>
+                            <TextBlock x:Name="TextScaleDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <CheckBox x:Name="IndicatorEnabledCheckBox" />
+                        <StackPanel>
+                            <CheckBox x:Name="IndicatorEnabledCheckBox" Margin="0,0,0,2" />
+                            <TextBlock x:Name="IndicatorEnabledDescText" Style="{StaticResource Settings.HintText}" Margin="20,0,0,14" TextWrapping="Wrap" />
+                        </StackPanel>
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
                             <TextBlock x:Name="IndicatorStyleLabelText" Style="{StaticResource Settings.SectionLabel}" />
@@ -228,6 +375,7 @@
                                 <RadioButton x:Name="IndicatorPulseRadio" GroupName="IndicatorStyle" />
                                 <RadioButton x:Name="IndicatorCornerRadio" GroupName="IndicatorStyle" />
                             </StackPanel>
+                            <TextBlock x:Name="IndicatorStyleDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
                         </StackPanel>
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
@@ -236,6 +384,7 @@
                                 <RadioButton x:Name="LanguageJaRadio" GroupName="Language" />
                                 <RadioButton x:Name="LanguageEnRadio" GroupName="Language" />
                             </StackPanel>
+                            <TextBlock x:Name="LanguageDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
                             <TextBlock x:Name="LanguageRestartNoteText" Style="{StaticResource Settings.HintText}" />
                         </StackPanel>
                     </StackPanel>

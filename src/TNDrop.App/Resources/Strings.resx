@@ -329,4 +329,61 @@
   <data name="SettingsPasteOnClickHint" xml:space="preserve">
     <value>テキスト/リンクのカードをクリックすると、直前に使っていたアプリのカーソル位置に貼り付けます (修飾キーを押している間は貼り付けません)</value>
   </data>
+  <data name="SettingsAutoStartDesc" xml:space="preserve">
+    <value>Windows にサインインしたときに TNDrop を自動的に起動します</value>
+  </data>
+  <data name="SettingsSoundsEnabledDesc" xml:space="preserve">
+    <value>コピーやピン留めなど、操作のたびに短い効果音を鳴らします</value>
+  </data>
+  <data name="SettingsIncognitoDesc" xml:space="preserve">
+    <value>オンの間はコピーした内容を履歴に保存しません</value>
+  </data>
+  <data name="SettingsHoverEnabledDesc" xml:space="preserve">
+    <value>画面の端にカーソルを近づけると、シェルフをスライドで開きます</value>
+  </data>
+  <data name="SettingsAutoDeleteDesc" xml:space="preserve">
+    <value>指定した時間が経過したピン留めなしのアイテムを履歴から自動的に削除します</value>
+  </data>
+  <data name="SettingsPurgeUnpinnedOnRestartDesc" xml:space="preserve">
+    <value>TNDrop を再起動するたびに、ピン留めしていないアイテムをすべて消去します</value>
+  </data>
+  <data name="SettingsHistoryCapacityDesc" xml:space="preserve">
+    <value>履歴に保持するアイテムの最大数です。上限を超えると古いものから削除されます</value>
+  </data>
+  <data name="SettingsMoveToTopOnCopyDesc" xml:space="preserve">
+    <value>新しくコピーしたアイテムを履歴の先頭に表示します</value>
+  </data>
+  <data name="SettingsRetractDelayDesc" xml:space="preserve">
+    <value>カーソルがシェルフから離れてから自動的に閉じるまでの時間です</value>
+  </data>
+  <data name="SettingsEdgeDesc" xml:space="preserve">
+    <value>シェルフを開く画面の端を選びます</value>
+  </data>
+  <data name="SettingsMonitorDesc" xml:space="preserve">
+    <value>複数のモニターを使用している場合に、シェルフを表示するモニターを選びます</value>
+  </data>
+  <data name="SettingsHotZoneDesc" xml:space="preserve">
+    <value>カーソルでシェルフを開ける範囲を、画面の端の高さに対する割合で指定します</value>
+  </data>
+  <data name="SettingsTriggerSensitivityDesc" xml:space="preserve">
+    <value>画面の端からどれだけ近づくとシェルフが開くかを調整します。数値が大きいほど反応しやすくなります</value>
+  </data>
+  <data name="SettingsTriggerAlignDesc" xml:space="preserve">
+    <value>ホットゾーンを画面の端のどの位置に配置するかを選びます</value>
+  </data>
+  <data name="SettingsTriggerHintDesc" xml:space="preserve">
+    <value>カーソルが端に近づいたときに、トリガー位置を薄く光らせて知らせます</value>
+  </data>
+  <data name="SettingsTextScaleDesc" xml:space="preserve">
+    <value>シェルフ内の文字の大きさを調整します</value>
+  </data>
+  <data name="SettingsIndicatorEnabledDesc" xml:space="preserve">
+    <value>コピーが完了したときに、画面の端で短く光らせて知らせます</value>
+  </data>
+  <data name="SettingsIndicatorStyleDesc" xml:space="preserve">
+    <value>コピー完了時に表示するインジケーターの形状を選びます</value>
+  </data>
+  <data name="SettingsLanguageDesc" xml:space="preserve">
+    <value>アプリの表示言語を選びます</value>
+  </data>
 </root>
