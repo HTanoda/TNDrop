@@ -152,7 +152,9 @@
                                         MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
                                         MaxHeight="{TemplateBinding MaxDropDownHeight}"
                                         Margin="0,4,0,0">
-                                    <ScrollViewer Margin="4" SnapsToDevicePixels="True">
+                                    <ScrollViewer Margin="4" SnapsToDevicePixels="True"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
                                         <ItemsPresenter />
                                     </ScrollViewer>
                                 </Border>

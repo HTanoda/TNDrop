@@ -1471,11 +1471,7 @@ public partial class ShelfWindow : Window
 
         try
         {
-            var cursor = System.Windows.Forms.Cursor.Position;
-            var scaleX = _area.ScaleX > 0 ? _area.ScaleX : 1.0;
-            var scaleY = _area.ScaleY > 0 ? _area.ScaleY : 1.0;
-
-            return (cursor.X / scaleX, cursor.Y / scaleY);
+            return MonitorGeometry.CursorDip(_area);
         }
         catch (Exception ex)
         {

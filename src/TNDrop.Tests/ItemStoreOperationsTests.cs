@@ -115,6 +115,30 @@ public class ItemStoreOperationsTests : IDisposable
     }
 
     [Fact]
+    public void SplitFile_from_pinned_stack_yields_pinned_card()
+    {
+        // The extracted card must inherit Pinned from the source stack, mirroring TryMergeFiles'
+        // OR-in-the-pin principle: with PurgeUnpinnedOnRestart, an unpinned extracted card would
+        // be silently deleted on the next restart even though the user pinned that path.
+        var s = ItemStore.BuildFileItems(new[] { @"C:\x", @"C:\y", @"C:\z" }, DateTime.UtcNow)[0];
+        s.Pinned = true;
+        _store.TryAdd(s);
+        var card = _store.SplitFile(s.Id, @"C:\y");
+        Assert.NotNull(card);
+        Assert.True(card!.Pinned);
+    }
+
+    [Fact]
+    public void SplitFile_from_unpinned_stack_yields_unpinned_card()
+    {
+        var s = ItemStore.BuildFileItems(new[] { @"C:\x", @"C:\y", @"C:\z" }, DateTime.UtcNow)[0];
+        _store.TryAdd(s);
+        var card = _store.SplitFile(s.Id, @"C:\y");
+        Assert.NotNull(card);
+        Assert.False(card!.Pinned);
+    }
+
+    [Fact]
     public void PurgeOlderThan_skips_pinned_and_deletes_blobs()
     {
         Directory.CreateDirectory(_store.BlobsDir);

@@ -282,7 +282,8 @@ public sealed partial class ItemStore
                 Kind = ClipKind.Files,
                 Paths = new List<string> { path },
                 CreatedAtUtc = _utcClock(),
-                ContentHash = Fnv1a(Encoding.UTF8.GetBytes(path))
+                ContentHash = Fnv1a(Encoding.UTF8.GetBytes(path)),
+                Pinned = stack.Pinned
             };
             _items.Insert(0, card);
         }
