@@ -19,6 +19,16 @@ namespace TNDrop.Platform;
 ///
 /// <para>Pure apart from reading the <see cref="IDataObject"/> handed in -- no UI, no clipboard,
 /// no pipeline call -- so it is the unit under test rather than ShelfWindow's event handlers.</para>
+///
+/// <para><b>v1.2 Task G note:</b> this drag-in path never calls
+/// <see cref="ClipboardIo.HasPrivacyFlag"/> or
+/// <see cref="ClipboardIo.EvaluatePrivacy"/> -- <see cref="HasAcceptablePayload"/> and
+/// <see cref="ClipFromDataObject"/> only ever look for FileDrop/Bitmap/UnicodeText, and
+/// <see cref="IsSelfDrag"/> filters solely on TNDrop's own <see cref="DragDropSource.CardIdFormat"/>
+/// marker. So the CanIncludeInClipboardHistory value-semantics fix in <see cref="ClipboardIo"/>
+/// has no counterpart to wire up here: there was no privacy-format check on this path to begin
+/// with, for either the presence-based formats or the value-based one. Confirmed by grepping this
+/// file (and <see cref="DragDropSource"/>) for "Privacy"/"HasPrivacyFlag" -- no hits.</para>
 /// </summary>
 public static class DragDropTarget
 {
