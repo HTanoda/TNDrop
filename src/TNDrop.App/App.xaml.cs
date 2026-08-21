@@ -679,6 +679,38 @@ public partial class App : System.Windows.Application
     }
 
     /// <summary>
+    /// Pinned-accordion open/closed (v1.2 Task H). Persisted only -- unlike every other setter
+    /// here there is no propagation half, because the ONE window that renders the accordion is
+    /// also the only caller: ShelfWindow's header toggle updates its own visuals and then calls
+    /// this to record the result. A settings window does not offer this, so there is no second
+    /// origin that would need pushing back to the shelf.
+    /// </summary>
+    public static void SetPinnedExpanded(bool value)
+    {
+        // Null-guarded, unlike the settings-window-only setters above: this one's caller is the
+        // SHELF, which is constructible without App.OnStartup ever having run (the XAML designer,
+        // a probe -- see ShelfWindow.InitializeCardList's own null-store guard). Settings is
+        // `null!` until OnStartup assigns it, so an unguarded write would take those hosts down on
+        // a header click.
+        if (Settings is null)
+        {
+            return;
+        }
+
+        Settings.PinnedExpanded = value;
+        SaveSettings();
+    }
+
+    /// <summary>Click-to-paste on Text/Link cards (v1.2 Task H): persisted here, enforced in one
+    /// place -- <see cref="TNDrop.UI.ClickPaste.ShouldPasteOnClick"/>, read fresh on every click --
+    /// so no live push to the shelf is needed.</summary>
+    public static void SetPasteOnClick(bool value)
+    {
+        Settings.PasteOnClick = value;
+        SaveSettings();
+    }
+
+    /// <summary>
     /// Re-applies Settings to the shelf and edge trigger windows -- the one place both
     /// <see cref="OnDisplaySettingsChanged"/> (monitor unplug/replug) and every position-affecting
     /// setter above call to push a geometry change out to the live windows, instead of each

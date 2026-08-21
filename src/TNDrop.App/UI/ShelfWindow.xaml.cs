@@ -92,6 +92,21 @@ public partial class ShelfWindow : Window
     /// <summary>Total length of the refusal shake played on a card that cannot take a merge.</summary>
     private static readonly Duration ShakeDuration = new(TimeSpan.FromMilliseconds(320));
 
+    /// <summary>Chevron spin when the pinned accordion (v1.2 Task H) opens or closes.</summary>
+    private static readonly Duration ChevronRotateDuration = new(TimeSpan.FromMilliseconds(160));
+
+    /// <summary>
+    /// Share of the shelf's height the pinned accordion may occupy before it starts scrolling
+    /// inside itself, and the floor that share is never allowed to fall below.
+    /// <para>The accordion's Grid row is Auto and the main card list's is star, so an unbounded
+    /// pinned section would take everything it asked for and leave the main list with nothing --
+    /// pin a dozen items and the history below them disappears. Applied in <see cref="Place"/>,
+    /// from the same resolved rect the window geometry comes from, so it tracks the monitor rather
+    /// than being a fixed pixel count that is generous on a 4K panel and crushing on a laptop.</para>
+    /// </summary>
+    private const double PinnedMaxHeightFraction = 0.40;
+    private const double PinnedMinMaxHeightDip = 140;
+
     private readonly DispatcherTimer _retractTimer;
     private readonly DispatcherTimer _statusTimer;
 
@@ -142,6 +157,13 @@ public partial class ShelfWindow : Window
     // for the card it was taken on, without depending on _pressedCard still being that card.
     private string? _flyoutShownAtPressId;
 
+    // Pinned accordion (v1.2 Task H): whether the section is open. Mirrors
+    // AppSettings.PinnedExpanded -- seeded from it in ApplySettings, written back through
+    // App.SetPinnedExpanded by the header toggle. Defaults to true so a ShelfWindow built without
+    // ever receiving settings (the designer, a probe) shows the pinned cards rather than hiding
+    // them behind a control the user has not touched.
+    private bool _pinnedExpanded = true;
+
     public ShelfWindow()
     {
         InitializeComponent();
@@ -150,6 +172,14 @@ public partial class ShelfWindow : Window
         // rather than a literal baked into ShelfWindow.xaml, so the two never drift apart and an
         // en-locale build shows the en resx's AppName here too.
         PlaceholderTitle.Text = Strings.AppName;
+
+        // Pinned accordion (v1.2 Task H). Wired here rather than in InitializeCardList because
+        // that method returns early when there is no store (designer/probe hosts), and the header
+        // must still render its label and answer a click in those hosts. The initial count comes
+        // from UpdatePinnedVisibility below; the open/closed state arrives later, via ApplySettings.
+        PinnedHeaderButton.ToolTip = Strings.PinnedToggleTooltip;
+        PinnedHeaderButton.Click += (_, _) => TogglePinnedExpanded();
+        UpdatePinnedVisibility();
 
         _retractTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _retractTimer.Tick += OnRetractTick;
@@ -244,6 +274,13 @@ public partial class ShelfWindow : Window
 
         _settings = s;
 
+        // Pinned accordion (v1.2 Task H). Settings reach this window only through here, so this is
+        // where the persisted open/closed state is picked up. Re-read on every ApplySettings (a DPI
+        // change, an edge switch) rather than once at startup: the header toggle saves through
+        // App.SetPinnedExpanded before this can run again, so re-reading always finds the value the
+        // user last chose -- it can never revert a toggle.
+        SetPinnedExpanded(s.PinnedExpanded);
+
         if (_applying)
         {
             // WM_DPICHANGED is delivered synchronously from inside Place's SetWindowPos call, so
@@ -293,6 +330,10 @@ public partial class ShelfWindow : Window
         Panel.CornerRadius = _edge == EdgeSide.Left
             ? new CornerRadius(0, 12, 12, 0)
             : new CornerRadius(12, 0, 0, 12);
+
+        // Pinned accordion's scroll cap (v1.2 Task H), from the same rect the window is sized
+        // from -- see PinnedMaxHeightFraction for why the section needs a ceiling at all.
+        PinnedScroll.MaxHeight = Math.Max(PinnedMinMaxHeightDip, rect.H * PinnedMaxHeightFraction);
 
         _retractTimer.Interval = TimeSpan.FromMilliseconds(Math.Clamp(s.RetractDelayMs, 100, 10_000));
 
@@ -744,11 +785,53 @@ public partial class ShelfWindow : Window
         return panel;
     }
 
+    /// <summary>
+    /// The one place the pinned accordion's three visuals are resolved together (v1.2 Task H): the
+    /// section's own visibility, the card list's visibility, and the header's count text. Called
+    /// from every path that can change either the pinned COUNT (PinnedCards.CollectionChanged) or
+    /// the OPEN state (<see cref="SetPinnedExpanded"/>), so the header can never claim a count the
+    /// list below it does not show.
+    /// <para>Zero pinned items hides the whole section, header included, rather than showing a
+    /// header that says 0: the accordion exists to get pinned cards out of the way, and there is
+    /// nothing to get out of the way. The expanded/collapsed state survives that -- it lives in
+    /// <see cref="_pinnedExpanded"/> and the settings file, not in the visibility -- so pinning
+    /// something again brings the section back in whichever state the user left it.</para>
+    /// </summary>
     private void UpdatePinnedVisibility()
     {
-        PinnedScroll.Visibility = _shelfViewModel is not null && _shelfViewModel.PinnedCards.Count > 0
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        var count = _shelfViewModel?.PinnedCards.Count ?? 0;
+
+        PinnedSection.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        PinnedScroll.Visibility = _pinnedExpanded ? Visibility.Visible : Visibility.Collapsed;
+        PinnedHeaderText.Text = string.Format(CultureInfo.CurrentUICulture, Strings.PinnedHeaderFormat, count);
+    }
+
+    /// <summary>
+    /// Sets the accordion's open state and re-renders it. Does NOT persist -- callers that
+    /// represent a user action (<see cref="TogglePinnedExpanded"/>) save, the caller that is
+    /// merely reading the saved value back (<see cref="ApplySettings"/>) must not, or a re-place
+    /// during startup would write the value it just read.
+    /// </summary>
+    private void SetPinnedExpanded(bool expanded)
+    {
+        _pinnedExpanded = expanded;
+        UpdatePinnedVisibility();
+
+        // Expanded = chevron up (0 deg), collapsed = chevron down (180 deg). Animated rather than
+        // assigned so the rotation reads as the section folding away; FillBehavior.HoldEnd because
+        // unlike the shake this IS the resting state, not a transient effect.
+        var animation = new DoubleAnimation(expanded ? 0 : 180, ChevronRotateDuration)
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        };
+        PinnedChevronRotation.BeginAnimation(RotateTransform.AngleProperty, animation);
+    }
+
+    /// <summary>The header click: flip the accordion and remember the new state.</summary>
+    private void TogglePinnedExpanded()
+    {
+        SetPinnedExpanded(!_pinnedExpanded);
+        global::TNDrop.App.SetPinnedExpanded(_pinnedExpanded);
     }
 
     /// <summary>Shows/hides the batch action bar and refreshes its count label from
@@ -1681,6 +1764,43 @@ public partial class ShelfWindow : Window
         }
 
         ConfirmCopy();
+
+        // Last, after the clipboard write has already returned (ClipboardIo.SetText/SetFiles/
+        // SetImage are synchronous, retries included): the keystroke must never overtake the
+        // content it is supposed to paste.
+        TryPasteOnClick(item.Kind);
+    }
+
+    /// <summary>
+    /// Click-to-paste (v1.2 Task H): after a click has re-copied a Text/Link card, send Ctrl+V so
+    /// the content lands in the app the user is working in without them reaching for the keyboard.
+    /// <para>Whether to do it at all is <see cref="ClickPaste.ShouldPasteOnClick"/>'s single
+    /// answer -- this method only collects the five inputs and acts on the verdict. The three
+    /// gestures that must NOT paste but still re-copy are already excluded before
+    /// <see cref="CopyCardToClipboard"/> is ever reached (Ctrl+click and selection mode return
+    /// early in <see cref="OnCardPreviewMouseLeftButtonUp"/>, the Link hotspot branches to
+    /// <see cref="OpenLink"/>), so nothing re-tests them here.</para>
+    /// <para>The paste target is whatever holds the foreground, which is the user's app rather than
+    /// the shelf precisely because the shelf is WS_EX_NOACTIVATE (see
+    /// <see cref="OnSourceInitialized"/>). That is also why the guards matter: the one moment the
+    /// shelf DOES hold activation is the search box's deliberate exception, and pasting then would
+    /// type into our own search field.</para>
+    /// </summary>
+    private void TryPasteOnClick(ClipKind kind)
+    {
+        var shouldPaste = ClickPaste.ShouldPasteOnClick(
+            kind,
+            global::TNDrop.App.Settings?.PasteOnClick ?? false,
+            InputSender.IsOwnProcessForeground(),
+            IsKeyboardFocusWithin,
+            InputSender.AnyModifierDown());
+
+        if (!shouldPaste)
+        {
+            return;
+        }
+
+        InputSender.SendCtrlV();
     }
 
     /// <summary>

@@ -129,6 +129,7 @@
                         </StackPanel>
 
                         <CheckBox x:Name="MoveToTopCheckBox" />
+                        <CheckBox x:Name="PasteOnClickCheckBox" />
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
                             <TextBlock x:Name="RetractDelayLabelText" Style="{StaticResource Settings.SectionLabel}" />

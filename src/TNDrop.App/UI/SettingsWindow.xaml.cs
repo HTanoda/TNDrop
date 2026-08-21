@@ -138,6 +138,11 @@ public partial class SettingsWindow : Window
         IncognitoCheckBox.Content = Strings.TrayIncognito;
         MoveToTopCheckBox.Content = Strings.SettingsMoveToTopOnCopy;
 
+        // クリックで貼り付け (v1.2 Task H): sits next to 貼り付け後に先頭へ移動する because the two
+        // describe the same gesture -- what a plain click on a card does. Text/Link cards only;
+        // the rule (and the reason files/images are excluded) is ClickPaste.ShouldPasteOnClick.
+        PasteOnClickCheckBox.Content = Strings.SettingsPasteOnClick;
+
         // ホバー表示 (v1.1 Task C): a second control for the same setting the tray's "ホバー表示"
         // menu item already toggles, wired through the same App.SetHoverEnabled central setter --
         // see that method's doc comment. KNOWN LIMIT, same as IncognitoCheckBox above: if this
@@ -149,6 +154,7 @@ public partial class SettingsWindow : Window
         WireCheckBox(SoundsCheckBox, settings.SoundsEnabled, global::TNDrop.App.SetSoundsEnabled);
         WireCheckBox(IncognitoCheckBox, settings.IncognitoMode, global::TNDrop.App.SetIncognitoMode);
         WireCheckBox(MoveToTopCheckBox, settings.MoveToTopOnCopy, global::TNDrop.App.SetMoveToTopOnCopy);
+        WireCheckBox(PasteOnClickCheckBox, settings.PasteOnClick, global::TNDrop.App.SetPasteOnClick);
         WireCheckBox(HoverCheckBox, settings.HoverEnabled, global::TNDrop.App.SetHoverEnabled);
 
         AutoDeleteLabelText.Text = Strings.SettingsAutoDelete;

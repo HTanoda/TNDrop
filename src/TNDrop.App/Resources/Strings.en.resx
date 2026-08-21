@@ -314,4 +314,13 @@
   <data name="FilteredCountFormat" xml:space="preserve">
     <value>{0} of {1} total</value>
   </data>
+  <data name="PinnedHeaderFormat" xml:space="preserve">
+    <value>Pinned {0}</value>
+  </data>
+  <data name="PinnedToggleTooltip" xml:space="preserve">
+    <value>Show or hide the pinned items</value>
+  </data>
+  <data name="SettingsPasteOnClick" xml:space="preserve">
+    <value>Paste on click</value>
+  </data>
 </root>

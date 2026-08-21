@@ -108,25 +108,76 @@
                 <Button x:Name="FilterFilesButton" Style="{StaticResource FilterTabButtonStyle}" Margin="0,0,6,6" />
             </WrapPanel>
 
-            <ScrollViewer x:Name="PinnedScroll"
-                          Grid.Row="3"
-                          Margin="0,0,0,10"
-                          HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Disabled"
-                          Visibility="Collapsed">
-                <ItemsControl x:Name="PinnedList"
-                              ItemsSource="{Binding PinnedCards}"
-                              ItemTemplate="{StaticResource CardItemTemplate}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemContainerStyle>
-                        <Style TargetType="ContentPresenter" BasedOn="{StaticResource Card.PinnedContainerStyle}" />
-                    </ItemsControl.ItemContainerStyle>
-                </ItemsControl>
-            </ScrollViewer>
+            <!-- Pinned accordion (v1.2 Task H). Replaces v1.1's horizontal pinned deck: a header
+                 row that toggles a normal VERTICAL card list sitting directly above the unpinned
+                 list, so pinned and unpinned cards share one column and one set of card visuals.
+                 The whole section is hidden by UpdatePinnedVisibility when nothing is pinned -
+                 a header saying "0" is noise, not information.
+
+                 PinnedList keeps its name and its ItemsSource: ShelfWindow's card gesture handlers
+                 (press/capture/drag/merge, Tasks 12/14) and FindLiveCardRoot are attached to it by
+                 name alongside CardsList, and only the panel orientation and the container style
+                 change here. Do not rename it without following those call sites. -->
+            <StackPanel x:Name="PinnedSection" Grid.Row="3" Margin="0,0,0,6" Visibility="Collapsed">
+                <Button x:Name="PinnedHeaderButton" Style="{StaticResource Pinned.HeaderButtonStyle}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <TextBlock Text="&#128204;"
+                                       FontSize="{DynamicResource CardSmallFontSize}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0" />
+                            <!-- Text set in code-behind from Strings.PinnedHeaderFormat, same
+                                 pattern as the header title and the footer count. -->
+                            <TextBlock x:Name="PinnedHeaderText"
+                                       FontSize="{DynamicResource CardSmallFontSize}"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <!-- Chevron. Points up while expanded and rotates 180 degrees on collapse
+                             (UpdatePinnedVisibility animates the Angle). RenderTransformOrigin is
+                             the glyph's own centre so it spins in place rather than swinging. -->
+                        <TextBlock x:Name="PinnedChevron"
+                                   Grid.Column="1"
+                                   Text="&#8963;"
+                                   FontSize="{DynamicResource CardFontSize}"
+                                   VerticalAlignment="Center"
+                                   Margin="6,0,2,0"
+                                   RenderTransformOrigin="0.5,0.5">
+                            <TextBlock.RenderTransform>
+                                <RotateTransform x:Name="PinnedChevronRotation" Angle="0" />
+                            </TextBlock.RenderTransform>
+                        </TextBlock>
+                    </Grid>
+                </Button>
+
+                <!-- MaxHeight is set from the placed shelf rect in code-behind (see Place): a user
+                     with a dozen pinned items must not be able to squeeze the main list, whose row
+                     is a star, down to nothing. Vertical scrolling inside the section is what pays
+                     for that, hence the ScrollViewer. -->
+                <ScrollViewer x:Name="PinnedScroll"
+                              Margin="0,6,0,4"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="PinnedList"
+                                  ItemsSource="{Binding PinnedCards}"
+                                  ItemTemplate="{StaticResource CardItemTemplate}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Vertical" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="ContentPresenter" BasedOn="{StaticResource Card.PinnedContainerStyle}" />
+                        </ItemsControl.ItemContainerStyle>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
 
             <ListBox x:Name="CardsList"
                      Grid.Row="4"

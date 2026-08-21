@@ -27,6 +27,49 @@ public class SettingsStoreTests : IDisposable
         Assert.True(s.EdgeHintEnabled);
     }
 
+    // v1.2 Task H: the pinned accordion's open state and click-to-paste. Both default ON -- the
+    // accordion because a section the user has never touched must show its contents, click-to-paste
+    // because it is the headline behavior of the release.
+    [Fact]
+    public void Load_returns_defaults_for_the_task_h_settings_when_file_missing()
+    {
+        var s = new SettingsStore(_dir).Load();
+        Assert.True(s.PinnedExpanded);
+        Assert.True(s.PasteOnClick);
+    }
+
+    [Fact]
+    public void Save_then_load_roundtrips_the_task_h_settings()
+    {
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings { PinnedExpanded = false, PasteOnClick = false });
+        var s = store.Load();
+        Assert.False(s.PinnedExpanded);
+        Assert.False(s.PasteOnClick);
+    }
+
+    // Backward compat, same contract as the Task E properties above: a settings.json written
+    // before Task H has neither key and must load with the coded defaults, not false.
+    [Fact]
+    public void Load_fills_in_task_h_defaults_for_an_older_settings_file()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "settings.json"), """
+            {
+              "Edge": "Right",
+              "HistoryCapacity": 250,
+              "IndicatorEnabled": false
+            }
+            """);
+
+        var s = new SettingsStore(_dir).Load();
+        Assert.Equal(EdgeSide.Right, s.Edge);   // old fields still read back
+        Assert.Equal(250, s.HistoryCapacity);
+        Assert.False(s.IndicatorEnabled);
+        Assert.True(s.PinnedExpanded);
+        Assert.True(s.PasteOnClick);
+    }
+
     [Fact]
     public void Save_then_load_roundtrips()
     {

@@ -215,6 +215,31 @@ public class ShelfViewModelTests : IDisposable
         Assert.Equal(3, vm.TotalCount);
     }
 
+    // -- v1.2 Task H: VisibleCount is unaffected by the pinned accordion ------------------------
+    //
+    // The accordion can hide every pinned card behind one click. DECISION (see VisibleCount's own
+    // doc comment): the footer number does NOT change when it does -- VisibleCount is an item
+    // count, and the collapsed cards are still on the shelf. This is locked here as the property
+    // that makes it structurally true: VisibleCount is derived from the two collections and
+    // nothing else, so this view model has no way to observe the accordion in the first place.
+    [StaFact]
+    public void VisibleCount_is_exactly_the_two_card_collections_and_knows_nothing_of_the_accordion()
+    {
+        Add(ClipKind.Text, "hello");
+        Add(ClipKind.Link, "https://example.com/page");
+        Add(ClipKind.Files, @"C:\docs\a.txt");
+        _store.SetPinned(_store.Items[0].Id, true);
+
+        var vm = new ShelfViewModel(_store);
+        Assert.Equal(vm.Cards.Count + vm.PinnedCards.Count, vm.VisibleCount);
+
+        vm.Filter = CardFilter.Links;
+        Assert.Equal(vm.Cards.Count + vm.PinnedCards.Count, vm.VisibleCount);
+
+        vm.SearchText = "nothing matches this";
+        Assert.Equal(vm.Cards.Count + vm.PinnedCards.Count, vm.VisibleCount);
+    }
+
     // -- v1.1 final fix wave: CountAll vs TotalCount agreement when items are pinned ----------
     //
     // CountAll (the "全て" filter tab's own badge) used to count unpinned-searched items only, so

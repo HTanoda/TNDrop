@@ -539,10 +539,42 @@
         </Setter>
     </Style>
 
-    <!-- Fixed-width container for the horizontal pinned deck. -->
+    <!-- Container for a card inside the pinned accordion (v1.2 Task H). Was a fixed 200px wide
+         cell in a horizontal deck; now full width with the SAME 0,0,0,8 bottom margin
+         Card.ListBoxItemStyle gives a main-list card, so a pinned card and an unpinned one below it
+         are spaced identically and the two sections read as one continuous column. -->
     <Style x:Key="Card.PinnedContainerStyle" TargetType="ContentPresenter">
-        <Setter Property="Width" Value="200" />
-        <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+
+    <!-- Header row of the pinned accordion (v1.2 Task H): a full-width, flat, borderless Button
+         whose whole surface is the toggle. Focusable=False for the same reason as
+         Header.IconButtonStyle: the shelf is WS_EX_NOACTIVATE and only the search box is ever meant
+         to take keyboard focus, so this must fire its Click without competing for it. -->
+    <Style x:Key="Pinned.HeaderButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{StaticResource Card.SubForeground}" />
+        <Setter Property="Padding" Value="4,5" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource Card.ActionHover}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- Batch action bar button (Task 15): same dark pill chrome as the footer's Clear button,

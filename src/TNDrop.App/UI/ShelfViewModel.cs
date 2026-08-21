@@ -136,6 +136,14 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
     /// search (pre-existing v1.1 design, unchanged here). So VisibleCount can be larger than
     /// CountAll while a search is active and a pinned item does not match it. This is expected, not
     /// a drift to fix.</para>
+    /// <para>DECISION (v1.2 Task H, the pinned accordion): this stays Cards.Count +
+    /// PinnedCards.Count whether the accordion is expanded or COLLAPSED. It is an item count, not
+    /// a pixel count -- collapsing the section hides the cards behind one click without removing
+    /// them from the shelf, exactly as scrolling the main list past a card does not remove it
+    /// either, and neither has ever been subtracted here. Making the footer number jump when a
+    /// purely visual section folds would also put this view model in the business of tracking
+    /// ShelfWindow's chrome state, which it deliberately does not do (the accordion's open/closed
+    /// flag lives in ShelfWindow and AppSettings.PinnedExpanded, not here).</para>
     /// </summary>
     public int VisibleCount => Cards.Count + PinnedCards.Count;
 

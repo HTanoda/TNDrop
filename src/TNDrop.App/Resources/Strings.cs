@@ -111,6 +111,11 @@ internal static class Strings
     public static string TotalCountFormat => Get(nameof(TotalCountFormat));
     public static string FilteredCountFormat => Get(nameof(FilteredCountFormat));
 
+    // Pinned accordion + click-to-paste (v1.2 Task H).
+    public static string PinnedHeaderFormat => Get(nameof(PinnedHeaderFormat));
+    public static string PinnedToggleTooltip => Get(nameof(PinnedToggleTooltip));
+    public static string SettingsPasteOnClick => Get(nameof(SettingsPasteOnClick));
+
     private static string Get(string key) =>
         Manager.GetString(key, CultureInfo.CurrentUICulture) ?? key;
 }

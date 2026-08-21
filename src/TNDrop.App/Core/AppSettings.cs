@@ -51,4 +51,17 @@ public sealed class AppSettings
     /// delete-selected, the settings-window style preview) obeys the same switch. Sound is
     /// unaffected.</summary>
     public bool IndicatorEnabled { get; set; } = true;
+
+    /// <summary>Whether the shelf's pinned accordion is expanded (v1.2 Task H). Written by
+    /// ShelfWindow's header toggle through App.SetPinnedExpanded, read back by
+    /// ShelfWindow.ApplySettings. Purely a view state, but persisted because a user who collapsed
+    /// the section expects it to still be collapsed next time the shelf slides in.</summary>
+    public bool PinnedExpanded { get; set; } = true;
+
+    /// <summary>Whether a plain click on a Text/Link card also sends Ctrl+V to whatever app is in
+    /// the foreground after re-copying it (v1.2 Task H). Only ever consulted through
+    /// <see cref="TNDrop.UI.ClickPaste.ShouldPasteOnClick"/>, which adds the safety terms (own
+    /// process in front, search-box focus, physical modifier keys) this flag deliberately does
+    /// not encode.</summary>
+    public bool PasteOnClick { get; set; } = true;
 }
