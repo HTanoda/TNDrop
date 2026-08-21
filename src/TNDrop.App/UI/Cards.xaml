@@ -325,6 +325,69 @@
                     </StackPanel>
                 </Grid>
 
+                <!-- Files, stack (2+ items), first path is media (v1.2 Task A): the same
+                     large-thumbnail visual as MediaFileContent above (full card width, Height=160,
+                     UniformToFill, rounded corners) instead of the layered-paper look, with the
+                     count badge kept on top and the "ファイル N 件" title below on one line. Shown
+                     in place of FilesStackContent above when CardViewModel.StackThumbnail resolves
+                     to a real image (HasStackThumbnail==True, see the IsStack MultiDataTrigger
+                     below); falls back to FilesStackContent's icon look when it comes back null
+                     (first file missing/no thumbnail handler, or the first path is a non-media
+                     type). -->
+                <Grid x:Name="StackMediaContent" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Height="160">
+                        <Border HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                CornerRadius="8">
+                            <Border.Background>
+                                <ImageBrush ImageSource="{Binding StackThumbnail}" Stretch="UniformToFill" />
+                            </Border.Background>
+                        </Border>
+
+                        <!-- Video-only overlay, same chrome as MediaFileContent's own VideoBadge,
+                             for a stack whose first path is a video. -->
+                        <Border x:Name="StackVideoBadge"
+                                Width="24" Height="24"
+                                CornerRadius="12"
+                                Background="#B0000000"
+                                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                Margin="0,0,6,6"
+                                Visibility="Collapsed">
+                            <TextBlock Text="&#9654;" FontSize="10" Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+
+                        <!-- Count badge kept on top of the large thumbnail, top-left so it never
+                             overlaps the video badge's bottom-right corner. Same accent brush as
+                             FilesStackContent's own badge for a consistent "this is a stack" cue. -->
+                        <Border Background="{StaticResource Card.Badge}" CornerRadius="10"
+                                Width="20" Height="20"
+                                HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Margin="6,6,0,0">
+                            <TextBlock Text="{Binding StackCount}"
+                                       FontSize="10"
+                                       FontWeight="Bold"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+
+                    <TextBlock Grid.Row="1"
+                               Text="{Binding Title}"
+                               ToolTip="{Binding Title}"
+                               FontSize="{DynamicResource CardFontSize}"
+                               Foreground="{StaticResource Card.Foreground}"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis"
+                               Margin="0,6,0,0" />
+                </Grid>
+
                 <!-- Hover-only action bar: pin / delete. Visibility (not just Opacity) is what
                      gates this: an Opacity=0 element is still hit-testable in WPF, which would
                      let the invisible Delete button eat clicks/taps meant for whatever's behind
@@ -394,6 +457,22 @@
             <DataTrigger Binding="{Binding IsStack}" Value="True">
                 <Setter TargetName="FilesSingleContent" Property="Visibility" Value="Collapsed" />
                 <Setter TargetName="FilesStackContent" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <!-- v1.2 Task A: listed after the IsStack trigger above so it wins the tie, same
+                 override pattern as the null-Thumbnail fallback further down: when the stack's
+                 StackThumbnail actually resolves, swap the layered-icon look for the large-thumbnail
+                 one instead. HasStackThumbnail stands in for "StackThumbnail != null" because a
+                 DataTrigger can only match a literal value. -->
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding IsStack}" Value="True" />
+                    <Condition Binding="{Binding HasStackThumbnail}" Value="True" />
+                </MultiDataTrigger.Conditions>
+                <Setter TargetName="FilesStackContent" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="StackMediaContent" Property="Visibility" Value="Visible" />
+            </MultiDataTrigger>
+            <DataTrigger Binding="{Binding StackFirstMedia}" Value="Video">
+                <Setter TargetName="StackVideoBadge" Property="Visibility" Value="Visible" />
             </DataTrigger>
             <!-- Also listed after the Files DataTrigger, for the same reason: a lone media file
                  (image or video) overrides the default FilesSingleContent look with the large

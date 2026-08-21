@@ -101,6 +101,7 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
     /// </summary>
     public int CountAll => _countAll;
 
+
     public int CountText => _countText;
 
     public int CountLinks => _countLinks;
@@ -307,7 +308,7 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         // first fix attempt) let CountAll silently exceed CountText+CountLinks+CountImages+
         // CountFiles the moment anything was pinned -- the same kind of drift the rule exists to
         // prevent. Every Count* below reads only `searchedAll`, and the per-kind ones reuse the
-        // exact same IsSingleImageFile classification helper MatchesFilter itself uses, so a
+        // exact same IsImageEntity classification helper MatchesFilter itself uses, so a
         // filter tab and its own badge (and the "全て" tab) can never disagree.
         //
         // NOTE this is a deliberately different scope than VisibleCount (Cards.Count +
@@ -319,8 +320,8 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         _countAll = searchedAll.Count;
         _countText = searchedAll.Count(i => i.Kind == ClipKind.Text);
         _countLinks = searchedAll.Count(i => i.Kind == ClipKind.Link);
-        _countImages = searchedAll.Count(i => i.Kind == ClipKind.Image || IsSingleImageFile(i));
-        _countFiles = searchedAll.Count(i => i.Kind == ClipKind.Files && !IsSingleImageFile(i));
+        _countImages = searchedAll.Count(i => i.Kind == ClipKind.Image || IsImageEntity(i));
+        _countFiles = searchedAll.Count(i => i.Kind == ClipKind.Files && !IsImageEntity(i));
 
         var visible = searched.Where(i => MatchesFilter(i, _filter)).ToList();
 
@@ -371,8 +372,8 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         CardFilter.All => true,
         CardFilter.Text => item.Kind == ClipKind.Text,
         CardFilter.Links => item.Kind == ClipKind.Link,
-        CardFilter.Images => item.Kind == ClipKind.Image || IsSingleImageFile(item),
-        CardFilter.Files => item.Kind == ClipKind.Files && !IsSingleImageFile(item),
+        CardFilter.Images => item.Kind == ClipKind.Image || IsImageEntity(item),
+        CardFilter.Files => item.Kind == ClipKind.Files && !IsImageEntity(item),
         _ => true,
     };
 
@@ -381,14 +382,43 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
     /// <see cref="MatchesFilter"/> (Images/Files branches) and the Count* computation in
     /// <see cref="Rebuild"/> call this one helper, so a filter tab and its own count badge can
     /// never disagree about which cards are which (the CLAUDE.md rule against deciding related
-    /// fields separately). A stack (2+ paths) is deliberately excluded even when every path is an
-    /// image -- per the v1.1 Global Constraints, only a LONE image file reclassifies as 画像; a
-    /// stack always stays ファイル.
+    /// fields separately).
+    ///
+    /// <para>v1.2 Task A widening: a lone image file still counts (unchanged from v1.1's
+    /// IsSingleImageFile), and now so does a STACK (2+ paths) whose every path classifies as
+    /// <see cref="MediaCategory.Image"/> -- a video or a non-media file anywhere in the stack
+    /// flips the whole thing back to ファイル. This deliberately reverses the v1.1 Global
+    /// Constraints decision that a stack always stays ファイル; see the v1.2 plan's decision (1).
+    /// Note this is a DIFFERENT question than <see cref="CardViewModel.Media"/>/
+    /// <see cref="CardViewModel.IsMediaFile"/>, which stay Other/false for every stack regardless
+    /// of its contents -- those two answer "does this card show a large shell thumbnail in place
+    /// of its icon", not "which filter tab counts this card", and a stack's large-thumbnail
+    /// eligibility is instead driven by <see cref="CardViewModel.StackThumbnail"/>.</para>
     /// </summary>
-    private static bool IsSingleImageFile(ClipItem item) =>
-        item.Kind == ClipKind.Files &&
-        item.Paths.Count == 1 &&
-        MediaKind.Classify(item.Paths[0]) == MediaCategory.Image;
+    private static bool IsImageEntity(ClipItem item)
+    {
+        if (item.Kind != ClipKind.Files || item.Paths.Count == 0)
+        {
+            return false;
+        }
+
+        if (item.Paths.Count == 1)
+        {
+            return MediaKind.Classify(item.Paths[0]) == MediaCategory.Image;
+        }
+
+        // Stack: every path must classify as Image -- a single video or non-media path anywhere
+        // in the stack is enough to keep the whole card as ファイル.
+        foreach (var path in item.Paths)
+        {
+            if (MediaKind.Classify(path) != MediaCategory.Image)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private static bool MatchesSearch(ClipItem item, string search)
     {

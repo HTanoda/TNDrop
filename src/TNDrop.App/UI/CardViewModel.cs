@@ -31,6 +31,8 @@ public sealed class CardViewModel : INotifyPropertyChanged
     private ImageSource? _thumbnail;
     private bool _fileIconLoaded;
     private ImageSource? _fileIcon;
+    private bool _stackThumbnailLoaded;
+    private ImageSource? _stackThumbnail;
     private bool _selected;
 
     public CardViewModel(ClipItem item, ThumbnailService? thumbnailService = null)
@@ -45,10 +47,19 @@ public sealed class CardViewModel : INotifyPropertyChanged
         // re-classifies the path itself -- so they can never disagree about what this card is.
         // Kind==Files with exactly one path is the only case that can be a lone media file; a
         // stack (2+ paths) always stays Other here even if every path in it is an image (the v1.1
-        // Global Constraints decision: a stack is always ファイル, never 画像).
+        // Global Constraints decision, unchanged by v1.2: Media/IsMediaFile answer "does this
+        // card show a large shell thumbnail INSTEAD OF its icon", which stays a lone-file-only
+        // question even though v1.2 widened the SEPARATE "which filter tab counts this card"
+        // question -- see ShelfViewModel.IsImageEntity's own doc comment for that split).
         Media = Kind == ClipKind.Files && item.Paths.Count == 1
             ? MediaKind.Classify(item.Paths[0])
             : MediaCategory.Other;
+
+        // Same one-resolution rationale, scoped to a stack's first path instead: StackThumbnail
+        // and the video-badge trigger in Cards.xaml both need "what does Paths[0] classify as"
+        // for a stack, so it is computed once here rather than each re-deriving its own answer.
+        // Other() for every non-stack card, same as Media.
+        StackFirstMedia = IsStack ? MediaKind.Classify(item.Paths[0]) : MediaCategory.Other;
     }
 
     public ClipItem Item { get; }
@@ -174,6 +185,56 @@ public sealed class CardViewModel : INotifyPropertyChanged
     public bool IsStack => Kind == ClipKind.Files && Item.Paths.Count > 1;
 
     public int StackCount => Item.Paths.Count;
+
+    /// <summary>What <c>Item.Paths[0]</c> classifies as, for a stack card only --
+    /// <see cref="MediaCategory.Other"/> for every non-stack card, computed once at construction
+    /// (see the constructor's remarks). Drives both <see cref="StackThumbnail"/> and the
+    /// video-overlay badge on the stack's large-thumbnail visual in Cards.xaml.</summary>
+    public MediaCategory StackFirstMedia { get; }
+
+    /// <summary>
+    /// The shell's large preview of a stack's first path, at the same <see cref="MediaThumbnailPx"/>
+    /// size and via the same lazy-loaded-and-cached pattern as <see cref="Thumbnail"/> -- null
+    /// (and untouched) until first read, then cached for the lifetime of this instance. Non-null
+    /// only for a stack (<see cref="IsStack"/>) whose first path classifies as an image or a video
+    /// (<see cref="StackFirstMedia"/> != <see cref="MediaCategory.Other"/>); null for every other
+    /// card, including a lone media file (which already has its own large thumbnail via
+    /// <see cref="Thumbnail"/>).
+    ///
+    /// <para><b>Load-order / independence.</b> This property owns its own
+    /// <c>_stackThumbnailLoaded</c>/<c>_stackThumbnail</c> fields, entirely separate from
+    /// <see cref="Thumbnail"/>'s and <see cref="FileIcon"/>'s -- reading StackThumbnail never
+    /// forces either of those to resolve, and vice versa. In practice the three never compete for
+    /// the same card anyway: <see cref="IsMediaFile"/> (which gates Thumbnail's media branch) and
+    /// <see cref="IsStack"/> (which gates this property) are mutually exclusive by definition
+    /// (Item.Paths.Count == 1 vs > 1), and <see cref="ShouldTryFileIcon"/> only reads the already-
+    /// cached Thumbnail fields, never this one -- so a stack's FileIcon attempt is unaffected by
+    /// whether StackThumbnail has been read yet.</para>
+    /// </summary>
+    public ImageSource? StackThumbnail
+    {
+        get
+        {
+            if (!_stackThumbnailLoaded)
+            {
+                _stackThumbnailLoaded = true;
+
+                if (StackFirstMedia != MediaCategory.Other)
+                {
+                    _stackThumbnail = ShellImaging.GetThumbnail(Item.Paths[0], MediaThumbnailPx);
+                }
+            }
+
+            return _stackThumbnail;
+        }
+    }
+
+    /// <summary>True once <see cref="StackThumbnail"/> resolves to a real image. Exists purely so
+    /// Cards.xaml can pick the large-thumbnail stack visual with a plain DataTrigger: WPF triggers
+    /// only match a literal value, not "is not null", so a boolean stand-in is needed the same way
+    /// <see cref="IsMediaFile"/> stands in for "Media != Other" elsewhere in this class. Reading
+    /// this forces the same lazy shell round-trip <see cref="StackThumbnail"/> itself would.</summary>
+    public bool HasStackThumbnail => StackThumbnail != null;
 
     private static (string Title, string Subtitle) BuildTitleAndSubtitle(ClipItem item)
     {

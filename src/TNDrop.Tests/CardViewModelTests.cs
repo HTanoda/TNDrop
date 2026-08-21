@@ -114,4 +114,58 @@ public class CardViewModelTests
         // null; GetIcon is attempted and still returns null here only because the path is missing.
         Assert.Null(card.FileIcon);
     }
+
+    // -- v1.2 Task A: StackThumbnail ---------------------------------------------------------
+    //
+    // All three tests use nonexistent paths so the actual ShellImaging.GetThumbnail call returns
+    // null safely (no file on disk to produce a preview from) -- these exercise CardViewModel's
+    // own gating logic (IsStack + StackFirstMedia), not real shell behaviour.
+
+    [StaFact]
+    public void StackThumbnail_is_null_for_non_media_first_path_stack()
+    {
+        var card = new CardViewModel(FilesItem(@"C:\docs\a.xlsx", @"C:\docs\b.txt"));
+
+        Assert.True(card.IsStack);
+        Assert.Equal(MediaCategory.Other, card.StackFirstMedia);
+        Assert.Null(card.StackThumbnail);
+    }
+
+    [StaFact]
+    public void StackThumbnail_is_null_when_first_path_is_missing_on_disk()
+    {
+        var card = new CardViewModel(FilesItem(
+            @"C:\this-path-does-not-exist\a.png", @"C:\this-path-does-not-exist\b.png"));
+
+        Assert.True(card.IsStack);
+        Assert.Equal(MediaCategory.Image, card.StackFirstMedia);
+        // ShellImaging.GetThumbnail returns null safely for a missing path -- StackThumbnail
+        // just passes that through rather than throwing or leaving the flag unresolved.
+        Assert.Null(card.StackThumbnail);
+        Assert.False(card.HasStackThumbnail);
+    }
+
+    [StaFact]
+    public void StackThumbnail_is_null_for_a_non_stack_card_even_when_media()
+    {
+        var card = new CardViewModel(FilesItem(@"C:\pics\a.png"));
+
+        Assert.False(card.IsStack);
+        Assert.Equal(MediaCategory.Other, card.StackFirstMedia);
+        Assert.Null(card.StackThumbnail);
+        Assert.False(card.HasStackThumbnail);
+    }
+
+    [StaFact]
+    public void StackFirstMedia_is_Video_for_a_video_first_stack()
+    {
+        var card = new CardViewModel(FilesItem(
+            @"C:\this-path-does-not-exist\a.mp4", @"C:\this-path-does-not-exist\b.png"));
+
+        Assert.True(card.IsStack);
+        Assert.Equal(MediaCategory.Video, card.StackFirstMedia);
+        // Still null in this test only because the path does not exist on disk -- StackFirstMedia
+        // (which Cards.xaml's video-badge trigger reads) is correct regardless of that.
+        Assert.Null(card.StackThumbnail);
+    }
 }

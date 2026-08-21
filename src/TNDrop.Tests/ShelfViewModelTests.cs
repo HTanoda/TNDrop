@@ -45,12 +45,14 @@ public class ShelfViewModelTests : IDisposable
         Assert.Single(vm.PinnedCards);
     }
 
-    // -- v1.1 Task B: unified image classification -----------------------------------------
+    // -- v1.1 Task B / v1.2 Task A: unified image classification -----------------------------
     //
     // A lone image-extension file counts as 画像 (Images), not ファイル (Files); a lone video
-    // stays ファイル; a stack (2+ paths) always stays ファイル even if every path is an image.
-    // MatchesFilter and the Count* fields must agree on all three, since they are computed from
-    // the same helper (one-resolution rule) -- see ShelfViewModel.IsSingleImageFile.
+    // stays ファイル. v1.2 widens the stack case (reversing v1.1's "a stack always stays
+    // ファイル"): a stack (2+ paths) counts as 画像 only when EVERY path is an image extension --
+    // a video or any other non-image path anywhere in the stack keeps it as ファイル.
+    // MatchesFilter and the Count* fields must agree on all of these, since they are computed
+    // from the same helper (one-resolution rule) -- see ShelfViewModel.IsImageEntity.
 
     [StaFact]
     public void Single_image_file_counts_as_Images_not_Files()
@@ -85,9 +87,60 @@ public class ShelfViewModelTests : IDisposable
     }
 
     [StaFact]
-    public void Two_file_image_stack_counts_as_Files_not_Images()
+    public void All_image_two_file_stack_counts_as_Images_not_Files()
     {
         var paths = new[] { @"C:\pics\a.png", @"C:\pics\b.png" };
+        _store.TryAdd(ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0]);
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(1, vm.CountImages);
+        Assert.Equal(0, vm.CountFiles);
+
+        vm.Filter = CardFilter.Images;
+        Assert.Single(vm.Cards);
+
+        vm.Filter = CardFilter.Files;
+        Assert.Empty(vm.Cards);
+    }
+
+    [StaFact]
+    public void All_image_three_file_stack_counts_as_Images_not_Files()
+    {
+        var paths = new[] { @"C:\pics\a.png", @"C:\pics\b.jpg", @"C:\pics\c.webp" };
+        _store.TryAdd(ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0]);
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(1, vm.CountImages);
+        Assert.Equal(0, vm.CountFiles);
+
+        vm.Filter = CardFilter.Images;
+        Assert.Single(vm.Cards);
+
+        vm.Filter = CardFilter.Files;
+        Assert.Empty(vm.Cards);
+    }
+
+    [StaFact]
+    public void Image_and_text_mixed_stack_counts_as_Files_not_Images()
+    {
+        var paths = new[] { @"C:\pics\a.png", @"C:\docs\b.txt" };
+        _store.TryAdd(ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0]);
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(0, vm.CountImages);
+        Assert.Equal(1, vm.CountFiles);
+
+        vm.Filter = CardFilter.Files;
+        Assert.Single(vm.Cards);
+
+        vm.Filter = CardFilter.Images;
+        Assert.Empty(vm.Cards);
+    }
+
+    [StaFact]
+    public void Image_and_video_mixed_stack_counts_as_Files_not_Images()
+    {
+        var paths = new[] { @"C:\pics\a.png", @"C:\mov\b.mp4" };
         _store.TryAdd(ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0]);
         var vm = new ShelfViewModel(_store);
 
@@ -237,6 +290,52 @@ public class ShelfViewModelTests : IDisposable
 
         var vm = new ShelfViewModel(_store);
 
+        Assert.Equal(3, vm.CountAll);
+        Assert.Equal(1, vm.CountText);
+        Assert.Equal(1, vm.CountLinks);
+        Assert.Equal(1, vm.CountImages);
+        Assert.Equal(0, vm.CountFiles);
+        AssertCountAllEqualsSumOfSubcounts(vm);
+    }
+
+    // -- v1.2 Task A: CountAll vs sub-counts with an all-image stack, pinned and unpinned --------
+    //
+    // IsImageEntity's stack-widening must not break the CountAll==sum-of-subcounts invariant in
+    // either pinned scope, since Rebuild derives CountAll and the four per-kind counts from the
+    // same searchedAll sequence regardless of which deck (Cards vs PinnedCards) an item ends up in.
+
+    [StaFact]
+    public void CountAll_equals_sum_of_subcounts_with_an_all_image_stack_unpinned()
+    {
+        var paths = new[] { @"C:\pics\a.png", @"C:\pics\b.jpg", @"C:\pics\c.webp" };
+        _store.TryAdd(ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0]);
+        Add(ClipKind.Text, "a");
+        Add(ClipKind.Link, "https://example.com/page");
+
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(3, vm.CountAll);
+        Assert.Equal(1, vm.CountText);
+        Assert.Equal(1, vm.CountLinks);
+        Assert.Equal(1, vm.CountImages);
+        Assert.Equal(0, vm.CountFiles);
+        AssertCountAllEqualsSumOfSubcounts(vm);
+    }
+
+    [StaFact]
+    public void CountAll_equals_sum_of_subcounts_with_an_all_image_stack_pinned()
+    {
+        var paths = new[] { @"C:\pics\a.png", @"C:\pics\b.jpg", @"C:\pics\c.webp" };
+        var stackItem = ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0];
+        _store.TryAdd(stackItem);
+        _store.SetPinned(stackItem.Id, true);
+        Add(ClipKind.Text, "a");
+        Add(ClipKind.Link, "https://example.com/page");
+
+        var vm = new ShelfViewModel(_store);
+
+        // The pinned all-image stack lives only in PinnedCards, not Cards -- CountAll (and
+        // CountImages) must still include it, same as the pre-existing pinned-text-item test above.
         Assert.Equal(3, vm.CountAll);
         Assert.Equal(1, vm.CountText);
         Assert.Equal(1, vm.CountLinks);
