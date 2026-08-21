@@ -114,6 +114,9 @@ internal static class Strings
     // Pinned accordion + click-to-paste (v1.2 Task H).
     public static string PinnedHeaderFormat => Get(nameof(PinnedHeaderFormat));
     public static string PinnedToggleTooltip => Get(nameof(PinnedToggleTooltip));
+
+    // Search clear button (v1.2 Task F).
+    public static string SearchClearTooltip => Get(nameof(SearchClearTooltip));
     public static string SettingsPasteOnClick => Get(nameof(SettingsPasteOnClick));
     public static string SettingsPasteOnClickHint => Get(nameof(SettingsPasteOnClickHint));
 

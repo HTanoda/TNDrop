@@ -1,0 +1,93 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Sleek overlay-style scrollbar (v1.2 Task F). An implicit (no x:Key) Style targeting
+        ScrollBar, so it applies automatically to every ScrollBar WPF generates inside a
+        ScrollViewer/ListBox default template wherever this dictionary is merged - no need to
+        reach into each control's template individually.
+
+        Vertical only: every scrollable surface in this app (CardsList, PinnedScroll, the three
+        SettingsWindow category ScrollViewers) sets HorizontalScrollBarVisibility="Disabled" (the
+        pinned deck became a vertical accordion in Task H), so a horizontal ScrollBar is never
+        actually shown and is not templated here.
+
+        No arrow repeat buttons: the ControlTemplate below has only a Track (thumb + two
+        page-scroll RepeatButtons), no LineUp/LineDown buttons at all, which is what removes the
+        arrows. The page RepeatButtons stay in the template - invisible, but still hit-testable -
+        so a click on the empty track above/below the thumb still pages the list; only the visual
+        chrome around the arrows is gone, not the behavior.
+    -->
+
+    <Style x:Key="Scrollbar.PageButtonStyle" TargetType="RepeatButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Rectangle Fill="Transparent" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Thumb: ~6px wide, rounded, semi-transparent light; brighter on hover/drag. -->
+    <Style x:Key="Scrollbar.ThumbStyle" TargetType="Thumb">
+        <Setter Property="Background" Value="#55FFFFFF" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="3"
+                            Width="6"
+                            HorizontalAlignment="Center" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="#88FFFFFF" />
+            </Trigger>
+            <Trigger Property="IsDragging" Value="True">
+                <Setter Property="Background" Value="#88FFFFFF" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Implicit: no x:Key, so every ScrollBar under wherever this dictionary is merged picks it
+         up automatically (ListBox's and ScrollViewer's default templates each create their own
+         ScrollBar instances that this Style reaches without needing to touch those templates). -->
+    <Style TargetType="{x:Type ScrollBar}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Width" Value="10" />
+        <Setter Property="MinWidth" Value="10" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <!-- Track fills the whole 10px lane; the 6px thumb is centered inside it,
+                         leaving a couple of transparent pixels each side so cards keep their
+                         width instead of the track eating into the card column. -->
+                    <Grid Background="{TemplateBinding Background}">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource Scrollbar.PageButtonStyle}"
+                                              Command="ScrollBar.PageUpCommand" />
+                            </Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource Scrollbar.PageButtonStyle}"
+                                              Command="ScrollBar.PageDownCommand" />
+                            </Track.IncreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource Scrollbar.ThumbStyle}" />
+                            </Track.Thumb>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

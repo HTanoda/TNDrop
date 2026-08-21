@@ -30,7 +30,13 @@
     -->
 
     <Window.Resources>
-        <SolidColorBrush x:Key="Settings.Foreground" Color="#FFF2F2F7" />
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Overlay scrollbar (v1.2 Task F), shared with ShelfWindow - see Scrollbars.xaml. -->
+                <ResourceDictionary Source="Scrollbars.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <SolidColorBrush x:Key="Settings.Foreground" Color="#FFF2F2F7" />
         <SolidColorBrush x:Key="Settings.SubForeground" Color="#FFA5A5AD" />
         <SolidColorBrush x:Key="Settings.NavBackground" Color="#FF17171B" />
         <SolidColorBrush x:Key="Settings.Border" Color="#22FFFFFF" />
@@ -87,6 +93,7 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        </ResourceDictionary>
     </Window.Resources>
 
     <Grid>

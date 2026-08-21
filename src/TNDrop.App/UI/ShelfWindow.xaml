@@ -19,6 +19,7 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Cards.xaml" />
+                <ResourceDictionary Source="Scrollbars.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Window.Resources>
@@ -75,9 +76,12 @@
             </Grid>
 
             <Grid Grid.Row="1" Margin="0,0,0,10">
+                <!-- Right padding (28) clears the × clear button (v1.2 Task F) below so long
+                     search text wraps/trims before it runs under the button instead of behind
+                     it. -->
                 <TextBox x:Name="SearchBox"
                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                         Padding="8,6"
+                         Padding="8,6,28,6"
                          Background="#2A2A31"
                          BorderThickness="0"
                          Foreground="#FFF2F2F7"
@@ -95,6 +99,22 @@
                            FontSize="{DynamicResource CardFontSize}"
                            Foreground="#FF6B6B73"
                            IsHitTestVisible="False" />
+
+                <!-- Search clear button (v1.2 Task F): shown only while SearchBox has text (see
+                     OnSearchTextChanged), clears SearchText via the TwoWay binding above and
+                     restores keyboard focus to the search box if the click came from a focused
+                     box (see OnSearchClearButtonClick). Header.IconButtonStyle already gives it
+                     Focusable="False" - the same convention as the header ⚙/× buttons - so a
+                     click here never grabs activation on its own. -->
+                <Button x:Name="SearchClearButton"
+                        Content="&#215;"
+                        Width="22" Height="22"
+                        Margin="0,0,4,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Style="{StaticResource Header.IconButtonStyle}"
+                        Visibility="Collapsed" />
             </Grid>
 
             <WrapPanel x:Name="FilterTabs"

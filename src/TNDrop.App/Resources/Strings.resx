@@ -320,6 +320,9 @@
   <data name="PinnedToggleTooltip" xml:space="preserve">
     <value>ピン留めの表示を切り替える</value>
   </data>
+  <data name="SearchClearTooltip" xml:space="preserve">
+    <value>検索をクリア</value>
+  </data>
   <data name="SettingsPasteOnClick" xml:space="preserve">
     <value>クリックで貼り付け</value>
   </data>

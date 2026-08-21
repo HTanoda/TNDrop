@@ -649,6 +649,11 @@ public partial class ShelfWindow : Window
         SearchBox.PreviewMouseLeftButtonDown += OnSearchBoxPreviewMouseLeftButtonDown;
         SearchBox.LostKeyboardFocus += OnSearchBoxLostKeyboardFocus;
 
+        // Search clear button (v1.2 Task F). Tooltip set here, same pattern as every other
+        // header/footer control in this method.
+        SearchClearButton.ToolTip = Strings.SearchClearTooltip;
+        SearchClearButton.Click += OnSearchClearButtonClick;
+
         ClearButton.Content = Strings.ClearButton;
         ClearButton.Click += OnClearButtonClick;
 
@@ -887,9 +892,35 @@ public partial class ShelfWindow : Window
 
     private void OnSearchTextChanged(object sender, TextChangedEventArgs e)
     {
-        SearchPlaceholderText.Visibility = string.IsNullOrEmpty(SearchBox.Text)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        var hasText = !string.IsNullOrEmpty(SearchBox.Text);
+
+        SearchPlaceholderText.Visibility = hasText ? Visibility.Collapsed : Visibility.Visible;
+
+        // Search clear button (v1.2 Task F): visible only while there is something to clear.
+        SearchClearButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// The search box's × clear button (v1.2 Task F). Clears <see cref="ShelfViewModel.SearchText"/>
+    /// through the same TwoWay binding the user's own typing goes through (SearchBox.Text ->
+    /// SearchText, UpdateSourceTrigger=PropertyChanged in ShelfWindow.xaml) rather than reaching
+    /// into the view model directly, so there is exactly one path that ever changes SearchText.
+    /// <para>Restores keyboard focus to the search box only if it already had it: the button
+    /// itself is Focusable="False" (Header.IconButtonStyle) so a click never grabs focus on its
+    /// own, but the box's OWN focus could otherwise be knocked loose by the click landing outside
+    /// it. When the box did not have focus to begin with (e.g. SearchText was set some other way),
+    /// this does nothing extra - the button must not steal activation it was not asked for.</para>
+    /// </summary>
+    private void OnSearchClearButtonClick(object sender, RoutedEventArgs e)
+    {
+        var hadFocus = SearchBox.IsKeyboardFocusWithin;
+
+        SearchBox.Text = string.Empty;
+
+        if (hadFocus)
+        {
+            Keyboard.Focus(SearchBox);
+        }
     }
 
     /// <summary>
