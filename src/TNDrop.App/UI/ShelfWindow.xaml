@@ -76,12 +76,12 @@
             </Grid>
 
             <Grid Grid.Row="1" Margin="0,0,0,10">
-                <!-- Right padding (28) clears the × clear button (v1.2 Task F) below so long
-                     search text wraps/trims before it runs under the button instead of behind
-                     it. -->
+                <!-- Right padding (34 = button's 26 width + its 4 right margin + a small gap)
+                     clears the × clear button (v1.2 Task F) below so long search text
+                     wraps/trims before it runs under the button instead of behind it. -->
                 <TextBox x:Name="SearchBox"
                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                         Padding="8,6,28,6"
+                         Padding="8,6,34,6"
                          Background="#2A2A31"
                          BorderThickness="0"
                          Foreground="#FFF2F2F7"
@@ -105,14 +105,15 @@
                      restores keyboard focus to the search box if the click came from a focused
                      box (see OnSearchClearButtonClick). Header.IconButtonStyle already gives it
                      Focusable="False" - the same convention as the header ⚙/× buttons - so a
-                     click here never grabs activation on its own. -->
+                     click here never grabs activation on its own. Width/Height are left at the
+                     style's own 26x26 (only Margin is overridden, to sit flush against the RIGHT
+                     edge here instead of the style's default left-stacking margin) so this button
+                     matches its header siblings exactly rather than being its own smaller size. -->
                 <Button x:Name="SearchClearButton"
                         Content="&#215;"
-                        Width="22" Height="22"
                         Margin="0,0,4,0"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Center"
-                        FontSize="12"
                         Style="{StaticResource Header.IconButtonStyle}"
                         Visibility="Collapsed" />
             </Grid>

@@ -17,6 +17,30 @@
         arrows. The page RepeatButtons stay in the template - invisible, but still hit-testable -
         so a click on the empty track above/below the thumb still pages the list; only the visual
         chrome around the arrows is gone, not the behavior.
+
+        BLAST RADIUS (intentional, not an oversight - confirmed empirically in review): because
+        the ScrollBar style below is IMPLICIT (no x:Key), it applies to every ScrollBar anywhere
+        under a window that merges this dictionary - that includes ComboBox's own dropdown Popup.
+        ShelfWindow has no ComboBox, but SettingsWindow does (AutoDeleteCombo,
+        HistoryCapacityCombo, MonitorCombo), and merging this dictionary into SettingsWindow.xaml
+        for the three category ScrollViewers ALSO restyles those combo dropdowns' scrollbars.
+        DECISION: keep it. A uniform overlay scrollbar look across every scrollable surface in
+        SettingsWindow (dropdowns included) is more consistent, not less, than styling three
+        ScrollViewers while leaving three ComboBoxes on the stock Windows scrollbar. If a future
+        window merges this dictionary and does NOT want that, the fix is to give that ComboBox its
+        own explicit, keyed ScrollBar style locally (or move this Style behind an x:Key here) -
+        not to assume the implicit reach stops at ScrollViewer.
+
+        StackFlyout is NOT reached by this dictionary. It is a Popup constructed in code
+        (ShelfWindow creates it, see StackFlyout.xaml.cs) and is deliberately self-contained -
+        its own doc comment notes it is "NOT part of the window's logical tree" and inherits
+        neither Cards.xaml nor the window's DataContext. The same applies to this dictionary: a
+        Popup's content does not pick up a host window's merged ResourceDictionaries through the
+        logical tree the way a normal child element would. StackFlyout has no ScrollViewer today
+        (checked before writing this file), but IF one is ever added there, its Resources must
+        merge Scrollbars.xaml explicitly (`<ItemsControl.Resources><ResourceDictionary
+        Source="Scrollbars.xaml" /></ItemsControl.Resources>` or on the Popup's root Border) -
+        merging it into ShelfWindow.xaml again will NOT reach a Popup's own content.
     -->
 
     <Style x:Key="Scrollbar.PageButtonStyle" TargetType="RepeatButton">
