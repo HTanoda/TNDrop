@@ -90,7 +90,15 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
     /// filter tab's own badge (v1.1 review fix: this used to count unpinned-searched only, which
     /// under-reported against the footer's <see cref="TotalCount"/> whenever anything was pinned).
     /// Scoped by search, unlike TotalCount, which stays search-independent -- keep that difference
-    /// in mind before assuming the two must always match.</summary>
+    /// in mind before assuming the two must always match.
+    /// <para>ONE-RESOLUTION: this and <see cref="CountText"/>/<see cref="CountLinks"/>/
+    /// <see cref="CountImages"/>/<see cref="CountFiles"/> are all five computed from the same
+    /// `searchedAll` sequence in <see cref="Rebuild"/> (v1.1 re-review fix: a first pass computed
+    /// CountAll from searched-unpinned+searched-pinned but left the four sub-counts reading
+    /// searched-unpinned only, which let CountAll silently exceed their sum the moment anything was
+    /// pinned). CountAll always equals CountText+CountLinks+CountImages+CountFiles as a result --
+    /// do not reintroduce a second, differently-scoped source for any one of these five.</para>
+    /// </summary>
     public int CountAll => _countAll;
 
     public int CountText => _countText;
@@ -121,6 +129,12 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
     /// always shows every pinned item regardless of Filter/SearchText - it is genuinely still
     /// visible on screen, so leaving it out of this count would make the footer under-report what
     /// the user can actually see.</para>
+    /// <para>KNOWN, OUT-OF-SCOPE SEPARATE SCOPE from <see cref="CountAll"/>: CountAll counts only
+    /// pinned items that themselves pass the current search (see its own doc comment), while
+    /// PinnedCards -- and therefore VisibleCount -- always includes every pinned item regardless of
+    /// search (pre-existing v1.1 design, unchanged here). So VisibleCount can be larger than
+    /// CountAll while a search is active and a pinned item does not match it. This is expected, not
+    /// a drift to fix.</para>
     /// </summary>
     public int VisibleCount => Cards.Count + PinnedCards.Count;
 
@@ -287,16 +301,26 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
 
         var searched = unpinnedItems.Where(i => MatchesSearch(i, _searchText)).ToList();
 
-        // CountAll = searched-unpinned + searched-pinned (see the property's own doc comment):
-        // pinned items that pass the current search count towards the "全て" badge even though
-        // PinnedCards below always renders every pinned item regardless of search -- this count is
-        // about "how many match", not "how many are on screen".
-        var searchedPinnedCount = pinnedItems.Count(i => MatchesSearch(i, _searchText));
-        _countAll = searched.Count + searchedPinnedCount;
-        _countText = searched.Count(i => i.Kind == ClipKind.Text);
-        _countLinks = searched.Count(i => i.Kind == ClipKind.Link);
-        _countImages = searched.Count(i => i.Kind == ClipKind.Image || IsSingleImageFile(i));
-        _countFiles = searched.Count(i => i.Kind == ClipKind.Files && !IsSingleImageFile(i));
+        // ONE sequence backs EVERY Count* property -- CountAll and all four per-kind sub-counts
+        // (one-resolution rule, v1.1 re-review): searched-unpinned UNION searched-pinned. Building
+        // CountAll from this union while still deriving the sub-counts from `searched` alone (the
+        // first fix attempt) let CountAll silently exceed CountText+CountLinks+CountImages+
+        // CountFiles the moment anything was pinned -- the same kind of drift the rule exists to
+        // prevent. Every Count* below reads only `searchedAll`, and the per-kind ones reuse the
+        // exact same IsSingleImageFile classification helper MatchesFilter itself uses, so a
+        // filter tab and its own badge (and the "全て" tab) can never disagree.
+        //
+        // NOTE this is a deliberately different scope than VisibleCount (Cards.Count +
+        // PinnedCards.Count, see that property's own doc comment): PinnedCards always renders
+        // EVERY pinned item regardless of search/filter (pre-existing v1.1 design, out of scope
+        // here), so VisibleCount can exceed searchedAll.Count whenever a pinned item does NOT
+        // match the current search -- that gap is expected, not a bug to chase.
+        var searchedAll = searched.Concat(pinnedItems.Where(i => MatchesSearch(i, _searchText))).ToList();
+        _countAll = searchedAll.Count;
+        _countText = searchedAll.Count(i => i.Kind == ClipKind.Text);
+        _countLinks = searchedAll.Count(i => i.Kind == ClipKind.Link);
+        _countImages = searchedAll.Count(i => i.Kind == ClipKind.Image || IsSingleImageFile(i));
+        _countFiles = searchedAll.Count(i => i.Kind == ClipKind.Files && !IsSingleImageFile(i));
 
         var visible = searched.Where(i => MatchesFilter(i, _filter)).ToList();
 

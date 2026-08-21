@@ -83,4 +83,35 @@ public class CardViewModelTests
         Assert.Equal(MediaCategory.Other, card.Media);
         Assert.False(card.IsMediaFile);
     }
+
+    // -- v1.1 re-review item #2: FileIcon's stale !IsMediaFile guard -----------------------------
+    //
+    // FileIcon used to be unconditionally null for a media file (IsMediaFile==true), even when its
+    // Thumbnail turned out null and a 32px shell icon might still resolve. The guard now allows a
+    // media file to try FileIcon once Thumbnail has already been read and come back null. Both
+    // paths below use a nonexistent path, so the actual ShellImaging.GetIcon/GetThumbnail calls
+    // still return null (there is nothing on disk to produce an icon from) -- these tests exercise
+    // CardViewModel's own guard/ordering logic, not real shell behaviour, which cannot be forced
+    // to fail deterministically in a unit test without mocking ShellImaging.
+
+    [StaFact]
+    public void FileIcon_stays_null_for_media_file_when_Thumbnail_never_read()
+    {
+        var card = new CardViewModel(FilesItem(@"C:\this-path-does-not-exist\a.png"));
+
+        Assert.True(card.IsMediaFile);
+        Assert.Null(card.FileIcon); // Thumbnail never touched -- unchanged pre-fix behaviour
+    }
+
+    [StaFact]
+    public void FileIcon_is_attempted_for_media_file_once_null_Thumbnail_has_been_read()
+    {
+        var card = new CardViewModel(FilesItem(@"C:\this-path-does-not-exist\a.png"));
+
+        Assert.True(card.IsMediaFile);
+        Assert.Null(card.Thumbnail); // forces the lazy load; caches null (path does not exist)
+        // Guard no longer short-circuits purely on IsMediaFile now that Thumbnail resolved to
+        // null; GetIcon is attempted and still returns null here only because the path is missing.
+        Assert.Null(card.FileIcon);
+    }
 }

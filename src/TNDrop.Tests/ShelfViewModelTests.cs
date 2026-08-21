@@ -193,10 +193,58 @@ public class ShelfViewModelTests : IDisposable
         // the disagreement the v1.1 review caught (CountAll used to read 2 here, not 3).
         Assert.Equal(3, vm.CountAll);
         Assert.Equal(vm.TotalCount, vm.CountAll);
+        AssertCountAllEqualsSumOfSubcounts(vm);
 
         // A search that only the pinned Files item matches: CountAll must still count it even
         // though it lives in PinnedCards, not Cards.
         vm.SearchText = "a.txt";
         Assert.Equal(1, vm.CountAll);
+        AssertCountAllEqualsSumOfSubcounts(vm);
     }
+
+    // -- v1.1 re-review: CountAll and the four per-kind sub-counts must share one scope ----------
+    //
+    // A first fix pass computed CountAll from searched-unpinned+searched-pinned but left
+    // CountText/CountLinks/CountImages/CountFiles reading searched-unpinned only, which let
+    // CountAll silently exceed their sum (a visible "全て" > sum-of-tabs inconsistency) the moment
+    // anything was pinned. Rebuild now derives all five from one `searchedAll` sequence.
+
+    [StaFact]
+    public void CountAll_equals_sum_of_subcounts_with_a_pinned_text_item()
+    {
+        Add(ClipKind.Text, "pinned note");
+        _store.SetPinned(_store.Items[0].Id, true);
+
+        var vm = new ShelfViewModel(_store);
+
+        // The pinned text item lives only in PinnedCards, not Cards -- CountAll (and CountText)
+        // must still include it.
+        Assert.Equal(1, vm.CountAll);
+        Assert.Equal(1, vm.CountText);
+        Assert.Equal(0, vm.CountLinks);
+        Assert.Equal(0, vm.CountImages);
+        Assert.Equal(0, vm.CountFiles);
+        AssertCountAllEqualsSumOfSubcounts(vm);
+    }
+
+    [StaFact]
+    public void CountAll_equals_sum_of_subcounts_with_a_mix_of_pinned_and_unpinned_items()
+    {
+        Add(ClipKind.Text, "a");
+        Add(ClipKind.Link, "https://example.com/page");
+        Add(ClipKind.Files, @"C:\pics\photo.png"); // single image file -> counts as Images
+        _store.SetPinned(_store.Items[0].Id, true); // pins the just-added Files/Image item
+
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(3, vm.CountAll);
+        Assert.Equal(1, vm.CountText);
+        Assert.Equal(1, vm.CountLinks);
+        Assert.Equal(1, vm.CountImages);
+        Assert.Equal(0, vm.CountFiles);
+        AssertCountAllEqualsSumOfSubcounts(vm);
+    }
+
+    private static void AssertCountAllEqualsSumOfSubcounts(ShelfViewModel vm) =>
+        Assert.Equal(vm.CountAll, vm.CountText + vm.CountLinks + vm.CountImages + vm.CountFiles);
 }

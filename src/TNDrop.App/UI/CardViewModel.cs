@@ -125,10 +125,13 @@ public sealed class CardViewModel : INotifyPropertyChanged
     }
 
     /// <summary>Shell extension icon for the left slot of a non-media single file or a stack (the
-    /// stack's icon is always the first path's, per the display spec). Null for Image cards and
-    /// for a lone media file (those use <see cref="Thumbnail"/> instead), and null when the shell
-    /// has nothing to offer -- callers must fall back to the existing generic glyph in that case.
-    /// Lazy and cached the same way as <see cref="Thumbnail"/>.</summary>
+    /// stack's icon is always the first path's, per the display spec), AND for a lone media file
+    /// whose <see cref="Thumbnail"/> already came back null (the Cards.xaml null-Thumbnail
+    /// fallback, v1.1 review item #2) -- a shell that cannot produce a 256px preview can often
+    /// still produce a 32px type icon, and the fallback should use it instead of the generic glyph
+    /// when one is available. Null for Image cards, and null when the shell has nothing to offer
+    /// either way -- callers must fall back to the existing generic glyph in that case. Lazy and
+    /// cached the same way as <see cref="Thumbnail"/>.</summary>
     public ImageSource? FileIcon
     {
         get
@@ -137,7 +140,7 @@ public sealed class CardViewModel : INotifyPropertyChanged
             {
                 _fileIconLoaded = true;
 
-                if (Kind == ClipKind.Files && !IsMediaFile && Item.Paths.Count > 0)
+                if (ShouldTryFileIcon())
                 {
                     _fileIcon = ShellImaging.GetIcon(Item.Paths[0], FileIconPx);
                 }
@@ -146,6 +149,27 @@ public sealed class CardViewModel : INotifyPropertyChanged
             return _fileIcon;
         }
     }
+
+    /// <summary>
+    /// True when a 32px shell icon is worth attempting for this card's first path: every ordinary
+    /// non-media Files card (the original rule), OR a media file whose Thumbnail has ALREADY been
+    /// requested and came back null.
+    /// <para>Deliberately reads the already-cached <see cref="_thumbnailLoaded"/>/
+    /// <see cref="_thumbnail"/> fields here, not the <see cref="Thumbnail"/> property itself:
+    /// calling the property from inside this getter would force today's 256px shell round-trip as
+    /// a side effect of asking for a 32px icon, even for a caller that never otherwise needed the
+    /// large thumbnail at all -- exactly the eager load the review flagged. The trade-off (accepted,
+    /// not hidden): this only helps once something else has already read Thumbnail first. In
+    /// practice that is guaranteed for the one caller that matters -- Cards.xaml's own
+    /// null-Thumbnail MultiDataTrigger binds Thumbnail as one of its own conditions, so by the time
+    /// the fallback UI needs an icon, Thumbnail has already resolved. A hypothetical future caller
+    /// that reads FileIcon on a media-file card without ever touching Thumbnail first would still
+    /// get null here, same as before this fix.</para>
+    /// </summary>
+    private bool ShouldTryFileIcon() =>
+        Kind == ClipKind.Files
+        && Item.Paths.Count > 0
+        && (!IsMediaFile || (_thumbnailLoaded && _thumbnail is null));
 
     public bool IsStack => Kind == ClipKind.Files && Item.Paths.Count > 1;
 
