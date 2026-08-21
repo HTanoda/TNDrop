@@ -148,12 +148,22 @@
                                 HorizontalAlignment="Left"
                                 Background="Transparent">
                         <TextBlock Text="&#128279;" FontSize="{DynamicResource CardFontSize}" Margin="0,0,6,0" Cursor="Hand" />
-                        <TextBlock Text="{Binding Title}"
+                        <!-- MaxWidth bound to the card's own content Grid (the outer, unnamed
+                             Grid two levels up) rather than a Grid column: the hotspot has to
+                             stay left-aligned and no wider than its content (a * Grid column
+                             would stretch it across the card), so a Grid fix (used elsewhere in
+                             this template) is not an option here. Binding to the ancestor Grid's
+                             ActualWidth - instead of a single hardcoded number - is what keeps
+                             this correct in both the full-width main list and the 200px-wide
+                             pinned deck (Card.PinnedContainerStyle) with one rule, not two. -->
+                        <TextBlock x:Name="LinkDomainText"
+                                   Text="{Binding Title}"
                                    ToolTip="{Binding Title}"
                                    FontWeight="Bold"
                                    FontSize="{DynamicResource CardFontSize}"
                                    Foreground="{StaticResource Card.Foreground}"
                                    TextTrimming="CharacterEllipsis"
+                                   MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Grid}}"
                                    Style="{StaticResource Card.LinkOpenText}" />
                     </StackPanel>
                     <TextBlock Text="{Binding Subtitle}"
@@ -178,8 +188,17 @@
                      "FileIcon is null" trigger below, so a shell that has nothing to offer falls
                      back to the original generic-page glyph instead of an empty square. -->
                 <StackPanel x:Name="FilesSingleContent" Visibility="Collapsed">
-                    <StackPanel Orientation="Horizontal">
-                        <Grid Width="32" Height="32" Margin="0,0,6,0">
+                    <!-- Grid (Auto icon column + * text column), not a horizontal StackPanel: a
+                         StackPanel measures its children with infinite available width, so the
+                         filename TextBlock never had a width to trim against and a very long name
+                         laid out far past the card's edge instead of ellipsizing (v1.1 review).
+                         FilesStackContent below already uses this same Auto/* shape correctly. -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid Grid.Column="0" Width="32" Height="32" Margin="0,0,6,0">
                             <Image x:Name="FileIconContent"
                                    Source="{Binding FileIcon}"
                                    Width="32" Height="32" />
@@ -189,12 +208,14 @@
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Visibility="Collapsed" />
                         </Grid>
-                        <TextBlock Text="{Binding Title}"
+                        <TextBlock x:Name="FilesSingleTitle"
+                                   Grid.Column="1"
+                                   Text="{Binding Title}"
                                    ToolTip="{Binding Title}"
                                    FontSize="{DynamicResource CardFontSize}"
                                    Foreground="{StaticResource Card.Foreground}"
                                    TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
+                    </Grid>
                     <TextBlock Text="{Binding Subtitle}"
                                ToolTip="{Binding Subtitle}"
                                FontSize="{DynamicResource CardSmallFontSize}"
@@ -242,9 +263,12 @@
                         </Border>
                     </Border>
 
+                    <!-- ToolTip is Subtitle (the full path), not Title (just the file name): same
+                         convention as FilesSingleContent's own subtitle line below, so hovering
+                         any file card's name always reveals the full path, media or not. -->
                     <TextBlock Grid.Row="1"
                                Text="{Binding Title}"
-                               ToolTip="{Binding Title}"
+                               ToolTip="{Binding Subtitle}"
                                FontSize="{DynamicResource CardFontSize}"
                                Foreground="{StaticResource Card.Foreground}"
                                TextWrapping="NoWrap"
@@ -379,6 +403,22 @@
                 <Setter TargetName="FilesSingleContent" Property="Visibility" Value="Collapsed" />
                 <Setter TargetName="MediaFileContent" Property="Visibility" Value="Visible" />
             </DataTrigger>
+            <!-- Deleted-file fallback (v1.1 review): a media file whose Thumbnail came back null
+                 (ShellImaging could not produce one - most commonly because the file was deleted
+                 after being dropped) would otherwise render MediaFileContent's 160px preview box
+                 empty. Listed after the IsMediaFile trigger above so it wins the tie and falls
+                 back to the ordinary FilesSingleContent look (icon + name) instead. Both
+                 conditions are needed, not just Thumbnail=={x:Null}: Kind==Image cards also read
+                 Thumbnail, and a missing blob thumbnail there must stay on ImageContent, not
+                 borrow this Files-only fallback. -->
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding IsMediaFile}" Value="True" />
+                    <Condition Binding="{Binding Thumbnail}" Value="{x:Null}" />
+                </MultiDataTrigger.Conditions>
+                <Setter TargetName="FilesSingleContent" Property="Visibility" Value="Visible" />
+                <Setter TargetName="MediaFileContent" Property="Visibility" Value="Collapsed" />
+            </MultiDataTrigger>
             <DataTrigger Binding="{Binding Media}" Value="Video">
                 <Setter TargetName="VideoBadge" Property="Visibility" Value="Visible" />
             </DataTrigger>

@@ -50,9 +50,12 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
+                <!-- Text is set in code-behind from Strings.AppName (see ShelfWindow's
+                     constructor), the same pattern TrayIcon.cs uses for its own tooltip: not
+                     hardcoded here, so a locale swap of AppName in the resx does not also need a
+                     XAML edit to stay in sync. -->
                 <TextBlock x:Name="PlaceholderTitle"
                            Grid.Column="0"
-                           Text="TNDrop"
                            Margin="2,0,0,0"
                            HorizontalAlignment="Left"
                            VerticalAlignment="Center"

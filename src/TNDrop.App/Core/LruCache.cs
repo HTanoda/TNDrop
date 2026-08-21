@@ -103,7 +103,8 @@ public sealed class LruCache<TValue>
         {
             if (_map.TryGetValue(key, out var existing))
             {
-                // Replace in place: reuse the node so the list length tracks the map exactly.
+                // Remove the existing entry first (not reused) so the list length tracks the map
+                // exactly: a fresh node for the new value is allocated and added at the front below.
                 _order.Remove(existing);
                 _map.Remove(key);
             }

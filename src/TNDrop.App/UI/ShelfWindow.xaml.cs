@@ -123,6 +123,11 @@ public partial class ShelfWindow : Window
     {
         InitializeComponent();
 
+        // Header app name, from resources -- same pattern as TrayIcon.cs's own Text/tooltip --
+        // rather than a literal baked into ShelfWindow.xaml, so the two never drift apart and an
+        // en-locale build shows the en resx's AppName here too.
+        PlaceholderTitle.Text = Strings.AppName;
+
         _retractTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _retractTimer.Tick += OnRetractTick;
 

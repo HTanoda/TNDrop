@@ -84,6 +84,13 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>Count of items matching the current search across BOTH decks -- searched-unpinned
+    /// plus searched-pinned -- so this and <see cref="TotalCount"/> read the same when no
+    /// filter/search narrows anything (see <see cref="Rebuild"/>'s computation). Backs the "全て"
+    /// filter tab's own badge (v1.1 review fix: this used to count unpinned-searched only, which
+    /// under-reported against the footer's <see cref="TotalCount"/> whenever anything was pinned).
+    /// Scoped by search, unlike TotalCount, which stays search-independent -- keep that difference
+    /// in mind before assuming the two must always match.</summary>
     public int CountAll => _countAll;
 
     public int CountText => _countText;
@@ -98,7 +105,11 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
     /// independent of the current filter/search. Backs the footer's "全 {0} 件" (v1.1 Task C).
     /// Read straight off the store rather than cached in a field: Rebuild already re-raises
     /// PropertyChanged for it on every path that could change it (a store change, or the user's
-    /// own Filter/SearchText), so there is nothing a cache would buy here.</summary>
+    /// own Filter/SearchText), so there is nothing a cache would buy here.
+    /// <para>Deliberately NOT filtered by search (unlike <see cref="CountAll"/>): this is the
+    /// footer's "how much exists at all" number, and only equals CountAll once the search box is
+    /// empty. Do not change one of these two without checking whether the other still needs to
+    /// agree with it in the no-search case.</para></summary>
     public int TotalCount => _store.Items.Count;
 
     /// <summary>
@@ -276,7 +287,12 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
 
         var searched = unpinnedItems.Where(i => MatchesSearch(i, _searchText)).ToList();
 
-        _countAll = searched.Count;
+        // CountAll = searched-unpinned + searched-pinned (see the property's own doc comment):
+        // pinned items that pass the current search count towards the "全て" badge even though
+        // PinnedCards below always renders every pinned item regardless of search -- this count is
+        // about "how many match", not "how many are on screen".
+        var searchedPinnedCount = pinnedItems.Count(i => MatchesSearch(i, _searchText));
+        _countAll = searched.Count + searchedPinnedCount;
         _countText = searched.Count(i => i.Kind == ClipKind.Text);
         _countLinks = searched.Count(i => i.Kind == ClipKind.Link);
         _countImages = searched.Count(i => i.Kind == ClipKind.Image || IsSingleImageFile(i));

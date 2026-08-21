@@ -161,4 +161,42 @@ public class ShelfViewModelTests : IDisposable
         Assert.Equal(2, vm.VisibleCount);
         Assert.Equal(3, vm.TotalCount);
     }
+
+    // -- v1.1 final fix wave: CountAll vs TotalCount agreement when items are pinned ----------
+    //
+    // CountAll (the "全て" filter tab's own badge) used to count unpinned-searched items only, so
+    // it under-reported against the footer's TotalCount whenever anything was pinned. Fixed to
+    // count searched-unpinned + searched-pinned (see ShelfViewModel.CountAll's own doc comment).
+
+    [StaFact]
+    public void CountAll_matches_TotalCount_when_nothing_is_pinned_or_searched()
+    {
+        Add(ClipKind.Text, "a");
+        Add(ClipKind.Link, "https://example.com/page");
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(2, vm.CountAll);
+        Assert.Equal(2, vm.TotalCount);
+    }
+
+    [StaFact]
+    public void CountAll_includes_pinned_items_that_pass_the_search()
+    {
+        Add(ClipKind.Text, "hello");
+        Add(ClipKind.Link, "https://example.com/page");
+        Add(ClipKind.Files, @"C:\docs\a.txt");
+        _store.SetPinned(_store.Items[0].Id, true); // pins the just-added Files item
+
+        var vm = new ShelfViewModel(_store);
+
+        // No search: every item (pinned or not) counts, matching TotalCount exactly -- this is
+        // the disagreement the v1.1 review caught (CountAll used to read 2 here, not 3).
+        Assert.Equal(3, vm.CountAll);
+        Assert.Equal(vm.TotalCount, vm.CountAll);
+
+        // A search that only the pinned Files item matches: CountAll must still count it even
+        // though it lives in PinnedCards, not Cards.
+        vm.SearchText = "a.txt";
+        Assert.Equal(1, vm.CountAll);
+    }
 }

@@ -190,6 +190,12 @@ public static class ShellImaging
     /// Existence check done in managed code first, so a path the user deleted (a very common case
     /// -- the shelf outlives the files dropped on it) costs a file system stat instead of a COM
     /// activation plus a failing shell parse plus a log line.
+    /// <para>ACCEPTED v1.1 TRADE-OFF: this stat (and the COM thumbnail/icon calls it guards) runs
+    /// synchronously on the UI thread at card-render time, including for the non-virtualized
+    /// pinned deck. A path on an unreachable UNC share can make Directory.Exists/File.Exists block
+    /// for the OS's network timeout, stalling the whole shelf. Accepted for v1.1; async/background
+    /// loading is a v1.2 candidate. See docs/manual-test-checklist.md §19 for the corresponding
+    /// manual check.</para>
     /// </summary>
     private static bool PathExists(string path, out bool isDirectory)
     {
