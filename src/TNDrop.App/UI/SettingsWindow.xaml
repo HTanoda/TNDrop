@@ -123,7 +123,22 @@
                                               Margin="{TemplateBinding Padding}"
                                               HorizontalAlignment="Left"
                                               VerticalAlignment="Center" />
-                            <Popup x:Name="Popup"
+                            <!-- Named PART_Popup, not just "Popup" (Task C review #1 fix):
+                                 ComboBox declares [TemplatePart(Name = "PART_Popup", Type =
+                                 typeof(Popup))] and its own OnApplyTemplate resolves that exact
+                                 name into a private _dropDownPopup field. A differently-named
+                                 Popup still opens/closes fine via the IsOpen/IsDropDownOpen
+                                 binding below (that part is our own wiring, name-independent),
+                                 but _dropDownPopup stays null - confirmed empirically with a
+                                 throwaway probe comparing a misnamed vs. correctly-named minimal
+                                 template side by side, since ComboBox's actual internal use of
+                                 that field is undocumented and not worth asserting more precisely
+                                 than "every built-in piece of ComboBox's own dropdown-popup
+                                 handling that reads _dropDownPopup silently no-ops", which
+                                 includes (per manual verification pending, see
+                                 manual-test-checklist.md #16-14) the built-in click-outside-the-
+                                 dropdown-to-dismiss-without-selecting behavior. -->
+                            <Popup x:Name="PART_Popup"
                                    Placement="Bottom"
                                    IsOpen="{TemplateBinding IsDropDownOpen}"
                                    AllowsTransparency="True"
