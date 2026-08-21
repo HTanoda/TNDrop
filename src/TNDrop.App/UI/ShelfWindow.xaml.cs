@@ -522,20 +522,11 @@ public partial class ShelfWindow : Window
     {
         _retractTimer.Stop();
 
-        if (!IsVisible)
-        {
-            return;
-        }
-
-        // The drag-open grace (v1.2 Task B) is the one IsPointerInside term that goes away with no
-        // event behind it: the pointer leaving raises MouseLeave, a drag leaving raises DragLeave,
-        // the flyout closing raises Closed -- each of which comes back here -- but a deadline
-        // simply passes. So the countdown has to be RUNNING across it, and OnRetractTick's
-        // suppress-and-re-arm loop is what then turns the expiry into a retract on the next tick.
-        // Measured: without this term the probe's drag-opened shelf was still on screen 5.4 s
-        // later with no timer alive to ever take it away, which is precisely the "visible shelf
-        // the user cannot get rid of" this method's doc comment exists to prevent.
-        if (!IsPointerInside || IsWithinDragOpenGrace)
+        // The rule itself lives in ShelfRetract.ShouldArm -- pure, and unit-tested against the
+        // exact defect the v1.2 Task B probe caught (a drag-opened shelf that armed no timer and so
+        // could never notice its own grace expiring). This method is only the wiring: read the live
+        // state, ask, start.
+        if (ShelfRetract.ShouldArm(IsVisible, IsPointerInside, IsWithinDragOpenGrace))
         {
             _retractTimer.Start();
         }
@@ -1041,6 +1032,10 @@ public partial class ShelfWindow : Window
     /// and carried out by the same <see cref="OnStackSplitRequested"/>. Dragging the CARD extracts
     /// its FIRST path only; the rest stays stacked, so repeating the gesture peels the stack apart
     /// one file at a time.</para>
+    /// <para>The one thing that differs from a row is the band WIDTH -- an argument to that same
+    /// hit test, not a second rule: <see cref="StackGestures.CardExtractEdgeBandDip"/> (24) rather
+    /// than the row's 60, because a card starts its drag already sitting on the edge-flush shelf.
+    /// See that constant.</para>
     /// <para>KNOWN CAVEAT, identical to (and inherited from) the flyout's row split: cancelling the
     /// drag with Esc while the cursor happens to be in the edge band also returns None and so also
     /// extracts. Accepted as-is rather than papered over with a second, different rule.</para>
@@ -1082,7 +1077,7 @@ public partial class ShelfWindow : Window
             return;
         }
 
-        if (!StackGestures.ShouldSplit(effect, IsCursorInSplitZone()))
+        if (!StackGestures.ShouldSplit(effect, IsCursorInSplitZone(StackGestures.CardExtractEdgeBandDip)))
         {
             return;
         }
@@ -1196,7 +1191,7 @@ public partial class ShelfWindow : Window
             // The flyout knows nothing about monitors; this is the only place the resolved work
             // area, its DPI scale, the placed shelf rect and the configured edge all exist
             // together. Both probes read one cursor conversion (CursorDip).
-            CursorInSplitZone = IsCursorInSplitZone,
+            CursorInSplitZone = () => IsCursorInSplitZone(StackGestures.SplitEdgeBandDip),
             CursorOverShelf = IsCursorOverShelf,
         };
 
@@ -1365,9 +1360,13 @@ public partial class ShelfWindow : Window
 
     /// <summary>
     /// True when the cursor is, right now, inside the split band along the configured screen edge.
-    /// Called once per row drag, immediately after the drag returns.
+    /// Called once per drag, immediately after that drag returns.
+    /// <para>ONE hit test for both gestures, differing only in <paramref name="bandDip"/>: a flyout
+    /// row passes <see cref="StackGestures.SplitEdgeBandDip"/>, a stack card passes the narrower
+    /// <see cref="StackGestures.CardExtractEdgeBandDip"/> (see those constants for why). Required,
+    /// not defaulted, so neither caller can silently inherit the other's width.</para>
     /// </summary>
-    private bool IsCursorInSplitZone()
+    private bool IsCursorInSplitZone(double bandDip)
     {
         if (CursorDip() is not { } cursor)
         {
@@ -1376,7 +1375,7 @@ public partial class ShelfWindow : Window
 
         return StackGestures.IsInSplitZone(
             new ShelfPlacement.Rect(_area.X, _area.Y, _area.W, _area.H),
-            _edge, cursor.X, cursor.Y);
+            _edge, cursor.X, cursor.Y, bandDip);
     }
 
     /// <summary>

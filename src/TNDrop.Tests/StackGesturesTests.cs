@@ -74,6 +74,65 @@ public class StackGesturesTests
         Assert.True(StackGestures.IsInSplitZone(Work, EdgeSide.Left, 8, 500, bandDip: 10));
     }
 
+    // ---- the card-extract width (v1.2 Task B) ------------------------------------------------
+    //
+    // Same hit test, narrower band. The card gesture STARTS on the edge-flush shelf (340 DIP wide,
+    // card content from ~8 DIP in), so the row's 60 DIP would cover the left ~52 DIP of every card
+    // and a micro-drag released in place would extract a file.
+
+    [Fact]
+    public void The_card_extract_band_is_narrower_than_the_row_split_band()
+    {
+        Assert.Equal(24, StackGestures.CardExtractEdgeBandDip);
+        Assert.True(StackGestures.CardExtractEdgeBandDip < StackGestures.SplitEdgeBandDip);
+    }
+
+    [Theory]
+    [InlineData(0, true)]        // exactly on the edge
+    [InlineData(8, true)]        // where card content begins -- still inside the narrow band
+    [InlineData(23, true)]
+    [InlineData(24, true)]       // the boundary itself counts, same convention as the row band
+    [InlineData(25, false)]      // one DIP past it: no longer an extract
+    [InlineData(40, false)]      // would have been a SPLIT at the row's 60 DIP
+    [InlineData(52, false)]      // ditto -- the strip of card the old width covered
+    [InlineData(-20, true)]      // overshot off-screen past the edge
+    [InlineData(-25, false)]
+    public void CardExtractZone_left_edge(double x, bool expected) =>
+        Assert.Equal(expected, StackGestures.IsInSplitZone(
+            Work, EdgeSide.Left, x, 500, StackGestures.CardExtractEdgeBandDip));
+
+    [Theory]
+    [InlineData(1920, true)]
+    [InlineData(1896, true)]     // the boundary
+    [InlineData(1895, false)]
+    [InlineData(1880, false)]    // would have been a split at 60 DIP
+    [InlineData(1940, true)]     // overshot past the right edge
+    [InlineData(1945, false)]
+    public void CardExtractZone_right_edge(double x, bool expected) =>
+        Assert.Equal(expected, StackGestures.IsInSplitZone(
+            Work, EdgeSide.Right, x, 500, StackGestures.CardExtractEdgeBandDip));
+
+    [Fact]
+    public void The_two_widths_disagree_exactly_where_they_should()
+    {
+        // One x, two callers, two answers -- the whole point of parameterizing the single hit test
+        // rather than growing a second predicate.
+        const double x = 40;
+        Assert.True(StackGestures.IsInSplitZone(Work, EdgeSide.Left, x, 500, StackGestures.SplitEdgeBandDip));
+        Assert.False(StackGestures.IsInSplitZone(Work, EdgeSide.Left, x, 500, StackGestures.CardExtractEdgeBandDip));
+    }
+
+    [Fact]
+    public void The_card_extract_band_narrows_the_vertical_slack_too()
+    {
+        // bandDip is the slack past the top/bottom of the work area as well, so the narrower width
+        // has to be checked there too rather than assumed to only affect x.
+        Assert.True(StackGestures.IsInSplitZone(
+            Work, EdgeSide.Left, 10, -20, StackGestures.CardExtractEdgeBandDip));
+        Assert.False(StackGestures.IsInSplitZone(
+            Work, EdgeSide.Left, 10, -40, StackGestures.CardExtractEdgeBandDip));
+    }
+
     // ---- shelf containment (the flyout's "is the pointer still on the shelf?") --------------
 
     [Theory]
