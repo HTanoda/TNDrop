@@ -129,7 +129,22 @@
                         </StackPanel>
 
                         <CheckBox x:Name="MoveToTopCheckBox" />
-                        <CheckBox x:Name="PasteOnClickCheckBox" />
+
+                        <!-- クリックで貼り付け (v1.2 Task H). The one setting in this window that
+                             sends keystrokes into OTHER applications, and the only one whose scope
+                             (text/link cards, the previously focused app, suppressed while a
+                             modifier is held) cannot be guessed from its label, so it carries a
+                             hint line now rather than waiting for Task C's full descriptions.
+                             Wrapped in a StackPanel with the checkbox's bottom margin moved onto
+                             the hint: the shared CheckBox style's 14px gap would otherwise open up
+                             between the checkbox and its own explanation. -->
+                        <StackPanel>
+                            <CheckBox x:Name="PasteOnClickCheckBox" Margin="0,0,0,2" />
+                            <TextBlock x:Name="PasteOnClickHintText"
+                                       Style="{StaticResource Settings.HintText}"
+                                       Margin="20,0,0,14"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
                             <TextBlock x:Name="RetractDelayLabelText" Style="{StaticResource Settings.SectionLabel}" />

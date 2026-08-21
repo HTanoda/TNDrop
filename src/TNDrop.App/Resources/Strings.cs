@@ -115,6 +115,7 @@ internal static class Strings
     public static string PinnedHeaderFormat => Get(nameof(PinnedHeaderFormat));
     public static string PinnedToggleTooltip => Get(nameof(PinnedToggleTooltip));
     public static string SettingsPasteOnClick => Get(nameof(SettingsPasteOnClick));
+    public static string SettingsPasteOnClickHint => Get(nameof(SettingsPasteOnClickHint));
 
     private static string Get(string key) =>
         Manager.GetString(key, CultureInfo.CurrentUICulture) ?? key;

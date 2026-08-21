@@ -155,15 +155,22 @@ public static class InputSender
     /// <summary>
     /// Sends one Ctrl+V to whatever window has the keyboard focus system-wide, as four INPUT
     /// records in a SINGLE SendInput call.
-    /// <para>One call, not four: SendInput guarantees the batch is not interleaved with any other
-    /// thread's synthetic or physical input, so the target can never observe a half-typed
-    /// combination (a Ctrl that never comes up is the failure that leaves the whole desktop in a
-    /// modified state).</para>
+    /// <para>One call, not four, for the guarantee SendInput actually makes: the events in one call
+    /// are not interleaved with any other thread's synthetic or physical input. That is NOT
+    /// all-or-nothing delivery -- SendInput returns a COUNT precisely because it can stop partway
+    /// (UIPI blocking the stream mid-batch, an input desktop switch, a low-level hook rejecting an
+    /// event). A batch that stops after the Ctrl-down leaves Ctrl logically held DESKTOP-WIDE, which
+    /// turns the user's next keypress into a stray shortcut in whatever app they are in. So a short
+    /// count is repaired here with a lone Ctrl-up rather than merely logged.</para>
+    /// <para>The recovery is a plain key-up, which is idempotent: if Ctrl was in fact already
+    /// released (or the user is physically holding it -- in which case we would not have been called
+    /// at all, see <see cref="AnyModifierDown"/>), an extra up-event changes nothing.</para>
     /// <para>Failures are logged and swallowed. The clipboard write has already succeeded by the
     /// time this runs, so a refused SendInput degrades to exactly the v1.1 behavior -- the content
     /// is on the clipboard and the user pastes it themselves -- and must not surface as an error.
     /// UIPI blocks synthetic input into an elevated window from a non-elevated process; that is a
-    /// legitimate refusal, not a bug to report to the user.</para>
+    /// legitimate refusal, not a bug to report to the user. Log lines carry counts and Win32 error
+    /// numbers only, never clipboard content.</para>
     /// </summary>
     public static void SendCtrlV()
     {
@@ -178,10 +185,21 @@ public static class InputSender
             };
 
             var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
-            if (sent != inputs.Length)
+            if (sent == inputs.Length)
             {
-                FileLogger.Instance?.Warn(Module,
-                    $"SendInput delivered {sent} of {inputs.Length} events (Win32 error {Marshal.GetLastWin32Error()})");
+                return;
+            }
+
+            var error = Marshal.GetLastWin32Error();
+            FileLogger.Instance?.Warn(Module,
+                $"SendInput delivered {sent} of {inputs.Length} events (Win32 error {error})");
+
+            // sent == 0 means the whole batch was blocked before anything reached the input stream,
+            // so no key is left down and there is nothing to undo. Any other short count means the
+            // Ctrl-down (the first record) DID go through while the Ctrl-up (the last) did not.
+            if (sent > 0)
+            {
+                ReleaseControlKey();
             }
         }
         catch (Exception ex)
@@ -189,6 +207,29 @@ public static class InputSender
             FileLogger.Instance?.Warn(Module, $"could not send the paste keystroke: {ex.Message}");
         }
     }
+
+    /// <summary>Best-effort lone Ctrl-up, to undo a paste batch that stopped partway through.</summary>
+    private static void ReleaseControlKey()
+    {
+        var release = new[] { KeyInput(VK_CONTROL, down: false) };
+        var sent = SendInput((uint)release.Length, release, Marshal.SizeOf<INPUT>());
+
+        FileLogger.Instance?.Warn(Module, sent == release.Length
+            ? "recovered from a partial paste batch by releasing Ctrl"
+            : $"could not release Ctrl after a partial paste batch (Win32 error {Marshal.GetLastWin32Error()})");
+    }
+
+    /// <summary>
+    /// Maps a virtual key to its scan code. Filled in alongside wVk rather than left 0: a few
+    /// targets (games and other apps that read raw scan codes, some remote-desktop and
+    /// virtualisation clients) ignore synthetic events that carry no scan code. Falls back to 0 --
+    /// i.e. exactly the previous behavior -- on any keyboard layout where the mapping fails.
+    /// </summary>
+    [DllImport("user32.dll")]
+    private static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
+    /// <summary>MAPVK_VK_TO_VSC.</summary>
+    private const uint MapVkToVsc = 0;
 
     private static INPUT KeyInput(ushort vk, bool down) => new()
     {
@@ -198,7 +239,7 @@ public static class InputSender
             ki = new KEYBDINPUT
             {
                 wVk = vk,
-                wScan = 0,
+                wScan = (ushort)MapVirtualKey(vk, MapVkToVsc),
                 dwFlags = down ? 0 : KEYEVENTF_KEYUP,
                 time = 0,
                 dwExtraInfo = UIntPtr.Zero,

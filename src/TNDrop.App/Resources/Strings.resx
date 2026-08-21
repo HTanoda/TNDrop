@@ -323,4 +323,7 @@
   <data name="SettingsPasteOnClick" xml:space="preserve">
     <value>クリックで貼り付け</value>
   </data>
+  <data name="SettingsPasteOnClickHint" xml:space="preserve">
+    <value>テキスト/リンクのカードをクリックすると、直前に使っていたアプリのカーソル位置に貼り付けます (修飾キーを押している間は貼り付けません)</value>
+  </data>
 </root>

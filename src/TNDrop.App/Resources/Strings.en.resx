@@ -323,4 +323,7 @@
   <data name="SettingsPasteOnClick" xml:space="preserve">
     <value>Paste on click</value>
   </data>
+  <data name="SettingsPasteOnClickHint" xml:space="preserve">
+    <value>Clicking a text or link card pastes it at the cursor in the app you were last using (nothing is pasted while a modifier key is held)</value>
+  </data>
 </root>

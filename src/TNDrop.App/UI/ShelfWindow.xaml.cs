@@ -814,6 +814,20 @@ public partial class ShelfWindow : Window
     /// </summary>
     private void SetPinnedExpanded(bool expanded)
     {
+        // No-op when nothing changes. Matters because ApplySettings calls this on every re-place
+        // (a DPI change, an edge switch, a monitor unplug), and without this the chevron would
+        // replay its 160 ms spin each time for a state that did not move. The header COUNT does not
+        // depend on this early return: PinnedCards.CollectionChanged drives its own
+        // UpdatePinnedVisibility, and the constructor plus InitializeCardList each run one.
+        // Safe because the visuals are never established BY this method: the constructor calls
+        // UpdatePinnedVisibility directly, and that method is the only writer of the two
+        // visibilities and derives both from _pinnedExpanded, so the field and the screen cannot be
+        // out of step at the moment this returns early.
+        if (_pinnedExpanded == expanded)
+        {
+            return;
+        }
+
         _pinnedExpanded = expanded;
         UpdatePinnedVisibility();
 
@@ -1788,12 +1802,15 @@ public partial class ShelfWindow : Window
     /// </summary>
     private void TryPasteOnClick(ClipKind kind)
     {
+        // Named arguments: four of the five parameters are bools, and a transposition here (say,
+        // foreground where focus belongs) would compile, pass every test that exercises the
+        // predicate directly, and only show up as a keystroke in the wrong window.
         var shouldPaste = ClickPaste.ShouldPasteOnClick(
-            kind,
-            global::TNDrop.App.Settings?.PasteOnClick ?? false,
-            InputSender.IsOwnProcessForeground(),
-            IsKeyboardFocusWithin,
-            InputSender.AnyModifierDown());
+            kind: kind,
+            pasteOnClickSetting: global::TNDrop.App.Settings?.PasteOnClick ?? false,
+            ownProcessForeground: InputSender.IsOwnProcessForeground(),
+            keyboardFocusWithin: IsKeyboardFocusWithin,
+            modifiersDown: InputSender.AnyModifierDown());
 
         if (!shouldPaste)
         {

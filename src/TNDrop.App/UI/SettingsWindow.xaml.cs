@@ -142,6 +142,7 @@ public partial class SettingsWindow : Window
         // describe the same gesture -- what a plain click on a card does. Text/Link cards only;
         // the rule (and the reason files/images are excluded) is ClickPaste.ShouldPasteOnClick.
         PasteOnClickCheckBox.Content = Strings.SettingsPasteOnClick;
+        PasteOnClickHintText.Text = Strings.SettingsPasteOnClickHint;
 
         // ホバー表示 (v1.1 Task C): a second control for the same setting the tray's "ホバー表示"
         // menu item already toggles, wired through the same App.SetHoverEnabled central setter --
