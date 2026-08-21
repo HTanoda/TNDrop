@@ -24,8 +24,17 @@ public partial class App : System.Windows.Application
     private const string Module = "App";
     private const string SingleInstanceMutexName = "Local\\TNDrop_SingleInstance";
 
+    /// <summary>
+    /// Named event the installer (Task B, later) signals to ask a running instance to exit
+    /// gracefully before the installer overwrites its files. "Local\" matches
+    /// SingleInstanceMutexName's session-local scope -- there is at most one signaler and one
+    /// listener at a time either way.
+    /// </summary>
+    private const string ShutdownRequestEventName = "Local\\TNDrop_ShutdownRequest";
+
     private Mutex? _singleInstanceMutex;
     private bool _mutexOwned;
+    private ShutdownSignal? _shutdownSignal;
     private TrayIcon? _trayIcon;
     private ShelfWindow? _shelf;
     private EdgeTriggerWindow? _edgeTrigger;
@@ -90,6 +99,16 @@ public partial class App : System.Windows.Application
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
+        // (2b) Shutdown signal: created only after the single-instance mutex winner is decided
+        // (step (1), above) and FileLogger is up (step (2), just above), so its callback always
+        // has a live logger. Fires on a thread-pool thread -- RunOnUiThread marshals onto the
+        // dispatcher before calling Shutdown(), same as OnDisplaySettingsChanged does.
+        _shutdownSignal = new ShutdownSignal(ShutdownRequestEventName, () =>
+        {
+            FileLogger.Instance?.Info(Module, "shutdown requested by installer");
+            RunOnUiThread(Shutdown);
+        });
 
         // (3)-(6) run under a single guard: a throw anywhere in here would otherwise be
         // caught by DispatcherUnhandledException (WPF pumps OnStartup on the Dispatcher),
@@ -251,6 +270,7 @@ public partial class App : System.Windows.Application
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
 
+        _shutdownSignal?.Dispose();
         _fullscreenDetector?.Dispose();
         _autoDelete?.Dispose();
 
