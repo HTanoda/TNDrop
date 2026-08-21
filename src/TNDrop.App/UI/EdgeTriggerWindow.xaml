@@ -12,10 +12,15 @@
         Focusable="False"
         SizeToContent="Manual"
         UseLayoutRounding="True"
+        AllowDrop="True"
         Left="0" Top="0" Width="3" Height="400"
         Background="#01000000">
     <!-- Background is #01 alpha, not Transparent: a fully transparent window is not hit-tested,
          and hit-testing this band is the whole point of the window. -->
+    <!-- AllowDrop registers the band as an OLE drop target. It never accepts anything (Effects
+         stays None, see the code-behind): the point is only that Windows delivers DragEnter here,
+         which is how a drag arriving at the edge can open the shelf. MouseEnter cannot do that job
+         while a drag is in flight, because no WM_MOUSEMOVE is delivered during one. -->
     <Grid>
         <Rectangle x:Name="HintBeacon"
                    Width="2"

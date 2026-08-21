@@ -173,6 +173,7 @@ public partial class App : System.Windows.Application
             _edgeTrigger.ApplySettings(Settings);
             _edgeTrigger.SetHintVisible(Settings.EdgeHintEnabled);
             _edgeTrigger.Triggered += OnEdgeTriggered;
+            _edgeTrigger.DragTriggered += OnEdgeDragTriggered;
 
             if (Settings.HoverEnabled)
             {
@@ -336,14 +337,46 @@ public partial class App : System.Windows.Application
         app._trayIcon?.SetHoverEnabled(value);
     }
 
-    private void OnEdgeTriggered()
+    private void OnEdgeTriggered() => RequestShelfFromEdge(byDrag: false);
+
+    /// <summary>
+    /// An OLE drag reached the trigger band (v1.2 Task B). Deliberately the same call as a hover,
+    /// only opening the shelf the drag-aware way -- see <see cref="RequestShelfFromEdge"/>.
+    /// </summary>
+    private void OnEdgeDragTriggered() => RequestShelfFromEdge(byDrag: true);
+
+    /// <summary>
+    /// The ONE place the trigger band's two ways of asking for the shelf -- pointer hover and an
+    /// in-flight drag -- are turned into a slide-in, so the gates on the two can never drift apart.
+    ///
+    /// <para>HoverEnabled is checked here. Fullscreen is NOT checked here and does not need to be:
+    /// the band is HIDDEN for the whole time a fullscreen app is up (see
+    /// <see cref="OnFullscreenChanged"/> and the guard in <see cref="SetHoverEnabled"/>), and a
+    /// hidden window is neither hit-tested for MouseEnter nor registered as an OLE drop target, so
+    /// neither request can be raised in the first place. That was already true of hover before this
+    /// existed; the drag path inherits exactly the same protection by going through the same
+    /// window.</para>
+    ///
+    /// <para><paramref name="byDrag"/> picks the slide-in: a drag-opened shelf needs
+    /// <see cref="ShelfWindow.SlideInForDrag"/>, which holds it out long enough for the drag to
+    /// travel from the band onto it (no MouseEnter and no DragEnter reaches the shelf during that
+    /// gap -- see that method and ShelfWindow.DragOpenGrace).</para>
+    /// </summary>
+    private void RequestShelfFromEdge(bool byDrag)
     {
         if (!Settings.HoverEnabled)
         {
             return;
         }
 
-        _shelf?.SlideIn();
+        if (byDrag)
+        {
+            _shelf?.SlideInForDrag();
+        }
+        else
+        {
+            _shelf?.SlideIn();
+        }
     }
 
     /// <summary>

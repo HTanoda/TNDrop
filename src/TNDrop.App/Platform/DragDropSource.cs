@@ -134,9 +134,28 @@ public static class DragDropSource
     /// <para>Blocks until the drop completes -- <see cref="DragDrop.DoDragDrop"/> pumps its own
     /// message loop -- so the caller is responsible for suspending anything that reacts to the
     /// pointer meanwhile (the shelf's retract countdown; see ShelfWindow._isDragging).</para>
+    /// <para>Thin wrapper over the <c>out DragDropEffects</c> overload for callers that do not
+    /// care where the payload ended up. ONE implementation, so "what a card drag does" cannot
+    /// differ between the two entry points.</para>
     /// </summary>
-    public static bool TryStartDrag(FrameworkElement source, ClipItem item, string blobsDir)
+    public static bool TryStartDrag(FrameworkElement source, ClipItem item, string blobsDir) =>
+        TryStartDrag(source, item, blobsDir, out _);
+
+    /// <summary>
+    /// <see cref="TryStartDrag(FrameworkElement, ClipItem, string)"/>, additionally reporting what
+    /// the drop resolved to.
+    /// <para><paramref name="effect"/> is <see cref="DragDropEffects.None"/> for a drag that went
+    /// nowhere -- nothing accepted it, the user pressed Esc, or the drag threw -- which is exactly
+    /// the half of <see cref="UI.StackGestures.ShouldSplit"/> the shelf's edge-drag extract needs.
+    /// It is also None when this returns false (no drag was ever started), so a caller may test it
+    /// without first testing the return value only if it has already established there WAS a
+    /// payload.</para>
+    /// </summary>
+    public static bool TryStartDrag(FrameworkElement source, ClipItem item, string blobsDir,
+                                    out DragDropEffects effect)
     {
+        effect = DragDropEffects.None;
+
         if (source is null || item is null)
         {
             return false;
@@ -163,12 +182,14 @@ public static class DragDropSource
         {
             // Link as well as Copy: some targets (shortcut folders, a few editors) only accept a
             // link, and offering it costs nothing -- the shelf keeps its own item either way.
-            DragDrop.DoDragDrop(source, data, DragDropEffects.Copy | DragDropEffects.Link);
+            effect = DragDrop.DoDragDrop(source, data, DragDropEffects.Copy | DragDropEffects.Link);
         }
         catch (Exception ex)
         {
             // A drop target that throws, or a drag cancelled by a shell hiccup, must never take
-            // the shelf down with it.
+            // the shelf down with it. Left as None, which is also what the edge-zone extract in
+            // ShelfWindow.BeginCardDrag treats as "went nowhere" -- same convention as
+            // StackFlyout.BeginRowDrag's own catch.
             FileLogger.Instance?.Error(Module, "Drag operation failed", ex);
         }
 

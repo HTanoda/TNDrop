@@ -26,12 +26,31 @@ public partial class EdgeTriggerWindow : Window
     /// <summary>Raised when the pointer enters the band.</summary>
     public event Action? Triggered;
 
+    /// <summary>
+    /// Raised when an in-flight OLE drag enters the band (v1.2 Task B). Same request as
+    /// <see cref="Triggered"/> -- "open the shelf" -- but a distinct event so App can open it in
+    /// the drag-aware way (ShelfWindow.SlideInForDrag) while still passing through exactly the
+    /// same HoverEnabled/fullscreen gate; see App.RequestShelfFromEdge.
+    /// </summary>
+    public event Action? DragTriggered;
+
     public EdgeTriggerWindow()
     {
         InitializeComponent();
 
         MouseEnter += (_, _) => Triggered?.Invoke();
         DpiChanged += OnDpiChanged;
+
+        // Drag-hover open (v1.2 Task B). AllowDrop="True" is set in XAML; these two are the whole
+        // drop-target contract this window needs.
+        //
+        // BOTH, not just DragEnter: DragEnter fires once per arrival, and a drag that was already
+        // inside the band's rectangle when the OLE session started (the user presses the mouse down
+        // right at the screen edge) can produce a DragOver without a preceding DragEnter. Raising
+        // on both is safe because the request is idempotent -- App gates it, and ShelfWindow.SlideIn
+        // on an already-shown shelf just re-runs the animation from where it is.
+        DragEnter += OnBandDrag;
+        DragOver += OnBandDrag;
 
         // Create the HWND now. ApplySettings runs before the window is ever shown and its
         // device-pixel snap needs a handle; without this the first placement silently skips it.
@@ -110,6 +129,26 @@ public partial class EdgeTriggerWindow : Window
         FileLogger.Instance?.Info(Module,
             $"placed on {area.DeviceName} scale {area.ScaleX:0.##} at " +
             $"({rect.X:0},{rect.Y:0}) {rect.W:0}x{rect.H:0} DIP");
+    }
+
+    /// <summary>
+    /// A drag is over the band: ask for the shelf, and refuse the payload.
+    ///
+    /// <para><c>Effects = None</c> is the point, not an oversight. The band is 3px of screen edge
+    /// with nothing behind it; the thing that accepts the drop is the SHELF this request is about
+    /// to open, which has its own drop handling (Task 13) and its own accept affordance. Offering
+    /// Copy here would show the user a drop cursor over a window that would silently swallow their
+    /// files.</para>
+    ///
+    /// <para><c>Handled = true</c> stops the same drag from also being answered by the Grid/beacon
+    /// underneath, which would leave the last writer deciding what the cursor says.</para>
+    /// </summary>
+    private void OnBandDrag(object sender, System.Windows.DragEventArgs e)
+    {
+        e.Effects = System.Windows.DragDropEffects.None;
+        e.Handled = true;
+
+        DragTriggered?.Invoke();
     }
 
     /// <summary>Shows or hides the faint 2px beacon that hints where the shelf lives.</summary>

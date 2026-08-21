@@ -59,6 +59,24 @@ public partial class ShelfWindow : Window
     /// <summary>How long the inline status line (a failed copy/drag) stays up.</summary>
     private static readonly TimeSpan StatusDuration = TimeSpan.FromSeconds(2.5);
 
+    /// <summary>
+    /// How long a shelf opened BY an in-flight OLE drag (v1.2 Task B, <see cref="SlideInForDrag"/>)
+    /// holds itself open before the ordinary retract rules take back over.
+    /// <para>Needed because the two events that normally keep the shelf out -- a real MouseEnter
+    /// and a DragEnter on the shelf itself -- are both still in the future at the moment the
+    /// trigger band opens it: the pointer is carrying a payload (so no WM_MOUSEMOVE ever reaches
+    /// this window; see the drag-over paragraph on <see cref="IsPointerInside"/>) and it has not
+    /// travelled from the band onto the shelf yet. With a default 800 ms RetractDelayMs the
+    /// countdown armed by <see cref="OnSlideInCompleted"/> would otherwise be able to slide the
+    /// shelf away while the user is still on their way to it.</para>
+    /// <para>3 s, and a deadline rather than a latch, deliberately: it must outlast the 250 ms
+    /// slide plus a slow hand, and it must EXPIRE on its own -- a drag abandoned somewhere else on
+    /// screen never sends this window a DragEnter or a DragLeave, so a term that only something
+    /// else could clear would pin the shelf open with no way for the user to dismiss it (the
+    /// trigger band is hidden while the shelf is out).</para>
+    /// </summary>
+    private static readonly TimeSpan DragOpenGrace = TimeSpan.FromSeconds(3);
+
     /// <summary>Tag on the Link card's "open in the browser" hotspot. Must match Cards.xaml.</summary>
     private const string LinkOpenTag = "LinkOpen";
 
@@ -107,6 +125,11 @@ public partial class ShelfWindow : Window
     // Drag-IN (Task 13): true for the whole time an OLE drag -- from Explorer, a browser, or the
     // shelf's own outbound drag looping back -- is hovering over the shelf. See IsPointerInside.
     private bool _isDragOver;
+
+    // Drag-hover open (v1.2 Task B): UTC instant until which a shelf opened by a drag over the
+    // trigger band holds itself open. DateTime.MinValue = not drag-opened (or the drag has since
+    // arrived / the shelf has since hidden). See DragOpenGrace.
+    private DateTime _dragOpenGraceUntil = DateTime.MinValue;
 
     // Stack UX (Task 14): the one expanded-stack popup, created on first use, and the card border
     // currently lit up as a merge target (null when no acceptable card drag is hovering).
@@ -191,9 +214,16 @@ public partial class ShelfWindow : Window
     /// retracted out from under the user while they were reading it. The flyout closes itself once
     /// the pointer has been off both it and the shelf for a moment (StackFlyout.OnHoverTick), which
     /// is what stops this term from pinning the shelf open for good.</para>
+    /// <para>Without the drag-open grace term (v1.2 Task B), a shelf opened by a drag hovering the
+    /// trigger band would have nothing holding it out during the travel from the band to the shelf
+    /// -- see <see cref="DragOpenGrace"/>, which also explains why that term expires by itself.</para>
     /// </summary>
     public bool IsPointerInside =>
-        _pointerInside || _isDragging || _isDragOver || IsStackFlyoutOpen || IsMouseOver || IsKeyboardFocusWithin;
+        _pointerInside || _isDragging || _isDragOver || IsWithinDragOpenGrace
+        || IsStackFlyoutOpen || IsMouseOver || IsKeyboardFocusWithin;
+
+    /// <summary>True while a drag-opened shelf is still inside its <see cref="DragOpenGrace"/>.</summary>
+    private bool IsWithinDragOpenGrace => DateTime.UtcNow < _dragOpenGraceUntil;
 
     private bool IsStackFlyoutOpen => _stackFlyout is not null && _stackFlyout.IsOpen;
 
@@ -324,6 +354,23 @@ public partial class ShelfWindow : Window
         BeginAnimation(LeftProperty, animation);
     }
 
+    /// <summary>
+    /// <see cref="SlideIn"/> for the one caller that is an in-flight OLE drag rather than a
+    /// pointer: the trigger band's DragEnter (v1.2 Task B, routed through App's hover gate so the
+    /// HoverEnabled/fullscreen rules are identical to a hover-open). Starts the
+    /// <see cref="DragOpenGrace"/> so the shelf is still there when the drag arrives on it.
+    /// <para>A separate entry point rather than a flag on <see cref="SlideIn"/>: every other caller
+    /// (hover, an interrupted retract, ApplySettings) must keep the ordinary countdown, and the
+    /// grace is meaningless -- or actively wrong, since it pins the shelf out -- for them.</para>
+    /// </summary>
+    public void SlideInForDrag()
+    {
+        // Before SlideIn, not after: SlideIn can complete synchronously enough to arm the countdown
+        // through OnSlideInCompleted, and that arming reads IsPointerInside.
+        _dragOpenGraceUntil = DateTime.UtcNow + DragOpenGrace;
+        SlideIn();
+    }
+
     private void OnSlideInCompleted(object? sender, EventArgs e)
     {
         if (_slidingOut || !IsVisible)
@@ -434,6 +481,10 @@ public partial class ShelfWindow : Window
         _isDragOver = false;
         Panel.BorderBrush = DropIdleBorderBrush;
 
+        // And the drag-open grace: it is a property of THIS appearance of the shelf. Left standing,
+        // it would suppress the retract of the NEXT slide-in for whatever is left of its 3 s.
+        _dragOpenGraceUntil = DateTime.MinValue;
+
         // Same again for the two Task 14 visuals. The flyout would otherwise float over the
         // desktop with no shelf under it (and, being counted by IsPointerInside, would keep the
         // retract suppressed for the next slide-in); a merge highlight left set would come back
@@ -470,8 +521,24 @@ public partial class ShelfWindow : Window
     private void ArmRetractIfPointerOutside()
     {
         _retractTimer.Stop();
-        if (IsVisible && !IsPointerInside)
+
+        if (!IsVisible)
+        {
+            return;
+        }
+
+        // The drag-open grace (v1.2 Task B) is the one IsPointerInside term that goes away with no
+        // event behind it: the pointer leaving raises MouseLeave, a drag leaving raises DragLeave,
+        // the flyout closing raises Closed -- each of which comes back here -- but a deadline
+        // simply passes. So the countdown has to be RUNNING across it, and OnRetractTick's
+        // suppress-and-re-arm loop is what then turns the expiry into a retract on the next tick.
+        // Measured: without this term the probe's drag-opened shelf was still on screen 5.4 s
+        // later with no timer alive to ever take it away, which is precisely the "visible shelf
+        // the user cannot get rid of" this method's doc comment exists to prevent.
+        if (!IsPointerInside || IsWithinDragOpenGrace)
+        {
             _retractTimer.Start();
+        }
     }
 
     private void OnRetractTick(object? sender, EventArgs e)
@@ -963,18 +1030,39 @@ public partial class ShelfWindow : Window
     }
 
     /// <summary>
-    /// Runs the outbound drag with the retract countdown suspended for its whole duration.
-    /// <para><see cref="DragDropSource.TryStartDrag"/> blocks (it pumps its own message loop), so
-    /// everything after it runs only once the drop has completed or been cancelled.</para>
+    /// Runs the outbound drag with the retract countdown suspended for its whole duration, then --
+    /// for a stack card only -- decides whether the release was an edge-drag extract (v1.2 Task B).
+    /// <para><see cref="DragDropSource.TryStartDrag(FrameworkElement, ClipItem, string, out DragDropEffects)"/>
+    /// blocks (it pumps its own message loop), so everything after it runs only once the drop has
+    /// completed or been cancelled.</para>
+    /// <para>The extract is the SAME gesture the flyout's rows already have -- released nowhere
+    /// (<see cref="DragDropEffects.None"/>) with the cursor in the edge band -- decided by the same
+    /// <see cref="StackGestures.ShouldSplit"/> against the same <see cref="IsCursorInSplitZone"/>,
+    /// and carried out by the same <see cref="OnStackSplitRequested"/>. Dragging the CARD extracts
+    /// its FIRST path only; the rest stays stacked, so repeating the gesture peels the stack apart
+    /// one file at a time.</para>
+    /// <para>KNOWN CAVEAT, identical to (and inherited from) the flyout's row split: cancelling the
+    /// drag with Esc while the cursor happens to be in the edge band also returns None and so also
+    /// extracts. Accepted as-is rather than papered over with a second, different rule.</para>
     /// </summary>
     private void BeginCardDrag(FrameworkElement source, CardViewModel card)
     {
+        // Captured BEFORE the blocking drag, exactly as StackFlyout.BeginRowDrag captures its
+        // (stack, path) pair: the card list is rebuilt by any store change that lands while
+        // DoDragDrop pumps its own message loop, so `card` may be pointing at a detached view model
+        // by the time this returns. Null for anything that is not a stack -- a lone Files card, a
+        // text/link/image card -- which is what keeps the extract off every other card kind.
+        var stackId = card.IsStack ? card.Id : null;
+        var firstPath = card.IsStack ? card.Item.Paths[0] : null;
+
         _isDragging = true;
         _retractTimer.Stop();
 
+        var effect = DragDropEffects.None;
+
         try
         {
-            if (!DragDropSource.TryStartDrag(source, card.Item, BlobsDir))
+            if (!DragDropSource.TryStartDrag(source, card.Item, BlobsDir, out effect))
             {
                 ReportContentMissing(card, "drag");
             }
@@ -988,6 +1076,18 @@ public partial class ShelfWindow : Window
             _pointerInside = IsMouseOver;
             ArmRetractIfPointerOutside();
         }
+
+        if (stackId is null || firstPath is null)
+        {
+            return;
+        }
+
+        if (!StackGestures.ShouldSplit(effect, IsCursorInSplitZone()))
+        {
+            return;
+        }
+
+        OnStackSplitRequested(stackId, firstPath);
     }
 
     /// <summary>
@@ -1000,6 +1100,11 @@ public partial class ShelfWindow : Window
     {
         _isDragOver = true;
         _retractTimer.Stop();
+
+        // The drag this shelf may have been opened FOR has now arrived: _isDragOver holds the
+        // shelf from here on, so hand the job back to it. Left running, the grace would keep the
+        // shelf out for the remainder of its 3 s even after the drag wandered off again.
+        _dragOpenGraceUntil = DateTime.MinValue;
 
         ApplyDragVisual(e);
         e.Handled = true;
