@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace TNDrop.Core;
 
@@ -24,5 +25,11 @@ public sealed class ClipItem
     /// disagree about which cards are stacks. Always reads live from <see cref="Paths"/> --
     /// never cached -- so it stays correct across in-place mutation (TryMergeFiles/SplitFile
     /// both mutate Paths on the existing ClipItem instance rather than replacing it).</summary>
+    /// <remarks>[JsonIgnore] (v1.3 review fix M2): a computed property, not persisted state --
+    /// ItemStore's JsonSerializerOptions has no property-selection policy of its own, so without
+    /// this it would round-trip through items.dat as a spurious "IsStack" field. Read-only so
+    /// deserialization already ignores any such field on load; this only stops it from being
+    /// written in the first place.</remarks>
+    [JsonIgnore]
     public bool IsStack => Kind == ClipKind.Files && Paths.Count > 1;
 }

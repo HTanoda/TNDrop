@@ -225,12 +225,24 @@
                 </StackPanel>
             </Border>
 
-            <!-- Padding="0,8,0,0" (v1.3 Task D review round 1): see PinnedList's own comment above
-                 for why - reserves room inside the ListBox's internal ScrollViewer viewport for the
-                 hover-action pill's overhang above the topmost card, at scroll offset 0. -->
+            <!-- Padding="0" (v1.3 Task D review round 2 - I1 fix): review round 1's
+                 Padding="0,8,0,0" on this ListBox looked right but is INEFFECTIVE - unlike a plain
+                 ItemsControl (see PinnedList's own comment above), a ListBox's default template has
+                 its OWN internal ScrollViewer, and Padding forwards to that ScrollViewer's own
+                 Padding, which becomes a Margin on its ScrollContentPresenter. That INSETS the
+                 scrollable VIEWPORT itself rather than pushing the first item's content down inside
+                 it - the topmost card still starts at content Y=0 within the (now smaller) viewport,
+                 so the pill's -6px overhang above it still lands at Y<0 and gets clipped at scroll
+                 offset 0, exactly as before. Fixed at the actual source instead: the reservation now
+                 lives on the ItemsPanel (the VirtualizingStackPanel below) via Margin, which offsets
+                 the ITEMS themselves within whatever viewport the ScrollViewer gives them, the same
+                 way PinnedList's ItemsControl.Padding already did (an ItemsControl's default
+                 template has no ScrollViewer of its own to forward Padding to, so that Padding always
+                 acted directly on content - it was never broken). Verified with a probe: topmost
+                 unpinned card at scroll offset 0, pill fully rounded and unclipped. -->
             <ListBox x:Name="CardsList"
                      Grid.Row="4"
-                     Padding="0,8,0,0"
+                     Padding="0"
                      ItemsSource="{Binding Cards}"
                      Background="Transparent"
                      BorderThickness="0"
@@ -244,7 +256,7 @@
                      SelectionMode="Single">
                 <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <VirtualizingStackPanel Orientation="Vertical" />
+                        <VirtualizingStackPanel Orientation="Vertical" Margin="0,8,0,0" />
                     </ItemsPanelTemplate>
                 </ListBox.ItemsPanel>
             </ListBox>

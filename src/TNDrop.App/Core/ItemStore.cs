@@ -417,6 +417,12 @@ public sealed partial class ItemStore
             _items.Remove(stack);
 
             created = new List<ClipItem>();
+            // Insert at an advancing index (0, 1, 2, ...) rather than always at 0 -- a fixed
+            // Insert(0, card) in this loop would land paths [a,b,c] as shelf order [c,b,a] (each
+            // insert pushes the previous one back), silently reversing the flyout order the user
+            // just saw. Advancing the index keeps each new card immediately after the one before
+            // it, so the shelf ends up [a,b,c] at the head of the list -- same order as paths.
+            var insertIndex = 0;
             foreach (var path in paths)
             {
                 var card = new ClipItem
@@ -427,7 +433,8 @@ public sealed partial class ItemStore
                     ContentHash = Fnv1a(Encoding.UTF8.GetBytes(path)),
                     Pinned = stack.Pinned
                 };
-                _items.Insert(0, card);
+                _items.Insert(insertIndex, card);
+                insertIndex++;
                 created.Add(card);
             }
         }
@@ -596,7 +603,7 @@ public sealed partial class ItemStore
         }
         catch (Exception ex)
         {
-            FileLogger.Instance?.Warn("store", $"Failed to delete blob path: {ex.Message}");
+            FileLogger.Instance?.Warn("store", $"Failed to delete blob path: {ex.GetType().Name}");
         }
     }
 

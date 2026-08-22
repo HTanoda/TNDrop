@@ -243,11 +243,17 @@
                                     <!-- Explicit "split this one off" (v1.3 Task C): fires the SAME
                                          SplitRequested event the edge-band drag raises, just without
                                          the drag - see OnRowSplitButtonClick. Revealed by RowRoot's
-                                         hover trigger below, never by its own. -->
+                                         hover trigger below, never by its own.
+
+                                         Glyph is U+2197 (north-east arrow), not an X (v1.3 review
+                                         fix M4): an X reads as "delete this row", but the action is
+                                         non-destructive - the file stays in the stack list, just
+                                         split out into its own card - so the glyph needs to say
+                                         "send this out" rather than "remove this". -->
                                     <Button x:Name="RowSplitButton"
                                             Grid.Column="3"
                                             Style="{StaticResource Flyout.RowActionButtonStyle}"
-                                            Content="&#10005;"
+                                            Content="&#8599;"
                                             Click="OnRowSplitButtonClick" />
                                 </Grid>
                             </Border>

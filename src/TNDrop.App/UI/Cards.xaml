@@ -1,6 +1,7 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:vm="clr-namespace:TNDrop.UI">
+                    xmlns:vm="clr-namespace:TNDrop.UI"
+                    xmlns:res="clr-namespace:TNDrop.Resources">
 
     <!--
         Card visuals for the shelf's card list, pinned deck, and (via the same template) any
@@ -82,6 +83,29 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- Pin action button (v1.3 review fix I4): the pill's pin/delete buttons had no ToolTip or
+         AutomationProperties.Name at all, and the pin glyph never changed with state - so a
+         pinned card's button still read (visually and to a screen reader) as "pin", even though
+         clicking it unpins. Strings.ActionPin/ActionUnpin already existed in both resx files,
+         unused. Binding is plain "{Binding Pinned}", not RelativeSource - the Button's
+         DataContext inside CardItemTemplate IS the CardViewModel already. Content/ToolTip/
+         AutomationProperties.Name are set here rather than as local values on the Button in the
+         template below, precisely so the DataTrigger can override them per-instance based on that
+         binding - a local value on the element would outrank the Style's Setters and the trigger
+         would never show. -->
+    <Style x:Key="Card.PinActionButtonStyle" TargetType="Button" BasedOn="{StaticResource Card.ActionButton}">
+        <Setter Property="Content" Value="&#128204;" />
+        <Setter Property="ToolTip" Value="{x:Static res:Strings.ActionPin}" />
+        <Setter Property="AutomationProperties.Name" Value="{x:Static res:Strings.ActionPin}" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Pinned}" Value="True">
+                <Setter Property="Content" Value="&#128205;" />
+                <Setter Property="ToolTip" Value="{x:Static res:Strings.ActionUnpin}" />
+                <Setter Property="AutomationProperties.Name" Value="{x:Static res:Strings.ActionUnpin}" />
+            </DataTrigger>
+        </Style.Triggers>
     </Style>
 
     <!-- Pill container for the hover-action bar (v1.3 Task D). CornerRadius is half the pill's own
@@ -444,13 +468,20 @@
                      regardless of ClipToBounds elsewhere (review round 1 finding): at scroll offset
                      0 the topmost card sits at content Y=0, so a naive -6px overhang above it would
                      land at Y<0 and get its top corners flattened. Fixed at the source, not by
-                     shrinking the overhang: ShelfWindow.xaml gives CardsList and PinnedList (the
-                     two ItemsControls this template renders inside) Padding="0,8,0,0" each, so the
-                     scrollable content itself starts 8px below the viewport's top edge and the
-                     6px overhang always lands inside that reserved band, at every scroll position
-                     including offset 0 - not just for the first card, since the same reservation
-                     exists at the top of the list regardless of which card ends up there after a
-                     store rebuild. -->
+                     shrinking the overhang - but not with Padding on both lists either, as review
+                     round 1 first tried (probe-proven ineffective for CardsList: see the fix
+                     comment on CardsList itself in ShelfWindow.xaml). The reservation now differs
+                     per list, because the two are built differently: PinnedList is a plain
+                     ItemsControl with no ScrollViewer of its own, so its Padding always acted
+                     directly on its content and stays as-is. CardsList is a ListBox, whose default
+                     template has an internal ScrollViewer that Padding would forward to (insetting
+                     the viewport instead of offsetting content), so CardsList's reservation instead
+                     lives as a Margin="0,8,0,0" on its own ItemsPanel (the VirtualizingStackPanel),
+                     which pushes the items themselves down inside whatever viewport it is given.
+                     Either way the 6px overhang lands inside an 8px reserved band, at every scroll
+                     position including offset 0 - not just for the first card, since the same
+                     reservation exists at the top of the list regardless of which card ends up
+                     there after a store rebuild. -->
                 <Border x:Name="ActionPill"
                         Style="{StaticResource Card.ActionPillStyle}"
                         HorizontalAlignment="Right"
@@ -459,14 +490,16 @@
                         Opacity="0"
                         Visibility="Collapsed">
                     <StackPanel Orientation="Horizontal" Margin="4,2">
-                        <Button Content="&#128204;" Tag="Pin" Style="{StaticResource Card.ActionButton}" Margin="0" />
+                        <Button Tag="Pin" Style="{StaticResource Card.PinActionButtonStyle}" Margin="0" />
                         <!-- Subtle separator ahead of Delete (design brief: "delete stays visually
                              distinct, rightmost, subtle separation", to cut down on accidental
                              hits) - a 1px divider plus its own margin, rather than just a wider
                              gap, so the line reads as an intentional boundary rather than looking
                              like uneven spacing. -->
                         <Border Width="1" Margin="5,4" Background="{StaticResource Card.PillSeparator}" />
-                        <Button Content="&#128465;" Tag="Delete" Style="{StaticResource Card.ActionButton}" Margin="0" />
+                        <Button Content="&#128465;" Tag="Delete" Style="{StaticResource Card.ActionButton}" Margin="0"
+                                ToolTip="{x:Static res:Strings.ActionDelete}"
+                                AutomationProperties.Name="{x:Static res:Strings.ActionDelete}" />
                     </StackPanel>
                 </Border>
 

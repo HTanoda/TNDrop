@@ -149,8 +149,11 @@ public class ItemStoreOperationsTests : IDisposable
         Assert.NotNull(created);
         Assert.Equal(3, created!.Count);
         Assert.All(created, c => Assert.Single(c.Paths));
-        Assert.Equal(new[] { @"C:\x", @"C:\y", @"C:\z" },
-            created.Select(c => c.Paths[0]).OrderBy(p => p, StringComparer.Ordinal));
+
+        // Order is pinned, not just membership: the shelf order after ungroup-all must match the
+        // flyout order the user just saw (v1.3 review fix M1 -- SplitAll used to reverse it).
+        Assert.Equal(new[] { @"C:\x", @"C:\y", @"C:\z" }, created.Select(c => c.Paths[0]));
+        Assert.Equal(new[] { @"C:\x", @"C:\y", @"C:\z" }, _store.Items.Select(i => i.Paths[0]));
 
         // The stack itself is gone -- SplitAll fully expands it, unlike SplitFile which lets a
         // >=2-path remainder survive as itself.
@@ -812,5 +815,32 @@ public class ItemStoreOperationsTests : IDisposable
         Assert.Equal(converted!.Paths, loaded.Paths);
         Assert.Null(loaded.ImageFile);
         Assert.Null(loaded.ThumbFile);
+    }
+
+    [Fact]
+    public void ClipItem_deserializes_a_pre_fix_items_dat_that_still_carries_the_computed_IsStack_field()
+    {
+        // v1.3 review fix M2 added [JsonIgnore] to ClipItem.IsStack so it stops being WRITTEN
+        // going forward, but any items.dat saved by an earlier v1.3 build still has it on disk.
+        // System.Text.Json ignores unmapped JSON properties on deserialize by default (ItemStore's
+        // JsonSerializerOptions sets no JsonUnmappedMemberHandling), so a stray "IsStack" field
+        // must not break loading -- confirmed here against the exact options ItemStore.Load uses,
+        // independent of the DPAPI encryption layer around the real file.
+        var options = new System.Text.Json.JsonSerializerOptions
+        {
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+        };
+        const string json = """
+            [{"Id":"abc","Kind":"Files","CreatedAtUtc":"2026-08-01T00:00:00Z","Pinned":false,
+              "Paths":["C:\\x","C:\\y"],"ContentHash":1,"IsStack":true}]
+            """;
+
+        var loaded = System.Text.Json.JsonSerializer.Deserialize<List<ClipItem>>(json, options);
+
+        Assert.NotNull(loaded);
+        var single = Assert.Single(loaded!);
+        Assert.Equal("abc", single.Id);
+        Assert.Equal(2, single.Paths.Count);
+        Assert.True(single.IsStack); // still correctly re-derived, not read from the stray field
     }
 }

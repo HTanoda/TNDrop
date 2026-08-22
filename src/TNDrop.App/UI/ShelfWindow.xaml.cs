@@ -1693,6 +1693,18 @@ public partial class ShelfWindow : Window
             FileLogger.Instance?.Info(Module, "merge refused: the combined stack would exceed 10 files");
             ShowStatus(Strings.StackLimit);
             ShakeCard(targetBorder);
+
+            // TryPrepareCardsForMerge above already ran, unconditionally, before the 10-file cap
+            // check -- it may have converted an Image card to Files in memory AND renamed its
+            // blob / deleted its thumb ON DISK (see its own remarks). That conversion is NOT
+            // undone just because the merge itself is then refused: the cap check only decides
+            // whether the two cards combine, not whether the conversion prep stands. Without this
+            // Save(), items.dat stays stale (still Kind=Image, still pointing at a thumb file that
+            // no longer exists) until the next unrelated save -- and a crash in that window would
+            // resurrect the card from the stale on-disk record, broken. Same persistence-on-
+            // irreversible-mutation rationale as OnCardActionClick's pin/delete and
+            // ShelfViewModel.RemoveSelected.
+            _itemStore.Save();
         }
 
         ArmRetractIfPointerOutside();

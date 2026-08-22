@@ -155,4 +155,47 @@ public class DragDropSourceMergeTests : IDisposable
         Assert.Equal(ClipKind.Image, _store.Items.Single(i => i.Id == target.Id).Kind);
         Assert.Equal(ClipKind.Image, _store.Items.Single(i => i.Id == source.Id).Kind);
     }
+
+    // ---- v1.3 review fix I3: the prep step's conversion must survive a SUBSEQUENT cap refusal ---
+
+    [StaFact]
+    public void Prep_then_cap_refused_merge_still_persists_the_prep_conversion_when_saved()
+    {
+        // Reproduces ShelfWindow.OnCardDrop's exact sequence: TryPrepareCardsForMerge runs and
+        // succeeds (converting the healthy Image source to Files, renaming its blob on disk)
+        // BEFORE TryMergeFiles is even called -- the 10-file cap is a property of the SECOND step,
+        // which has no way to undo the first. Before the I3 fix, OnCardDrop's cap-refusal branch
+        // returned without ever calling _itemStore.Save(), so a fresh load (simulating the next
+        // launch, or a crash before any later unrelated save) would still see this card as
+        // Kind=Image pointing at a ThumbFile that TryPrepareCardsForMerge already deleted from
+        // disk -- a broken card. This test drives ItemStore/DragDropSource directly (no WPF Window
+        // or OLE DragEventArgs needed, unlike OnCardDrop itself) through prepare -> refuse -> save
+        // -> reload, and asserts the reload sees the converted Files card, not the stale Image one.
+        var target = ItemStore.BuildFileItems(
+            Enumerable.Range(1, 10).Select(i => $@"C:\cap\{i}.txt").ToArray(), DateTime.UtcNow)[0];
+        _store.TryAdd(target);
+        var source = AddHealthyImage("cap-source");
+
+        var prepped = DragDropSource.TryPrepareCardsForMerge(_store, _store.BlobsDir, target, source);
+        Assert.True(prepped);
+        Assert.Equal(ClipKind.Files, _store.Items.Single(i => i.Id == source.Id).Kind);
+
+        var merged = _store.TryMergeFiles(target.Id, source.Id);
+        Assert.False(merged); // 10 + 1 > 10 -- refused, exactly as OnCardDrop's cap branch expects
+
+        // The fix: OnCardDrop's refusal branch now saves here, same as this line.
+        _store.Save();
+
+        var reloaded = new ItemStore(_dir);
+        reloaded.Load();
+
+        var reloadedSource = reloaded.Items.Single(i => i.Id == source.Id);
+        Assert.Equal(ClipKind.Files, reloadedSource.Kind);
+        Assert.Single(reloadedSource.Paths);
+
+        // Both cards remain distinct (the refused merge did not combine them) and the target is
+        // untouched by the refusal.
+        var reloadedTarget = reloaded.Items.Single(i => i.Id == target.Id);
+        Assert.Equal(10, reloadedTarget.Paths.Count);
+    }
 }
