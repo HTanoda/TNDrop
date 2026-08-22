@@ -115,6 +115,11 @@ internal static class Strings
     public static string TotalCountFormat => Get(nameof(TotalCountFormat));
     public static string FilteredCountFormat => Get(nameof(FilteredCountFormat));
 
+    // Help button (v1.3.1): opens the bundled README.html. See ShelfWindow.OnHelpButtonClick and
+    // HelpLauncher for the tooltip/failure-message split.
+    public static string HelpButtonTooltip => Get(nameof(HelpButtonTooltip));
+    public static string HelpOpenFailed => Get(nameof(HelpOpenFailed));
+
     // Pinned accordion + click-to-paste (v1.2 Task H).
     public static string PinnedHeaderFormat => Get(nameof(PinnedHeaderFormat));
     public static string PinnedToggleTooltip => Get(nameof(PinnedToggleTooltip));

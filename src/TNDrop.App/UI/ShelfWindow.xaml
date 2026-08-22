@@ -41,12 +41,16 @@
             </Grid.RowDefinitions>
 
             <!-- Header (v1.1 Task C): app name left, settings (opens the same window the tray's
-                 own "設定..." menu item opens - see App.OpenSettingsWindow) and hide (SlideOut,
-                 same as the retract timer) right. Both buttons use Header.IconButtonStyle
-                 (Cards.xaml), which sets Focusable=False so a click never steals keyboard focus. -->
+                 own "設定..." menu item opens - see App.OpenSettingsWindow), help (v1.3.1, opens
+                 the bundled README.html - see ShelfWindow.OnHelpButtonClick) and hide (SlideOut,
+                 same as the retract timer) right, in that order - matching the "?" button's slot
+                 between the gear and the × in the README's own hero mockup (assets/README.html).
+                 All three buttons use Header.IconButtonStyle (Cards.xaml), which sets
+                 Focusable=False so a click never steals keyboard focus. -->
             <Grid Grid.Row="0" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
@@ -69,8 +73,13 @@
                         Content="&#9881;"
                         Style="{StaticResource Header.IconButtonStyle}" />
 
-                <Button x:Name="HeaderHideButton"
+                <Button x:Name="HeaderHelpButton"
                         Grid.Column="2"
+                        Content="?"
+                        Style="{StaticResource Header.IconButtonStyle}" />
+
+                <Button x:Name="HeaderHideButton"
+                        Grid.Column="3"
                         Content="&#215;"
                         Style="{StaticResource Header.IconButtonStyle}" />
             </Grid>

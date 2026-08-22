@@ -311,6 +311,12 @@
   <data name="HeaderHideTooltip" xml:space="preserve">
     <value>Hide the shelf</value>
   </data>
+  <data name="HelpButtonTooltip" xml:space="preserve">
+    <value>Help</value>
+  </data>
+  <data name="HelpOpenFailed" xml:space="preserve">
+    <value>Could not open help</value>
+  </data>
   <data name="TotalCountFormat" xml:space="preserve">
     <value>{0} total</value>
   </data>

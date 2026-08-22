@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -634,6 +635,9 @@ public partial class ShelfWindow : Window
         // small square icon buttons.
         HeaderSettingsButton.ToolTip = Strings.HeaderSettingsTooltip;
         HeaderSettingsButton.Click += (_, _) => global::TNDrop.App.OpenSettingsWindow();
+
+        HeaderHelpButton.ToolTip = Strings.HelpButtonTooltip;
+        HeaderHelpButton.Click += (_, _) => OnHelpButtonClick();
 
         HeaderHideButton.ToolTip = Strings.HeaderHideTooltip;
         HeaderHideButton.Click += (_, _) => SlideOut();
@@ -1980,6 +1984,43 @@ public partial class ShelfWindow : Window
             // A malformed/unregistered scheme must not take the shelf down. The URL itself is not
             // logged: it is user clipboard content.
             FileLogger.Instance?.Warn(Module, $"failed to open a link in the browser: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The header's "?" button (v1.3.1): opens the README.html bundled next to the exe
+    /// (assets/README.html at build time, copied to the publish output root by
+    /// TNDrop.App.csproj -- see that file's Content item) in the user's default browser.
+    /// <para>The file-exists check is split out into <see cref="HelpLauncher.MissingReasonCode"/>
+    /// so that decision is unit-testable without touching the real filesystem or spawning a
+    /// process; this method only resolves the path, asks the pure helper, and does the I/O.</para>
+    /// <para>Missing file or a failed <see cref="Process.Start"/> (no default browser associated,
+    /// shell launch refused, etc.) never crashes the shelf: both log a single Warn line with a
+    /// reason code only -- no path, per the project's no-clipboard-content/no-paths-in-logs rule
+    /// (see <see cref="StackGestures.SplitRefusalReason"/> for the same convention elsewhere in
+    /// this class) -- and fall back to the same inline footer status <see cref="ShowStatus"/>
+    /// every other transient failure in this window already uses.</para>
+    /// </summary>
+    private void OnHelpButtonClick()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, HelpLauncher.ReadmeFileName);
+
+        var missingReason = HelpLauncher.MissingReasonCode(File.Exists(path));
+        if (missingReason is not null)
+        {
+            FileLogger.Instance?.Warn(Module, $"help open failed: {missingReason}");
+            ShowStatus(Strings.HelpOpenFailed);
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception)
+        {
+            FileLogger.Instance?.Warn(Module, "help open failed: start-error");
+            ShowStatus(Strings.HelpOpenFailed);
         }
     }
 
