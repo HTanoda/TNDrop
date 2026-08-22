@@ -3,7 +3,7 @@
 ; ユーザー単位 (管理者権限不要) インストール。本番機はオフライン x64 Windows のため、
 ; [Files] は dotnet publish の self-contained 出力フォルダ (dist\publish) を丸ごと同梱する。
 #define MyAppName       "TNDrop"
-#define MyAppVersion    "1.3.1"
+#define MyAppVersion    "1.4.0"
 #define MyAppPublisher  "HIROKI TANODA (TND)"
 #define MyAppCopyright  "Copyright (c) 2026 HIROKI TANODA (TND). All rights reserved."
 #define MyAppExeName    "TNDrop.exe"
@@ -36,6 +36,10 @@ PrivilegesRequired=lowest
 ; インストール/アンインストール前に実行中の TNDrop 検出時、Inno Setup が標準の
 ; 「実行中のアプリを閉じてください」ダイアログを表示し、閉じるまで先へ進めない。
 AppMutex=Local\TNDrop_SingleInstance
+; インストーラー自身の二重起動防止 (アプリの AppMutex とは別名義)。
+; セットアップ .exe を 2 個同時に起動すると、2 個目は Inno Setup 標準の
+; 「セットアップは既に実行中です」メッセージで起動を拒否する。
+SetupMutex=TNDropSetupMutex
 WizardStyle=modern
 
 [Languages]
