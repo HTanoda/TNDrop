@@ -24,6 +24,15 @@
     <SolidColorBrush x:Key="Card.Badge" Color="#FF5B8DEF" />
     <SolidColorBrush x:Key="Card.ActionHover" Color="#40FFFFFF" />
 
+    <!-- Hover-action pill (v1.3 Task D): a dark, near-opaque ground the pin/delete icons always
+         sit on, so they stay legible over any card content including a white image - the earlier
+         plain icons drawn straight onto the card were invisible there (spec feedback, referencing
+         a reference app's own pill toolbar). Alpha E6 (~90%) rather than fully opaque keeps
+         a hint of the card color coming through, matching the reference's translucency without
+         risking legibility on light content. -->
+    <SolidColorBrush x:Key="Card.PillBackground" Color="#E61E1E23" />
+    <SolidColorBrush x:Key="Card.PillSeparator" Color="#33FFFFFF" />
+
     <!-- Multi-select indicator (Task 15). Same accent as the Task 13/14 drop/merge highlight
          (#0A84FF) for visual consistency across the shelf's "this is active" affordances. -->
     <SolidColorBrush x:Key="Card.SelectedAccent" Color="#FF0A84FF" />
@@ -71,6 +80,22 @@
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Pill container for the hover-action bar (v1.3 Task D). CornerRadius is half the pill's own
+         height (28/2=14) per apple-design's "corner radius = half height" pill shape; the shadow is
+         deliberately subtle (low opacity, small blur) - this floats over card content on every
+         hover, so a heavy shadow would be a constant distraction rather than the occasional
+         emphasis a modal/menu shadow provides. -->
+    <Style x:Key="Card.ActionPillStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Card.PillBackground}" />
+        <Setter Property="CornerRadius" Value="14" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Effect">
+            <Setter.Value>
+                <DropShadowEffect Color="#FF000000" Direction="270" ShadowDepth="1.5" BlurRadius="6" Opacity="0.3" />
             </Setter.Value>
         </Setter>
     </Style>
@@ -388,18 +413,52 @@
                                Margin="0,6,0,0" />
                 </Grid>
 
-                <!-- Hover-only action bar: pin / delete. Visibility (not just Opacity) is what
-                     gates this: an Opacity=0 element is still hit-testable in WPF, which would
-                     let the invisible Delete button eat clicks/taps meant for whatever's behind
-                     it when the card isn't hovered. Collapsed removes it from hit-testing too. -->
-                <StackPanel x:Name="ActionBar"
-                            Orientation="Horizontal"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Top"
-                            Visibility="Collapsed">
-                    <Button Content="&#128204;" Tag="Pin" Style="{StaticResource Card.ActionButton}" />
-                    <Button Content="&#128465;" Tag="Delete" Style="{StaticResource Card.ActionButton}" />
-                </StackPanel>
+                <!-- Hover-only action pill (v1.3 Task D): pin/delete float in a dark pill at the
+                     card's top edge instead of sitting bare on the card content (the old flat
+                     ActionBar above) - the earlier icons were invisible on a white image. Same
+                     Tag="Pin"/"Delete" buttons, same Card.ActionButton style, same
+                     ShelfWindow.OnCardActionClick class handler - only the container changed, per
+                     the task brief ("only their visual container moves").
+
+                     Visibility (not just Opacity) is still what gates hit-testing, same rationale
+                     as before: an Opacity=0 element is still hit-testable in WPF, which would let
+                     the invisible Delete button eat clicks/taps meant for whatever's behind it
+                     when the card isn't hovered. It is now driven by the Enter/ExitActions
+                     storyboards below (see the IsMouseOver trigger) instead of a plain Setter, so
+                     leaving the card fades the pill out over ~100ms instead of popping it away on
+                     the first frame - a plain Setter reverts the instant the trigger goes false,
+                     which would cut the fade-out animation off before it is ever seen.
+
+                     The negative top margin lets the pill overlap CardRoot's own rounded top edge,
+                     like the reference screenshot. That is safe here because nothing between this
+                     Border and the ScrollViewer clips: CardRoot has no ClipToBounds, neither does
+                     Card.ListBoxItemStyle's ContentPresenter template, and neither StackPanel nor
+                     VirtualizingStackPanel (ShelfWindow.xaml's ItemsPanel for PinnedList/CardsList)
+                     clips per item - only the ScrollViewer's own viewport does, at the very top/
+                     bottom of the scrollable area. -8 would put the pill's top edge flush with
+                     CardRoot's outer border (CardRoot's Padding="8" is what the Grid above is
+                     already inset by); the extra -6 is the actual overhang past that edge, capped
+                     there so it stays inside the 8px gap Card.ListBoxItemStyle's own
+                     Margin="0,0,0,8" leaves between one card and the next and never touches the
+                     card above. -->
+                <Border x:Name="ActionPill"
+                        Style="{StaticResource Card.ActionPillStyle}"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="0,-14,6,0"
+                        Opacity="0"
+                        Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Margin="4,2">
+                        <Button Content="&#128204;" Tag="Pin" Style="{StaticResource Card.ActionButton}" Margin="0" />
+                        <!-- Subtle separator ahead of Delete (design brief: "delete stays visually
+                             distinct, rightmost, subtle separation", to cut down on accidental
+                             hits) - a 1px divider plus its own margin, rather than just a wider
+                             gap, so the line reads as an intentional boundary rather than looking
+                             like uneven spacing. -->
+                        <Border Width="1" Margin="5,4" Background="{StaticResource Card.PillSeparator}" />
+                        <Button Content="&#128465;" Tag="Delete" Style="{StaticResource Card.ActionButton}" Margin="0" />
+                    </StackPanel>
+                </Border>
 
                 <!-- Multi-select indicator (Task 15): an accent border overlay + a checkmark badge,
                      toggled by CardViewModel.Selected. Deliberately a SEPARATE element from
@@ -510,9 +569,35 @@
                 <Setter TargetName="FileIconGlyph" Property="Visibility" Value="Visible" />
                 <Setter TargetName="StackIcon" Property="Visibility" Value="Collapsed" />
             </DataTrigger>
+            <!-- ActionPill's Visibility/Opacity are animated, not Setter-driven (see the comment
+                 above ActionPill itself for why): EnterActions plays a ~130ms fade in, ExitActions
+                 a ~100ms fade out with Visibility flipped to Collapsed only once that fade has
+                 actually finished (the DiscreteObjectKeyFrame's KeyTime), so leaving the card is
+                 visibly a fade rather than a pop. -->
             <Trigger SourceName="CardRoot" Property="IsMouseOver" Value="True">
                 <Setter TargetName="CardRoot" Property="Background" Value="{StaticResource Card.HoverBackground}" />
-                <Setter TargetName="ActionBar" Property="Visibility" Value="Visible" />
+                <Trigger.EnterActions>
+                    <BeginStoryboard>
+                        <Storyboard>
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ActionPill" Storyboard.TargetProperty="Visibility">
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0" Value="{x:Static Visibility.Visible}" />
+                            </ObjectAnimationUsingKeyFrames>
+                            <DoubleAnimation Storyboard.TargetName="ActionPill" Storyboard.TargetProperty="Opacity"
+                                             To="1" Duration="0:0:0.13" />
+                        </Storyboard>
+                    </BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                    <BeginStoryboard>
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetName="ActionPill" Storyboard.TargetProperty="Opacity"
+                                             To="0" Duration="0:0:0.1" />
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ActionPill" Storyboard.TargetProperty="Visibility">
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0.1" Value="{x:Static Visibility.Collapsed}" />
+                            </ObjectAnimationUsingKeyFrames>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </Trigger.ExitActions>
             </Trigger>
             <DataTrigger Binding="{Binding Selected}" Value="True">
                 <Setter TargetName="SelectionOverlay" Property="Visibility" Value="Visible" />
