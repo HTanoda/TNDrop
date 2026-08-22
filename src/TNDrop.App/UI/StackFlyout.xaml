@@ -96,6 +96,16 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Opacity" Value="0" />
             <Setter Property="IsHitTestVisible" Value="False" />
+            <!-- Review round 1: IsHitTestVisible=False blocks the mouse but not Tab - a keyboard
+                 user could Tab onto (and Enter/Space-activate) a button that is invisible the
+                 whole time, since Opacity=0 has no bearing on focusability. Mirrors
+                 Cards.xaml's own Header.IconButtonStyle, which sets Focusable=False for the same
+                 "must not be reachable by keyboard" reason. The flyout has no keyboard path onto
+                 its rows today (row activation is pointer-only, see StackFlyout.xaml.cs's
+                 OnRowPreviewMouseLeftButtonDown/Up), so this removes the button from the tab
+                 order entirely rather than inventing half of one. -->
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
             <Setter Property="ToolTip" Value="{DynamicResource Flyout.SplitOneTooltipText}" />
             <Setter Property="Template">
                 <Setter.Value>

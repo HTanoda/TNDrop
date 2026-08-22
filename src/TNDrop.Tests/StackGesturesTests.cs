@@ -432,45 +432,98 @@ public class StackGesturesTests
         Assert.Equal(@"D:\", row.FileName);
     }
 
-    // -- v1.3 Task C: row thumbnails -----------------------------------------------------------
+    // -- v1.3 Task C: row thumbnails ------------------------------------------------------------
+    //
+    // Review round 1: StackFileRow.Create no longer calls ShellImaging synchronously (that COM
+    // round-trip is now scheduled on a background thread by StackFlyout -- see StackFlyoutTests
+    // for the staleness-guard coverage). Create only decides NeedsThumbnail; Thumbnail itself
+    // starts null and is applied later via ApplyThumbnail. ResolveThumbnail -- the actual shell
+    // call -- is tested directly here instead of through Create.
 
     [StaFact]
-    public void Row_Thumbnail_is_null_for_a_missing_path()
+    public void Row_Create_leaves_Thumbnail_null_and_NeedsThumbnail_false_for_a_missing_path()
     {
         // No probe attempted -- there is nothing on disk to ask the shell about, same guard
         // CardViewModelTests exercises for CardViewModel.Thumbnail/FileIcon on a missing path.
         var row = StackFileRow.Create(@"C:\this-path-does-not-exist\a.png");
         Assert.False(row.Exists);
+        Assert.False(row.NeedsThumbnail);
         Assert.Null(row.Thumbnail);
     }
 
     [StaFact]
-    public void Row_Thumbnail_is_null_for_a_directory()
+    public void Row_Create_leaves_NeedsThumbnail_false_for_a_directory()
     {
         using var temp = new TempDir();
         var dir = Directory.CreateDirectory(System.IO.Path.Combine(temp.Path, "sub")).FullName;
 
         var row = StackFileRow.Create(dir);
         Assert.True(row.Exists);
+        Assert.False(row.NeedsThumbnail);
         Assert.Null(row.Thumbnail);
     }
 
     [StaFact]
-    public void Row_Thumbnail_probe_does_not_throw_for_an_existing_file()
+    public void Row_Create_sets_NeedsThumbnail_true_for_an_existing_file_but_leaves_Thumbnail_null()
+    {
+        // Create must never itself call ShellImaging -- this is the whole point of the deferred-
+        // loading fix, so it is asserted directly: NeedsThumbnail says "go resolve this", but
+        // Thumbnail is still null immediately after Create returns.
+        using var temp = new TempDir();
+        var textFile = temp.WriteFile("data.bin", "x");
+
+        var row = StackFileRow.Create(textFile);
+
+        Assert.True(row.Exists);
+        Assert.True(row.NeedsThumbnail);
+        Assert.Null(row.Thumbnail);
+    }
+
+    [StaFact]
+    public void Row_ResolveThumbnail_does_not_throw_for_media_or_non_media_files()
     {
         // The shell's actual answer (real icon/thumbnail or null) is environment-dependent, so this
-        // only pins down that StackFileRow.Create never throws while probing a real, existing file
-        // of either media or non-media kind.
+        // only pins down that ResolveThumbnail never throws for a real, existing file of either
+        // kind -- the same coverage Create's own probe used to provide implicitly.
         using var temp = new TempDir();
         var textFile = temp.WriteFile("data.bin", "x");
         var imageFile = System.IO.Path.Combine(temp.Path, "pic.png");
         File.WriteAllBytes(imageFile, new byte[] { 0x89, 0x50, 0x4E, 0x47 });
 
-        var textRow = StackFileRow.Create(textFile);
-        var imageRow = StackFileRow.Create(imageFile);
+        _ = StackFileRow.ResolveThumbnail(textFile);
+        _ = StackFileRow.ResolveThumbnail(imageFile);
+    }
 
-        Assert.True(textRow.Exists);
-        Assert.True(imageRow.Exists);
+    [StaFact]
+    public void Row_ApplyThumbnail_sets_Thumbnail_and_raises_PropertyChanged()
+    {
+        using var temp = new TempDir();
+        var textFile = temp.WriteFile("data.bin", "x");
+        var row = StackFileRow.Create(textFile);
+
+        var raised = new List<string?>();
+        row.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        var resolved = StackFileRow.ResolveThumbnail(textFile);
+        row.ApplyThumbnail(resolved);
+
+        Assert.Equal(resolved, row.Thumbnail);
+        Assert.Contains(nameof(StackFileRow.Thumbnail), raised);
+    }
+
+    [StaFact]
+    public void Row_ApplyThumbnail_does_not_raise_PropertyChanged_when_the_value_is_unchanged()
+    {
+        using var temp = new TempDir();
+        var textFile = temp.WriteFile("data.bin", "x");
+        var row = StackFileRow.Create(textFile);
+
+        var raised = new List<string?>();
+        row.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        row.ApplyThumbnail(null); // already null -- a no-op change
+
+        Assert.Empty(raised);
     }
 
     private sealed class TempDir : IDisposable

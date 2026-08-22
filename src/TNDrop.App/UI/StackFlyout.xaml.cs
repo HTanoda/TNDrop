@@ -49,6 +49,18 @@ public partial class StackFlyout : Popup
     private List<string> _paths = new();
     private int _hoverMisses;
 
+    /// <summary>
+    /// Bumped once per <see cref="ShowFor"/> call (v1.3 Task C review fix). Row thumbnails resolve
+    /// on a background thread (see <see cref="ShellImagingWorker"/>) and land some time later; a
+    /// late result is applied only when both this generation AND <see cref="StackId"/> still match
+    /// what they were when the request was scheduled -- so a flyout that has since closed, or been
+    /// re-shown for a different stack (even one that happens to reuse the same StackId, e.g. the
+    /// SAME stack closed and reopened), never has a stale background result silently applied to
+    /// row objects nobody is looking at anymore. Two conditions, not one: StackId alone would not
+    /// catch "same stack, closed and reopened" (a fresh row list, fresh generation, same id).
+    /// </summary>
+    private int _showGeneration;
+
     // Row press/drag classification, the same shape as ShelfWindow's card gesture: a press records
     // where and on what, a move past the system threshold promotes it to a drag, a release before
     // that is a click.
@@ -146,7 +158,9 @@ public partial class StackFlyout : Popup
         // already shows -- rather than a second, near-duplicate format string.
         HeaderCountText.Text = string.Format(Strings.CardFilesCountFormat, _paths.Count);
 
-        RowsHost.ItemsSource = _paths.Select(StackFileRow.Create).ToList();
+        var rows = _paths.Select(StackFileRow.Create).ToList();
+        RowsHost.ItemsSource = rows;
+        ScheduleThumbnailResolution(rows);
 
         // Away from the screen edge, never over it: on a left-edge shelf the flyout opens to the
         // right of the card, and vice versa, so it never lands off-screen.
@@ -159,6 +173,71 @@ public partial class StackFlyout : Popup
         _hoverMisses = 0;
         IsOpen = true;
     }
+
+    /// <summary>
+    /// Kicks off a background <see cref="ShellImagingWorker"/> request per row that needs one
+    /// (v1.3 Task C review fix -- see <see cref="_showGeneration"/>'s own remarks for the full
+    /// staleness story). Rows are created with <see cref="StackFileRow.Thumbnail"/> still null and
+    /// showing the glyph fallback (<see cref="StackFileRow.Icon"/>); each background result, once
+    /// it lands, swaps the visual in via <see cref="StackFileRow.ApplyThumbnail"/> and WPF's own
+    /// data-binding -- no manual UI refresh needed.
+    ///
+    /// <para>Requests are fire-and-forget from here: <see cref="StackFileRow.ResolveThumbnail"/>
+    /// runs entirely on the worker thread, and only the tiny closure that applies the result
+    /// crosses back onto the UI thread via <see cref="Dispatcher.BeginInvoke(Delegate)"/>.</para>
+    /// </summary>
+    private void ScheduleThumbnailResolution(List<StackFileRow> rows)
+    {
+        _showGeneration++;
+        var generation = _showGeneration;
+        var stackId = StackId;
+
+        foreach (var row in rows)
+        {
+            if (!row.NeedsThumbnail)
+            {
+                continue;
+            }
+
+            var path = row.Path;
+
+            ShellImagingWorker.Enqueue(() =>
+            {
+                var thumbnail = StackFileRow.ResolveThumbnail(path);
+
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (!IsThumbnailResultCurrent(generation, stackId))
+                    {
+                        // `row` still belongs to whatever list produced it either way -- applying
+                        // to an orphaned row that nothing binds to anymore would be harmless, but
+                        // skipping it entirely is cheaper and keeps the intent explicit.
+                        return;
+                    }
+
+                    row.ApplyThumbnail(thumbnail);
+                }));
+            });
+        }
+    }
+
+    /// <summary>
+    /// Pure staleness decision for a background thumbnail result (v1.3 Task C review fix): true
+    /// only when both <paramref name="resultGeneration"/> matches the CURRENT
+    /// <see cref="_showGeneration"/> and <paramref name="resultStackId"/> matches the CURRENT
+    /// <see cref="StackId"/>. Extracted out of the scheduling closure in
+    /// <see cref="ScheduleThumbnailResolution"/> specifically so the rule itself is unit-testable
+    /// without depending on real background-thread timing -- a live <see cref="ShellImagingWorker"/>
+    /// race is not something a deterministic test can wait on.
+    ///
+    /// <para>Both conditions are required, not just one: <see cref="StackId"/> alone would miss the
+    /// "same stack, closed and reopened" case -- a fresh row list and a fresh generation, but an
+    /// unchanged id -- where the OLD rows must still be treated as stale even though the id check
+    /// alone would say otherwise.</para>
+    /// </summary>
+    public bool IsThumbnailResultCurrent(int resultGeneration, string? resultStackId) =>
+        resultGeneration == _showGeneration &&
+        string.Equals(StackId, resultStackId, StringComparison.Ordinal);
 
     /// <summary>True when the flyout is currently showing that exact stack. Drives the click toggle.</summary>
     public bool IsShowing(string? stackId) =>
