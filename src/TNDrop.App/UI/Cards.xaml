@@ -647,11 +647,16 @@
     <!-- Header row of the pinned accordion (v1.2 Task H): a full-width, flat, borderless Button
          whose whole surface is the toggle. Focusable=False for the same reason as
          Header.IconButtonStyle: the shelf is WS_EX_NOACTIVATE and only the search box is ever meant
-         to take keyboard focus, so this must fire its Click without competing for it. -->
+         to take keyboard focus, so this must fire its Click without competing for it.
+
+         Foreground was Card.SubForeground (v1.3 Task E: bumped to the brighter Card.Foreground) -
+         the boundary tint on the section around it (ShelfWindow.xaml's PinnedSection Border) makes
+         the header row read as a distinct region now, so the muted sub-text color that worked for a
+         plain background started reading as too faint against it. -->
     <Style x:Key="Pinned.HeaderButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Foreground" Value="{StaticResource Card.SubForeground}" />
+        <Setter Property="Foreground" Value="{StaticResource Card.Foreground}" />
         <Setter Property="Padding" Value="4,5" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="Cursor" Value="Hand" />

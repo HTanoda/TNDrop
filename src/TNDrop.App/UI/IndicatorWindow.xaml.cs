@@ -20,10 +20,15 @@ public partial class IndicatorWindow : Window
 {
     private const string Module = "IndicatorWindow";
 
-    private static readonly Duration BeaconDuration = new(TimeSpan.FromMilliseconds(400));
-    private static readonly Duration BarDuration = new(TimeSpan.FromMilliseconds(300));
-    private static readonly Duration PulseDuration = new(TimeSpan.FromMilliseconds(450));
-    private static readonly Duration CornerDuration = new(TimeSpan.FromMilliseconds(350));
+    // v1.3 Task E: each style's flash duration is the pre-v1.3 base (comment) scaled by the SAME
+    // IndicatorTiming.DurationBoost, so "make the flash more noticeable" moves all 4 styles
+    // together from one constant instead of four hand-edited numbers that could drift apart over
+    // time (see IndicatorTiming's own doc comment). Bases: Beacon 400ms, Bar 300ms, Pulse 450ms
+    // (per cycle - see FlashPulse for the extra cycle), Corner 350ms.
+    private static readonly Duration BeaconDuration = new(IndicatorTiming.Scale(400));
+    private static readonly Duration BarDuration = new(IndicatorTiming.Scale(300));
+    private static readonly Duration PulseDuration = new(IndicatorTiming.Scale(450));
+    private static readonly Duration CornerDuration = new(IndicatorTiming.Scale(350));
 
     public IndicatorWindow()
     {
@@ -150,8 +155,39 @@ public partial class IndicatorWindow : Window
             PulseScale.ScaleY = 1.0;
         };
 
+        // v1.3 Task E: "パルスは1周追加" -- one extra cycle. From/To animations restart from the
+        // From value on every repeat, so RepeatBehavior(2) plays two full grow-and-fade rings back
+        // to back with no extra wiring; Completed still fires exactly once, after both iterations,
+        // which is what resets PulseCircle/PulseScale back to their rest values below. Each cycle
+        // already runs at the boosted PulseDuration (see the field above), so two of them read as a
+        // slow double-ping, not a flicker -- the "no aggressive strobing" constraint stays intact
+        // because nothing here is a fast repeated flash, just one longer, calmer confirmation.
+        var repeatTwice = new RepeatBehavior(2);
+        fade.RepeatBehavior = repeatTwice;
+        grow.RepeatBehavior = repeatTwice;
+
         PulseCircle.BeginAnimation(OpacityProperty, fade);
         PulseScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, grow);
         PulseScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, grow);
     }
+}
+
+/// <summary>
+/// Pure duration-scaling helper for <see cref="IndicatorWindow"/> (v1.3 Task E). The single place
+/// that turns a style's pre-v1.3 base duration into its boosted one, so
+/// Beacon/Bar/Pulse/CornerDuration all move together under one shared multiplier instead of four
+/// independently-tuned numbers that could drift outside the "~1.2-1.5x" design range one at a time
+/// (see the one-resolution-per-related-fields guidance this mirrors). Pure and static so it is
+/// testable without touching WPF (see IndicatorTimingTests). Public (not internal) because
+/// TNDrop.Tests references TNDrop.App as an ordinary project reference with no
+/// InternalsVisibleTo -- the project's other pure-logic helpers (e.g. TextScaleMap) follow the
+/// same convention.
+/// </summary>
+public static class IndicatorTiming
+{
+    /// <summary>Shared duration multiplier: ~1.3x, inside the v1.3 design range of 1.2x-1.5x.</summary>
+    public const double DurationBoost = 1.3;
+
+    public static TimeSpan Scale(double baseMilliseconds) =>
+        TimeSpan.FromMilliseconds(baseMilliseconds * DurationBoost);
 }

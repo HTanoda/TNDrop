@@ -14,6 +14,20 @@
         UseLayoutRounding="True"
         Left="-1000" Top="0" Width="64" Height="400"
         Background="Transparent">
+    <Window.Resources>
+        <!-- v1.3 Task E: shared brand color for all 4 flash styles, brightened from the pre-v1.3
+             #5AC8FA / CC-E6 alpha family (RGB lightened ~30% toward white, alpha raised to opaque
+             since CC/E6 already left little headroom before clipping to FF). One Color/Brush pair
+             feeds Beacon/Bar/Pulse/Corner below instead of four independently hand-tuned hex
+             literals - the "several related values, one resolution" rule: brightening one style
+             but not the others by hand-editing four copies is exactly the kind of drift this
+             avoids. Do not restyle an individual flash's color without a reason to make it diverge
+             from the other three - if it should diverge, change the color here anyway if all four
+             still should move together, or give that one flash its own named resource if not. -->
+        <Color x:Key="Indicator.BrandColor">#FF8CD9FC</Color>
+        <Color x:Key="Indicator.BrandColorTransparent">#008CD9FC</Color>
+        <SolidColorBrush x:Key="Indicator.BrandBrush" Color="{StaticResource Indicator.BrandColor}" />
+    </Window.Resources>
     <!-- Every visual here starts Opacity="0"; Flash() picks one, restarts its animation, then
          resets Opacity back to 0 when the animation completes (see IndicatorWindow.xaml.cs).
          The window itself is click-through (WindowStyles.MakeClickThrough), so hit-testing on
@@ -26,9 +40,9 @@
                    VerticalAlignment="Center">
             <Rectangle.Fill>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                    <GradientStop Offset="0.0" Color="#005AC8FA" />
-                    <GradientStop Offset="0.5" Color="#CC5AC8FA" />
-                    <GradientStop Offset="1.0" Color="#005AC8FA" />
+                    <GradientStop Offset="0.0" Color="{StaticResource Indicator.BrandColorTransparent}" />
+                    <GradientStop Offset="0.5" Color="{StaticResource Indicator.BrandColor}" />
+                    <GradientStop Offset="1.0" Color="{StaticResource Indicator.BrandColorTransparent}" />
                 </LinearGradientBrush>
             </Rectangle.Fill>
         </Rectangle>
@@ -38,14 +52,14 @@
                    Width="3"
                    Opacity="0"
                    VerticalAlignment="Stretch"
-                   Fill="#CC5AC8FA" />
+                   Fill="{StaticResource Indicator.BrandBrush}" />
 
         <!-- Pulse: a circle at the edge's vertical center that expands and fades. -->
         <Ellipse x:Name="PulseCircle"
                  Width="8" Height="8"
                  Opacity="0"
                  VerticalAlignment="Center"
-                 Fill="#CC5AC8FA"
+                 Fill="{StaticResource Indicator.BrandBrush}"
                  RenderTransformOrigin="0.5,0.5">
             <Ellipse.RenderTransform>
                 <ScaleTransform x:Name="PulseScale" ScaleX="1" ScaleY="1" />
@@ -58,6 +72,6 @@
                  Opacity="0"
                  VerticalAlignment="Bottom"
                  Margin="0,0,0,24"
-                 Fill="#E65AC8FA" />
+                 Fill="{StaticResource Indicator.BrandBrush}" />
     </Grid>
 </Window>
