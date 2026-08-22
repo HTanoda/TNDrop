@@ -33,10 +33,41 @@ public partial class IndicatorWindow : Window
     public IndicatorWindow()
     {
         InitializeComponent();
+        ApplyBrightenedColors();
 
         // Create the HWND now so MakeClickThrough (called from OnSourceInitialized) and the
         // first Place() have a handle to work with, matching EdgeTriggerWindow/ShelfWindow.
         new WindowInteropHelper(this).EnsureHandle();
+    }
+
+    /// <summary>
+    /// v1.3 Task E (review round 1): overwrites the XAML placeholder colors (already the correct
+    /// computed values, kept in sync as a fallback -- see IndicatorWindow.xaml's own comment) with
+    /// <see cref="IndicatorBrightness.Brighten"/>'s live output, so the ACTUAL running colors are
+    /// traceable to one function call per style rather than to hex literals that could silently
+    /// drift from it. Beacon/Bar/Pulse share one color (their baseline alpha, 0xCC, is the same);
+    /// Corner gets its own (baseline alpha 0xE6 had less headroom, so it needs a different RGB to
+    /// land at the SAME proportional gain -- see IndicatorBrightness's doc comment for the
+    /// review-round-1 story). Named elements (not a shared resource) are used specifically because
+    /// XAML's StaticResource is resolved once at parse time -- writing a new value into
+    /// Resources[...] afterward would not propagate to brushes already built from it.
+    /// </summary>
+    private void ApplyBrightenedColors()
+    {
+        var (sharedR, sharedG, sharedB) = IndicatorBrightness.Brighten(
+            IndicatorBrightness.BaseAlphaShared, IndicatorBrightness.BaseR, IndicatorBrightness.BaseG, IndicatorBrightness.BaseB);
+        var shared = System.Windows.Media.Color.FromArgb(255, sharedR, sharedG, sharedB);
+        var sharedTransparent = System.Windows.Media.Color.FromArgb(0, sharedR, sharedG, sharedB);
+
+        BeaconGradientStart.Color = sharedTransparent;
+        BeaconGradientMid.Color = shared;
+        BeaconGradientEnd.Color = sharedTransparent;
+        BarBrush.Color = shared;
+        PulseBrush.Color = shared;
+
+        var (cornerR, cornerG, cornerB) = IndicatorBrightness.Brighten(
+            IndicatorBrightness.BaseAlphaCorner, IndicatorBrightness.BaseR, IndicatorBrightness.BaseG, IndicatorBrightness.BaseB);
+        CornerBrush.Color = System.Windows.Media.Color.FromArgb(255, cornerR, cornerG, cornerB);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -190,4 +221,74 @@ public static class IndicatorTiming
 
     public static TimeSpan Scale(double baseMilliseconds) =>
         TimeSpan.FromMilliseconds(baseMilliseconds * DurationBoost);
+}
+
+/// <summary>
+/// Pure brightness-boost math for <see cref="IndicatorWindow"/>'s 4 flash colors (v1.3 Task E,
+/// review round 1). The original fix used ONE shared, fully-opaque color for all 4 styles, which
+/// looked uniform by construction but measured out wrong: Beacon/Bar/Pulse's pre-v1.3 baseline
+/// alpha (<see cref="BaseAlphaShared"/>, 0xCC) had much more headroom before clipping to fully
+/// opaque than Corner's (<see cref="BaseAlphaCorner"/>, 0xE6), so the SAME final color gave
+/// Beacon/Bar/Pulse a measured +43% alpha-composited-luminance gain and Corner only +27% (review
+/// round 1's own audit; see task-E-report.md's fix-report section for the exact before/after
+/// numbers). This class is the single place "how much brighter" is computed FROM a target
+/// PROPORTIONAL gain (<see cref="TargetGain"/>) applied to each style's OWN baseline luminance, so
+/// styles that started brighter still land at the same proportional gain instead of the same
+/// absolute color -- the "one resolution, parameterized" fix review round 1 asked for, instead of
+/// two independently hand-tuned hex literals that could drift apart on a future edit. Pure and
+/// static so it is directly testable (see IndicatorBrightnessTests) without touching WPF.
+/// </summary>
+public static class IndicatorBrightness
+{
+    /// <summary>
+    /// Target proportional gain in perceptual, alpha-composited luminance over black (ITU-R BT.601
+    /// weights, matching review round 1's own audit formula): 1.35 = +35%, the midpoint of the
+    /// 30%-40% band review round 1 asked for after finding the original fix's uniform-color
+    /// approach landed at +43%/+27% instead. Applied identically to every style's OWN baseline
+    /// effective luminance (see <see cref="Brighten"/>), never to a shared baseline.
+    /// </summary>
+    public const double TargetGain = 1.35;
+
+    // Pre-v1.3 base color, shared hue across all 4 styles: RGB 0x5AC8FA, alpha 0xCC for
+    // Beacon/Bar/Pulse, 0xE6 for Corner (Corner was always slightly more opaque than the other 3).
+    public const byte BaseR = 0x5A;
+    public const byte BaseG = 0xC8;
+    public const byte BaseB = 0xFA;
+    public const byte BaseAlphaShared = 0xCC;
+    public const byte BaseAlphaCorner = 0xE6;
+
+    /// <summary>ITU-R BT.601 perceptual luminance of an opaque RGB triple (each channel 0-255).</summary>
+    public static double Luminance(byte r, byte g, byte b) =>
+        (0.299 * r) + (0.587 * g) + (0.114 * b);
+
+    /// <summary>Luminance composited over black by <paramref name="a"/> (0-255) -- what a viewer
+    /// actually perceives for a translucent color on a dark background, which is both what this
+    /// class targets and what review round 1's own audit measured.</summary>
+    public static double EffectiveLuminance(byte a, byte r, byte g, byte b) =>
+        (a / 255.0) * Luminance(r, g, b);
+
+    /// <summary>
+    /// Returns a fully-opaque (alpha=255) color that lightens (<paramref name="baseR"/>,
+    /// <paramref name="baseG"/>, <paramref name="baseB"/>) toward white by just enough that its
+    /// (now alpha=255) luminance equals <paramref name="baseA"/>'s baseline effective luminance
+    /// times <paramref name="gain"/>. Solves the white-blend fraction analytically -- rather than
+    /// hand-tuning RGB by eye -- and clamps it to [0,1] so a pathological gain can never overshoot
+    /// pure white or undershoot the original (unbrightened) color.
+    /// </summary>
+    public static (byte R, byte G, byte B) Brighten(
+        byte baseA, byte baseR, byte baseG, byte baseB, double gain = TargetGain)
+    {
+        var baseLuminance = Luminance(baseR, baseG, baseB);
+        var baseEffective = (baseA / 255.0) * baseLuminance;
+        var targetEffective = baseEffective * gain;
+
+        const double whiteLuminance = 255.0;
+        var blend = (targetEffective - baseLuminance) / (whiteLuminance - baseLuminance);
+        blend = Math.Clamp(blend, 0.0, 1.0);
+
+        byte Lerp(byte from) =>
+            (byte)Math.Round(from + ((255 - from) * blend), MidpointRounding.AwayFromZero);
+
+        return (Lerp(baseR), Lerp(baseG), Lerp(baseB));
+    }
 }
