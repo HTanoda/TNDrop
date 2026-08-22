@@ -40,6 +40,10 @@
         <SolidColorBrush x:Key="Settings.SubForeground" Color="#FFA5A5AD" />
         <SolidColorBrush x:Key="Settings.NavBackground" Color="#FF17171B" />
         <SolidColorBrush x:Key="Settings.Border" Color="#22FFFFFF" />
+        <!-- Hover-state border/stroke brighten, shared by every hover-only-highlight control in
+             this window (ComboBoxToggle, and Task F's CheckBox/RadioButton) so the three don't
+             each carry their own copy of the same literal. -->
+        <SolidColorBrush x:Key="Settings.HoverBorder" Color="#55FFFFFF" />
 
         <!--
             Full re-template (Task F, v1.3), same reasoning as the ComboBox chrome below: the
@@ -90,7 +94,7 @@
                                 <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Settings.Foreground}" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Box" Property="BorderBrush" Value="#55FFFFFF" />
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Settings.HoverBorder}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.5" />
@@ -132,7 +136,7 @@
                                 <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource Settings.Foreground}" />
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Ring" Property="Stroke" Value="#55FFFFFF" />
+                                <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource Settings.HoverBorder}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.5" />
@@ -184,7 +188,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#55FFFFFF" />
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Settings.HoverBorder}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -287,21 +291,32 @@
             is the single highest-impact fix in the Task F sweep.
         -->
         <!--
-            Slider (Task F, v1.3): same reasoning as CheckBox/RadioButton above. The real default
-            Track template needs no PART_ name of its own beyond "PART_Track" (Slider declares
-            [TemplatePart(Name = "PART_Track", Type = typeof(Track))] - confirmed via reflection -
-            and, per a throwaway XamlWriter dump of the actual default ControlTemplate, Slider's
-            own OnApplyTemplate wires PART_Track's Minimum/Maximum/Value/IsDirectionReversed
-            itself; the default template does not TemplateBind any of them, so this one does not
-            either). That same dump also confirms the concrete failure mode: the default thumb
-            and track colors are fixed light-UI hex (#FFF0F0F0/#FFACACAC track+thumb, #FFE7EAEA/
-            #FFD6D6D6 track background) and the selection-range rectangle uses a genuine
-            SystemColors DynamicResource ({DynamicResource {x:Static SystemColors.
-            HighlightBrushKey}}) - unused here (IsSelectionRangeEnabled is never set), but exactly
-            the ambient-theme dependency this whole task exists to close off wherever it CAN
-            matter. Track's two RepeatButtons keep the real default's own trick of an invisible,
-            non-focusable, non-tab-stop hit zone (Focusable/IsTabStop both False) purely for
-            page-by-drag click paging - they carry no visible chrome of their own.
+            Slider (Task F, v1.3): same reasoning as CheckBox/RadioButton above. Reflection shows
+            Slider actually declares TWO TemplatePartAttributes, not one:
+            [TemplatePart(Name = "PART_Track", Type = typeof(Track))] and
+            [TemplatePart(Name = "PART_SelectionRange", Type = typeof(FrameworkElement))] (the
+            required type is FrameworkElement, not specifically Rectangle - the stock template
+            just happens to use a Rectangle for it). This template supplies PART_Track only.
+            PART_SelectionRange is deliberately omitted: it backs Slider.IsSelectionRangeEnabled,
+            which nothing in this window ever sets (every Slider here is a single-value control,
+            not a range), so nothing looks it up. Per a throwaway XamlWriter dump of the actual
+            default ControlTemplate, Slider's own OnApplyTemplate wires PART_Track's
+            Minimum/Maximum/Value/IsDirectionReversed itself - the default template does not
+            TemplateBind any of them, so this one does not either. If a future Slider in this
+            window ever sets IsSelectionRangeEnabled="True", a named PART_SelectionRange
+            FrameworkElement (typically a Rectangle, positioned the way the stock template
+            positions its own) must be added to this template first, or the selection-range
+            highlight will silently fail to render - the same "wrong/missing PART_ name compiles
+            fine and no-ops at runtime" risk the ComboBox PART_Popup note above documents.
+            That same XamlWriter dump also confirms the concrete failure mode this task closes:
+            the default thumb and track colors are fixed light-UI hex (#FFF0F0F0/#FFACACAC
+            track+thumb, #FFE7EAEA/#FFD6D6D6 track background) and the selection-range rectangle
+            itself uses a genuine SystemColors DynamicResource ({DynamicResource {x:Static
+            SystemColors.HighlightBrushKey}}) - unused here, but exactly the ambient-theme
+            dependency this whole task exists to close off wherever it CAN matter. Track's two
+            RepeatButtons keep the real default's own trick of an invisible, non-focusable,
+            non-tab-stop hit zone (Focusable/IsTabStop both False) purely for page-by-drag click
+            paging - they carry no visible chrome of their own.
         -->
         <Style x:Key="Settings.SliderRepeatButton" TargetType="RepeatButton">
             <Setter Property="OverridesDefaultStyle" Value="True" />
