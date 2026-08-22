@@ -243,6 +243,22 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(SelectedCount));
     }
 
+    /// <summary>Files that <see cref="ClearVisible"/> would delete right now, weighted by
+    /// <see cref="Contribution"/> -- the SAME per-card weight <see cref="TotalCount"/>,
+    /// <see cref="VisibleCount"/> and the five filter badges use -- so a 3-file stack in
+    /// <see cref="Cards"/> reads as 3, not 1. Deliberately scoped to <see cref="Cards"/> alone,
+    /// NOT <c>Cards.Concat(PinnedCards)</c> like <see cref="VisibleCount"/>: <see cref="ClearVisible"/>
+    /// only ever removes unpinned items (pinned items are excluded from <see cref="Cards"/> entirely),
+    /// so a property meant to describe "how many files this button is about to delete" must match
+    /// that scope, not the footer's "how many files are on screen" scope.
+    /// <para>v1.4 review fix I1: the clear-confirmation dialog used to format its 「表示中の {0}
+    /// 件を削除しますか?」 prompt from a raw <c>Cards.Count</c> (card count), so confirming the
+    /// deletion of one 3-file stack showed "1件" when 3 files were actually about to be deleted.
+    /// The prompt now reads this property instead -- reusing <see cref="Contribution"/> rather than
+    /// adding a second, differently-scoped counting rule (one-resolution rule, CLAUDE.md).</para>
+    /// </summary>
+    public int ClearVisibleFileCount => Cards.Sum(c => Contribution(c.Item));
+
     /// <summary>Deletes every unpinned item matching the current filter+search -- i.e. exactly
     /// what's in <see cref="Cards"/> right now. Caller (ShelfWindow) is responsible for
     /// confirming with the user first. Persists immediately, same rationale as

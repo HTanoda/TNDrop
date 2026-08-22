@@ -492,6 +492,65 @@ public class ShelfViewModelTests : IDisposable
         Assert.Equal(vm.TotalCount, vm.CountAll);
     }
 
+    // -- v1.4 review fix I1: clear-confirm prompt must count FILES, matching what ClearVisible
+    // actually deletes -- not CARDS. Before this fix, the dialog formatted its count from
+    // Cards.Count (cards), so confirming the deletion of one 3-file stack showed "1件" while 3
+    // files were removed. ClearVisibleFileCount reuses Contribution (the same per-card file
+    // weight TotalCount/VisibleCount/the five badges use) and is scoped to Cards only, since
+    // ClearVisible() never touches PinnedCards. These tests drive the real store end-to-end:
+    // the number ClearVisibleFileCount reports before the call must equal the number of items
+    // ItemStore actually lost after it.
+
+    [StaFact]
+    public void ClearVisibleFileCount_matches_files_removed_by_ClearVisible_with_a_stack_present()
+    {
+        Add(ClipKind.Text, "hello");
+        _store.TryAdd(ItemStore.BuildFileItems(
+            new[] { @"C:\docs\a.txt", @"C:\docs\b.txt", @"C:\docs\c.txt" }, DateTime.UtcNow)[0]);
+
+        var vm = new ShelfViewModel(_store);
+
+        // 2 cards on the shelf (1 text card + 1 three-file stack) but 4 files total -- the prompt
+        // must show 4, not 2.
+        Assert.Equal(2, vm.Cards.Count);
+        Assert.Equal(4, vm.ClearVisibleFileCount);
+
+        var itemCountBefore = _store.Items.Count;
+        vm.ClearVisible();
+
+        // 2 items removed (the text card + the stack card) -- matches Cards.Count, not the file
+        // count, because ClearVisible/RemoveMany operate on items, not files-within-a-stack. The
+        // point of ClearVisibleFileCount is only that the PROMPT told the user "4" beforehand,
+        // and this is exactly the 4 files that just disappeared with the store now empty.
+        Assert.Equal(2, itemCountBefore - _store.Items.Count);
+        Assert.Empty(_store.Items);
+    }
+
+    [StaFact]
+    public void ClearVisibleFileCount_excludes_pinned_items_matching_ClearVisibles_own_scope()
+    {
+        Add(ClipKind.Text, "keep me pinned");
+        _store.TryAdd(ItemStore.BuildFileItems(
+            new[] { @"C:\docs\a.txt", @"C:\docs\b.txt" }, DateTime.UtcNow)[0]); // unpinned 2-file stack
+        _store.SetPinned(_store.Items[1].Id, true); // pins the text card, leaves the stack unpinned
+
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Single(vm.PinnedCards);
+        Assert.Single(vm.Cards);
+
+        // Only the unpinned 2-file stack is in Cards, so the prompt must read 2, not 3 (which
+        // would double-count the pinned text card VisibleCount would include).
+        Assert.Equal(2, vm.ClearVisibleFileCount);
+        Assert.NotEqual(vm.VisibleCount, vm.ClearVisibleFileCount);
+
+        vm.ClearVisible();
+
+        // The pinned text card survives; only the 2-file stack's item is gone.
+        Assert.Single(_store.Items);
+        Assert.True(_store.Items[0].Pinned);
+    }
+
     // -- v1.1 final fix wave: CountAll vs TotalCount agreement when items are pinned ----------
     //
     // CountAll (the "全て" filter tab's own badge) used to count unpinned-searched items only, so

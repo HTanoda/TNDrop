@@ -2155,13 +2155,17 @@ public partial class ShelfWindow : Window
             return;
         }
 
-        var count = _shelfViewModel.Cards.Count;
-        if (count == 0)
+        // v1.4 review fix I1: this prompt used to count CARDS (_shelfViewModel.Cards.Count), so
+        // confirming the deletion of one 3-file stack read "1件" when 3 files were about to be
+        // removed. ClearVisibleFileCount counts FILES via the same Contribution weighting the
+        // footer uses, scoped to exactly what ClearVisible() deletes (Cards only, not pinned).
+        var fileCount = _shelfViewModel.ClearVisibleFileCount;
+        if (fileCount == 0)
         {
             return;
         }
 
-        var message = string.Format(CultureInfo.CurrentUICulture, Strings.ClearConfirmMessageFormat, count);
+        var message = string.Format(CultureInfo.CurrentUICulture, Strings.ClearConfirmMessageFormat, fileCount);
         var result = MessageBox.Show(this, message, Strings.ClearConfirmTitle, MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (result == MessageBoxResult.Yes)
         {
