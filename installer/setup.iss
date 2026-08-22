@@ -133,30 +133,68 @@ end;
 
 function ForceKillTNDrop(): Boolean;
 var
+  ExecOk: Boolean;
   ResultCode: Integer;
+  ExecOkStr: String;
 begin
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM TNDrop.exe', '', SW_HIDE,
+  ExecOk := Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM TNDrop.exe', '', SW_HIDE,
     ewWaitUntilTerminated, ResultCode);
+  // オフライン機では他に手がかりが残らないため、成否と終了コードの両方をログに残す。
+  // Pascal Script に BoolToStr は無いため、自前で文字列化する。
+  if ExecOk then
+    ExecOkStr := 'True'
+  else
+    ExecOkStr := 'False';
+  Log('taskkill exec=' + ExecOkStr + ' exit=' + IntToStr(ResultCode));
   Result := WaitForTNDropToClose(AppCloseMaxPollIterations);
 end;
 
-// 正常終了 (イベント合図 → ポーリング) → 失敗したら taskkill フォールバック → 再ポーリング。
+// 正常終了 (イベント合図 → ポーリング → 未検知なら再合図 → 残りポーリング) → 失敗したら
+// taskkill フォールバック → 再ポーリング。
+// 再合図が必要な理由: アプリはイベントより先に Mutex を作る (App.xaml.cs の起動順)。
+// セットアップが起動直後のアプリと競合すると OpenEventW がまだ存在しないイベントに対して
+// 0 を返し、1 回限りの合図は握りつぶされて taskkill フォールバックに落ちてしまう
+// (実行中のアプリを無用に強制終了することになる)。ポーリング途中でもう一度合図することで、
+// 1 回目の合図が空振りでもアプリの起動完了後に 2 回目が届く猶予を作る。
 function TryCloseRunningApp(): Boolean;
+var
+  FirstIterations, SecondIterations: Integer;
 begin
   SignalGracefulShutdown();
-  Result := WaitForTNDropToClose(AppCloseMaxPollIterations);
+
+  FirstIterations := 4;
+  if FirstIterations > AppCloseMaxPollIterations then
+    FirstIterations := AppCloseMaxPollIterations;
+  Result := WaitForTNDropToClose(FirstIterations);
+
   if not Result then
+  begin
+    SignalGracefulShutdown();
+    SecondIterations := AppCloseMaxPollIterations - FirstIterations;
+    Result := WaitForTNDropToClose(SecondIterations);
+  end;
+
+  if Result then
+  begin
+    // Mutex が消えるのはアプリが OnExit でハンドルを閉じた瞬間だが、プロセス自体の終了
+    // (最終ログ書き込み・CLR のティアダウン) はそのわずかに後まで続く。setup がこの直後に
+    // [Files] を上書きし始めるとイメージロックに競合する恐れがあるため、成功確定後に少し待つ。
+    Sleep(500);
+  end
+  else
     Result := ForceKillTNDrop();
 end;
 
-// 実行中でなければ何もせず True。実行中なら確認 → はい以外/終了失敗で False (中止)。
+// 実行中でなければ何もせず True。実行中なら確認 → いいえ以外/終了失敗で False (中止)。
+// サイレントインストール時は SuppressibleMsgBox が既定値 (IDYES: 閉じて続行) を採用する
+// ([Run] は既に skipifsilent でサイレント運用を想定済み)。
 function ConfirmAndCloseRunningApp(const PromptMessage: String): Boolean;
 begin
   Result := True;
   if not IsTNDropRunning() then
     Exit;
 
-  if MsgBox(PromptMessage, mbConfirmation, MB_YESNO) = IDNO then
+  if SuppressibleMsgBox(PromptMessage, mbConfirmation, MB_YESNO, IDYES) <> IDYES then
   begin
     Result := False;
     Exit;
@@ -164,7 +202,7 @@ begin
 
   if not TryCloseRunningApp() then
   begin
-    MsgBox(CustomMessage('AppCloseFailed'), mbError, MB_OK);
+    SuppressibleMsgBox(CustomMessage('AppCloseFailed'), mbError, MB_OK, IDOK);
     Result := False;
   end;
 end;

@@ -122,7 +122,7 @@ public partial class App : System.Windows.Application
             // plumbing rather than app state.
             _shutdownSignal = new ShutdownSignal(ShutdownRequestEventName, () =>
             {
-                FileLogger.Instance?.Info(Module, "shutdown requested by installer");
+                FileLogger.Instance?.Info(Module, "shutdown requested via named event");
                 RunOnUiThread(Shutdown);
             });
 

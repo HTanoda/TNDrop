@@ -11,12 +11,25 @@ namespace TNDrop.Platform;
 /// polling.
 /// <para>The callback runs on a THREAD POOL thread, never the WPF dispatcher thread. A callback
 /// that needs to touch UI state (App.xaml.cs calls <c>Shutdown()</c>) must marshal itself onto
-/// the dispatcher; this class makes no attempt to do that on the caller's behalf.</para>
+/// the dispatcher; this class makes no attempt to do that on the caller's behalf. That marshal
+/// must be NON-BLOCKING (e.g. <c>Dispatcher.BeginInvoke</c>, not <c>Invoke</c>): <see
+/// cref="Dispose"/> runs on the UI thread and takes the same <c>_gate</c> lock as the callback, so
+/// a callback that blocks the thread pool thread waiting for a synchronous <c>Invoke</c> to
+/// complete on the UI thread -- while the UI thread is itself blocked inside Dispose waiting for
+/// this callback to finish -- deadlocks both threads.</para>
 /// <para>Not thread-safe to construct/dispose concurrently from multiple threads, but <see
 /// cref="Dispose"/> itself is safe to call more than once and is safe to race against an
 /// in-flight callback: both take the same lock, so a callback that has already started when
 /// Dispose is called is allowed to finish, but no callback that hasn't yet acquired the lock will
 /// run once Dispose has set the disposed flag.</para>
+/// <para>The <paramref name="eventName"/> constructor argument's initial-state semantics are
+/// subtle: <see cref="EventWaitHandle"/>'s <c>initialState: false</c> argument below is IGNORED
+/// whenever the constructor opens an already-existing named event rather than creating a new one
+/// (Win32's <c>CreateEvent</c> silently no-ops the initial-state argument on an open-existing
+/// race). The "freshly unsignaled" guarantee this class relies on therefore does not come from
+/// that argument -- it comes from the named kernel object being destroyed when its last handle
+/// closes (i.e. when the previous owner's process exits) and re-created from scratch, unsignaled,
+/// the next time a constructor call is the first to open it.</para>
 /// </summary>
 public sealed class ShutdownSignal : IDisposable
 {
