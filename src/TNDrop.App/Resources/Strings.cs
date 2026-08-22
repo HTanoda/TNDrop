@@ -29,6 +29,10 @@ internal static class Strings
     public static string StoreLoadFailed => Get(nameof(StoreLoadFailed));
     public static string AboutText => Get(nameof(AboutText));
     public static string CardImage => Get(nameof(CardImage));
+
+    // Friendly blob file naming for a converted/materialized image (v1.3 Task B): the base word
+    // BlobNaming.FriendlyImageFileName appends a local-time timestamp to.
+    public static string ScreenshotFileBaseName => Get(nameof(ScreenshotFileBaseName));
     public static string CardFilesCountFormat => Get(nameof(CardFilesCountFormat));
     public static string CardCharCountFormat => Get(nameof(CardCharCountFormat));
     public static string FilterAll => Get(nameof(FilterAll));

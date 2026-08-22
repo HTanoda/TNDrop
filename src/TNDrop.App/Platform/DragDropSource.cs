@@ -41,7 +41,7 @@ public static class DragDropSource
     /// joined by <see cref="StackPathSeparator"/>.
     ///
     /// <para>Two consumers depend on its presence, not just its value: the split detection needs
-    /// the (stack, path) pair to hand to <see cref="Core.ItemStore.SplitFile"/>, and the card-level
+    /// the (stack, path) pair to hand to <see cref="ItemStore.SplitFile"/>, and the card-level
     /// merge handler uses "has CardId but NOT this" to tell a whole-card drag from a row drag --
     /// a row must never merge its parent stack into the card it happens to be released over.</para>
     /// </summary>
@@ -361,6 +361,75 @@ public static class DragDropSource
     /// </summary>
     public static BitmapSource? LoadImage(ClipItem item, string blobsDir) =>
         ResolveImage(item, blobsDir).Bitmap;
+
+    /// <summary>
+    /// v1.3 Task B review fix: prepares BOTH sides of a card-to-card merge for
+    /// <see cref="ItemStore.TryMergeFiles"/>, converting whichever side(s) are currently
+    /// Kind==Image to Kind==Files first -- the one place this happens, so a caller (ShelfWindow's
+    /// drop handler) never has to get the ordering right itself.
+    ///
+    /// <para><b>Why this exists as one call instead of two.</b> The original v1.3 Task B code
+    /// converted <paramref name="target"/>, then checked whether <paramref name="source"/> could
+    /// also convert -- so a healthy target sitting next to a source whose blob had gone missing
+    /// (deleted externally, quarantined by AV, a prior crash) was left PERMANENTLY converted even
+    /// though the merge was refused: its Title silently changed from blank to a raw file name and
+    /// its click-to-copy silently changed from SetImage to SetFiles. This resolves BOTH sides'
+    /// blob paths first (<see cref="FullImagePath"/>, read-only, no store mutation) and only
+    /// converts either one once BOTH are confirmed resolvable -- so a refusal here is a true no-op,
+    /// exactly like the pre-existing "10-file cap" refusal in <see cref="ItemStore.TryMergeFiles"/>
+    /// already was.</para>
+    ///
+    /// <para>Returns false, with NEITHER card mutated, when an Image side's blob is missing or
+    /// undecodable (the same case <see cref="BuildDataObject"/> itself refuses to hand over for a
+    /// drag). Already-Files cards on either side pass through untouched. Does not itself call
+    /// <see cref="ItemStore.TryMergeFiles"/> -- the caller still does that afterward, the same
+    /// as before this fix, so the 10-file cap's own independent refusal (and its own "nothing
+    /// mutated" guarantee) is unaffected.</para>
+    /// </summary>
+    public static bool TryPrepareCardsForMerge(ItemStore store, string blobsDir, ClipItem target, ClipItem source)
+    {
+        if (!TryResolveImagePath(target, blobsDir, out var targetPath))
+        {
+            return false;
+        }
+
+        if (!TryResolveImagePath(source, blobsDir, out var sourcePath))
+        {
+            return false;
+        }
+
+        // Both sides are known-resolvable now -- only past this point does either card get
+        // mutated.
+        if (target.Kind == ClipKind.Image && store.ConvertImageToFileCard(target.Id, targetPath) is null)
+        {
+            return false;
+        }
+
+        if (source.Kind == ClipKind.Image && store.ConvertImageToFileCard(source.Id, sourcePath) is null)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Read-only half of <see cref="TryPrepareCardsForMerge"/>: true (with a null path) for a
+    /// non-Image card -- nothing to resolve -- or true (with the resolved path) for an Image card
+    /// whose blob is usable. False only when the card is Image and <see cref="FullImagePath"/>
+    /// comes back null. Never touches the store.
+    /// </summary>
+    private static bool TryResolveImagePath(ClipItem card, string blobsDir, out string? path)
+    {
+        if (card.Kind != ClipKind.Image)
+        {
+            path = null;
+            return true;
+        }
+
+        path = FullImagePath(card, blobsDir);
+        return path is not null;
+    }
 
     private static DataObject Tag(DataObject data, ClipItem item)
     {

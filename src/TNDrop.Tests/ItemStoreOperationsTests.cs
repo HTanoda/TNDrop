@@ -348,7 +348,7 @@ public class ItemStoreOperationsTests : IDisposable
 
         Assert.NotNull(converted);
         Assert.Equal(ClipKind.Files, converted!.Kind);
-        Assert.Equal(new[] { imagePath }, converted.Paths);
+        Assert.Single(converted.Paths);
         Assert.Null(converted.ImageFile);
         Assert.Null(converted.ThumbFile);
 
@@ -356,7 +356,7 @@ public class ItemStoreOperationsTests : IDisposable
         // just the return value.
         var stored = _store.Items.Single(i => i.Id == item.Id);
         Assert.Equal(ClipKind.Files, stored.Kind);
-        Assert.Equal(new[] { imagePath }, stored.Paths);
+        Assert.Equal(converted.Paths, stored.Paths);
     }
 
     [Fact]
@@ -375,16 +375,19 @@ public class ItemStoreOperationsTests : IDisposable
     }
 
     [Fact]
-    public void ConvertImageToFileCard_deletes_the_now_orphaned_thumbnail_but_keeps_the_full_image()
+    public void ConvertImageToFileCard_deletes_the_now_orphaned_thumbnail_but_keeps_the_renamed_image()
     {
-        // Paths now points at the full-size blob, so it must survive; ThumbFile is cleared and no
-        // longer reachable from anywhere (Kind==Files never reads ThumbFile), so leaving the thumb
-        // blob on disk would be a permanent leak -- it must be deleted right here.
+        // The full-size blob survives (under its new friendly name -- see the renaming tests
+        // below), since Paths now points at it; ThumbFile is cleared and no longer reachable from
+        // anywhere (Kind==Files never reads ThumbFile), so leaving the thumb blob on disk would be
+        // a permanent leak -- it must be deleted right here.
         var (item, imagePath, thumbPath) = AddImageWithBlobs("thumb-cleanup");
 
-        _store.ConvertImageToFileCard(item.Id, imagePath);
+        var converted = _store.ConvertImageToFileCard(item.Id, imagePath);
 
-        Assert.True(File.Exists(imagePath));
+        Assert.NotNull(converted);
+        Assert.True(File.Exists(converted!.Paths[0]));
+        Assert.False(File.Exists(imagePath));  // the original GUID-named file was renamed away
         Assert.False(File.Exists(thumbPath));
     }
 
@@ -428,15 +431,91 @@ public class ItemStoreOperationsTests : IDisposable
         var (a, aPath, _) = AddImageWithBlobs("merge-a");
         var (b, bPath, _) = AddImageWithBlobs("merge-b");
 
-        Assert.NotNull(_store.ConvertImageToFileCard(a.Id, aPath));
-        Assert.NotNull(_store.ConvertImageToFileCard(b.Id, bPath));
+        var convertedA = _store.ConvertImageToFileCard(a.Id, aPath);
+        var convertedB = _store.ConvertImageToFileCard(b.Id, bPath);
+        Assert.NotNull(convertedA);
+        Assert.NotNull(convertedB);
         Assert.True(_store.TryMergeFiles(a.Id, b.Id));
 
         var merged = _store.Items.Single();
         Assert.Equal(ClipKind.Files, merged.Kind);
-        Assert.Equal(new[] { aPath, bPath }, merged.Paths);
+        Assert.Equal(new[] { convertedA!.Paths[0], convertedB!.Paths[0] }, merged.Paths);
         Assert.True(merged.IsStack);
         Assert.All(merged.Paths, p => Assert.StartsWith(_store.BlobsDir, p, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ---- friendly blob naming on conversion (v1.3 Task B review fix) ---------------------------
+
+    [Fact]
+    public void ConvertImageToFileCard_renames_the_blob_to_a_human_meaningful_name()
+    {
+        var (item, imagePath, _) = AddImageWithBlobs("friendly-name");
+        var createdAt = _store.Items.Single(i => i.Id == item.Id).CreatedAtUtc;
+
+        var converted = _store.ConvertImageToFileCard(item.Id, imagePath);
+
+        Assert.NotNull(converted);
+        var resultPath = converted!.Paths[0];
+        var fileName = Path.GetFileName(resultPath);
+
+        // No raw GUID/hex-only stem left over from ThumbnailService.SaveImage's `{Guid:N}.png`.
+        Assert.DoesNotMatch("^[0-9a-fA-F]{32}\\.png$", fileName);
+        Assert.Equal(BlobNaming.FriendlyImageFileName(createdAt, _ => false), fileName);
+        Assert.True(File.Exists(resultPath));
+        Assert.False(File.Exists(imagePath));
+    }
+
+    [Fact]
+    public void ConvertImageToFileCard_resolves_a_same_second_name_collision()
+    {
+        // Two screenshots converted back to back can share the same CreatedAtUtc down to the
+        // second -- the friendly name must not collide (and must not overwrite the first file).
+        var utc = new DateTime(2026, 8, 22, 6, 4, 33, DateTimeKind.Utc);
+        Directory.CreateDirectory(_store.BlobsDir);
+
+        var firstImageFile = "first.png";
+        var firstPath = Path.Combine(_store.BlobsDir, firstImageFile);
+        File.WriteAllBytes(firstPath, new byte[] { 1 });
+        var first = new ClipItem { Kind = ClipKind.Image, ImageFile = firstImageFile, CreatedAtUtc = utc, ContentHash = 1 };
+        _store.TryAdd(first);
+
+        var secondImageFile = "second.png";
+        var secondPath = Path.Combine(_store.BlobsDir, secondImageFile);
+        File.WriteAllBytes(secondPath, new byte[] { 2 });
+        var second = new ClipItem { Kind = ClipKind.Image, ImageFile = secondImageFile, CreatedAtUtc = utc, ContentHash = 2 };
+        _store.TryAdd(second);
+
+        var convertedFirst = _store.ConvertImageToFileCard(first.Id, firstPath);
+        var convertedSecond = _store.ConvertImageToFileCard(second.Id, secondPath);
+
+        Assert.NotNull(convertedFirst);
+        Assert.NotNull(convertedSecond);
+        Assert.NotEqual(convertedFirst!.Paths[0], convertedSecond!.Paths[0]);
+        Assert.True(File.Exists(convertedFirst.Paths[0]));
+        Assert.True(File.Exists(convertedSecond.Paths[0]));
+
+        // Both files' actual byte content survived the rename+collision resolution untouched.
+        Assert.Equal(new byte[] { 1 }, File.ReadAllBytes(convertedFirst.Paths[0]));
+        Assert.Equal(new byte[] { 2 }, File.ReadAllBytes(convertedSecond.Paths[0]));
+    }
+
+    [Fact]
+    public void ConvertImageToFileCard_rename_survives_a_Save_and_Load_round_trip()
+    {
+        var (item, imagePath, _) = AddImageWithBlobs("persist-name");
+        var converted = _store.ConvertImageToFileCard(item.Id, imagePath);
+        Assert.NotNull(converted);
+        _store.Save();
+
+        var reloaded = new ItemStore(_dir);
+        reloaded.Load();
+
+        var loaded = reloaded.Items.Single(i => i.Id == item.Id);
+        Assert.Equal(ClipKind.Files, loaded.Kind);
+        Assert.Equal(converted!.Paths, loaded.Paths);
+        Assert.Null(loaded.ImageFile);
+        Assert.Null(loaded.ThumbFile);
+        Assert.True(File.Exists(loaded.Paths[0]));
     }
 
     // ---- blob cleanup for Files cards that reference blobs\ (v1.3 Task B) ----------------------
@@ -445,11 +524,13 @@ public class ItemStoreOperationsTests : IDisposable
     public void Remove_deletes_a_blobs_dir_path_referenced_by_a_converted_Files_card()
     {
         var (item, imagePath, _) = AddImageWithBlobs("remove-converted");
-        _store.ConvertImageToFileCard(item.Id, imagePath);
+        var converted = _store.ConvertImageToFileCard(item.Id, imagePath);
+        Assert.NotNull(converted);
+        var finalPath = converted!.Paths[0];
 
         _store.Remove(item.Id);
 
-        Assert.False(File.Exists(imagePath));
+        Assert.False(File.Exists(finalPath));
     }
 
     [Fact]
@@ -486,19 +567,22 @@ public class ItemStoreOperationsTests : IDisposable
     [Fact]
     public void Remove_deletes_a_blob_path_regardless_of_case_or_dot_segments()
     {
-        var (item, imagePath, _) = AddImageWithBlobs("case-insensitive");
-        var fileName = Path.GetFileName(imagePath);
+        // Exercises DeleteBlobPathIfUnderBlobsDir's containment check directly (not through
+        // ConvertImageToFileCard, which now also renames the file -- a concern this test keeps
+        // separate): a plain Files card whose one path is spelled with an upper-cased drive letter
+        // and a redundant "." segment must still normalize (Path.GetFullPath) to the real blob
+        // file and get deleted.
+        Directory.CreateDirectory(_store.BlobsDir);
+        var blobFile = Path.Combine(_store.BlobsDir, "case-test.png");
+        File.WriteAllBytes(blobFile, new byte[] { 1 });
 
-        // Same file, spelled with an upper-cased drive letter and a redundant "." segment -- both
-        // must normalize (Path.GetFullPath) to the same file the mixed-case/relative robustness
-        // requirement calls for.
-        var mixedCasePath = Path.Combine(
-            _store.BlobsDir.ToUpperInvariant(), ".", fileName);
+        var mixedCasePath = Path.Combine(_store.BlobsDir.ToUpperInvariant(), ".", "case-test.png");
+        var stack = ItemStore.BuildFileItems(new[] { mixedCasePath }, DateTime.UtcNow)[0];
+        _store.TryAdd(stack);
 
-        _store.ConvertImageToFileCard(item.Id, mixedCasePath);
-        _store.Remove(item.Id);
+        _store.Remove(stack.Id);
 
-        Assert.False(File.Exists(imagePath));
+        Assert.False(File.Exists(blobFile));
     }
 
     [Fact]
@@ -506,15 +590,15 @@ public class ItemStoreOperationsTests : IDisposable
     {
         var (a, aPath, _) = AddImageWithBlobs("removemany-a");
         var (b, bPath, _) = AddImageWithBlobs("removemany-b");
-        _store.ConvertImageToFileCard(a.Id, aPath);
-        _store.ConvertImageToFileCard(b.Id, bPath);
+        var convertedA = _store.ConvertImageToFileCard(a.Id, aPath)!;
+        var convertedB = _store.ConvertImageToFileCard(b.Id, bPath)!;
         _store.TryMergeFiles(a.Id, b.Id);
 
         var mergedId = _store.Items.Single().Id;
         _store.RemoveMany(new[] { mergedId });
 
-        Assert.False(File.Exists(aPath));
-        Assert.False(File.Exists(bPath));
+        Assert.False(File.Exists(convertedA.Paths[0]));
+        Assert.False(File.Exists(convertedB.Paths[0]));
     }
 
     [Fact]
@@ -522,19 +606,22 @@ public class ItemStoreOperationsTests : IDisposable
     {
         var (a, aPath, _) = AddImageWithBlobs("split-a");
         var (b, bPath, _) = AddImageWithBlobs("split-b");
-        _store.ConvertImageToFileCard(a.Id, aPath);
-        _store.ConvertImageToFileCard(b.Id, bPath);
+        var convertedA = _store.ConvertImageToFileCard(a.Id, aPath)!;
+        var convertedB = _store.ConvertImageToFileCard(b.Id, bPath)!;
         _store.TryMergeFiles(a.Id, b.Id);
         var stackId = _store.Items.Single().Id;
+        var finalAPath = convertedA.Paths[0];
+        var finalBPath = convertedB.Paths[0];
 
-        var splitCard = _store.SplitFile(stackId, bPath);
+        var splitCard = _store.SplitFile(stackId, finalBPath);
         Assert.NotNull(splitCard);
 
-        // The remaining stack (now single-path aPath) no longer references bPath: deleting it must
-        // not touch bPath's blob file -- ownership moved to splitCard, not duplicated.
+        // The remaining stack (now single-path finalAPath) no longer references finalBPath:
+        // deleting it must not touch finalBPath's blob file -- ownership moved to splitCard, not
+        // duplicated.
         _store.Remove(stackId);
-        Assert.True(File.Exists(bPath));
-        Assert.False(File.Exists(aPath));
+        Assert.True(File.Exists(finalBPath));
+        Assert.False(File.Exists(finalAPath));
     }
 
     [Fact]
@@ -542,23 +629,26 @@ public class ItemStoreOperationsTests : IDisposable
     {
         var (a, aPath, _) = AddImageWithBlobs("split-out-a");
         var (b, bPath, _) = AddImageWithBlobs("split-out-b");
-        _store.ConvertImageToFileCard(a.Id, aPath);
-        _store.ConvertImageToFileCard(b.Id, bPath);
+        var convertedA = _store.ConvertImageToFileCard(a.Id, aPath)!;
+        var convertedB = _store.ConvertImageToFileCard(b.Id, bPath)!;
         _store.TryMergeFiles(a.Id, b.Id);
         var stackId = _store.Items.Single().Id;
+        var finalAPath = convertedA.Paths[0];
+        var finalBPath = convertedB.Paths[0];
 
-        var splitCard = _store.SplitFile(stackId, bPath)!;
+        var splitCard = _store.SplitFile(stackId, finalBPath)!;
         _store.Remove(splitCard.Id);
 
-        Assert.False(File.Exists(bPath));
-        Assert.True(File.Exists(aPath));
+        Assert.False(File.Exists(finalBPath));
+        Assert.True(File.Exists(finalAPath));
     }
 
     [Fact]
     public void Save_and_Load_round_trips_a_converted_card_with_no_image_specific_fields()
     {
         var (item, imagePath, _) = AddImageWithBlobs("persist");
-        _store.ConvertImageToFileCard(item.Id, imagePath);
+        var converted = _store.ConvertImageToFileCard(item.Id, imagePath);
+        Assert.NotNull(converted);
         _store.Save();
 
         var reloaded = new ItemStore(_dir);
@@ -566,7 +656,7 @@ public class ItemStoreOperationsTests : IDisposable
 
         var loaded = reloaded.Items.Single(i => i.Id == item.Id);
         Assert.Equal(ClipKind.Files, loaded.Kind);
-        Assert.Equal(new[] { imagePath }, loaded.Paths);
+        Assert.Equal(converted!.Paths, loaded.Paths);
         Assert.Null(loaded.ImageFile);
         Assert.Null(loaded.ThumbFile);
     }

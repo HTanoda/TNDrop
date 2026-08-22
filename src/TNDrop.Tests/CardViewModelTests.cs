@@ -84,6 +84,25 @@ public class CardViewModelTests
         Assert.False(card.IsMediaFile);
     }
 
+    // -- v1.3 Task B review fix: a converted image card must show a human-meaningful Title, not a
+    // raw capture-time GUID -- Title/Subtitle for a single-path Files card is already just
+    // Path.GetFileName(firstPath)/firstPath (BuildTitleAndSubtitle, unchanged), so this pins that
+    // ItemStore.ConvertImageToFileCard's renamed path (see BlobNamingTests/ItemStoreOperationsTests
+    // for the naming/rename logic itself) actually reaches the display this way.
+
+    [StaFact]
+    public void Converted_image_card_title_is_the_friendly_name_not_a_raw_guid()
+    {
+        var friendlyPath = @"C:\Users\user\AppData\Roaming\TNDrop\blobs\スクリーンショット 2026-08-22 15.04.33.png";
+        var card = new CardViewModel(FilesItem(friendlyPath));
+
+        Assert.Equal("スクリーンショット 2026-08-22 15.04.33.png", card.Title);
+        Assert.DoesNotMatch("^[0-9a-fA-F]{32}(_thumb)?\\.png$", card.Title);
+        // Subtitle carrying the full path is the existing, unchanged single-file presentation --
+        // every single-path Files card (not just a converted one) shows its full path this way.
+        Assert.Equal(friendlyPath, card.Subtitle);
+    }
+
     // -- v1.1 re-review item #2: FileIcon's stale !IsMediaFile guard -----------------------------
     //
     // FileIcon used to be unconditionally null for a media file (IsMediaFile==true), even when its

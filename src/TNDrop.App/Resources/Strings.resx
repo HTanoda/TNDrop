@@ -89,6 +89,9 @@
   <data name="CardImage" xml:space="preserve">
     <value>画像</value>
   </data>
+  <data name="ScreenshotFileBaseName" xml:space="preserve">
+    <value>スクリーンショット</value>
+  </data>
   <data name="CardFilesCountFormat" xml:space="preserve">
     <value>ファイル {0} 件</value>
   </data>

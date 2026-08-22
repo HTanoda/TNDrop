@@ -268,6 +268,13 @@ public sealed partial class ItemStore
     // thumbnail blob -- no longer reachable from anywhere, since CardViewModel only reads ThumbFile
     // for Kind==Image -- is deleted right here through the same DeleteBlobIfPresent path every
     // other blob cleanup uses, rather than left to leak (nothing will ever reference it again).
+    //
+    // v1.3 Task B review fix: the blob is also RENAMED, on disk, to BlobNaming's human-meaningful
+    // name here -- the ONE moment "materialize as a Files card" happens -- so the file on disk,
+    // this card's Paths entry, drag-out, and every display (Title/Subtitle/flyout rows) agree, and
+    // the card never again shows a bare GUID filename or leaks the blobs\ path as if it were the
+    // user's own file. A rename failure (locked file, path too long) falls back to `filePath`
+    // unchanged -- a naming cosmetic must never block the conversion itself.
     public ClipItem? ConvertImageToFileCard(string itemId, string? filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath))
@@ -287,10 +294,11 @@ public sealed partial class ItemStore
             }
 
             orphanedThumb = item.ThumbFile;
+            var finalPath = RenameToFriendlyName(filePath!, item.CreatedAtUtc);
 
             item.Kind = ClipKind.Files;
-            item.Paths = new List<string> { filePath };
-            item.ContentHash = Fnv1a(Encoding.UTF8.GetBytes(filePath));
+            item.Paths = new List<string> { finalPath };
+            item.ContentHash = Fnv1a(Encoding.UTF8.GetBytes(finalPath));
             item.ImageFile = null;
             item.ThumbFile = null;
         }
@@ -298,6 +306,44 @@ public sealed partial class ItemStore
         DeleteBlobIfPresent(orphanedThumb);
         Changed?.Invoke();
         return item;
+    }
+
+    // Renames the just-resolved blob (still its capture-time GUID name) to
+    // BlobNaming.FriendlyImageFileName's name, in the same directory, and returns the new full
+    // path -- or the original `currentFullPath` unchanged when there is no directory component or
+    // the actual File.Move fails (logged and swallowed, same as every other blob-touching catch in
+    // this file). Called from inside ConvertImageToFileCard's own `lock (_lock)`, same as Save()
+    // runs its entire file I/O under _lock (see the remarks on Save) -- doing the rename under the
+    // same lock that validated Kind==Image is what stops a concurrent Remove/merge from racing
+    // with a half-renamed blob; this file already accepts holding _lock across real disk I/O as
+    // its established pattern, not a new one.
+    private string RenameToFriendlyName(string currentFullPath, DateTime createdAtUtc)
+    {
+        var directory = Path.GetDirectoryName(currentFullPath);
+        if (string.IsNullOrEmpty(directory))
+        {
+            return currentFullPath;
+        }
+
+        try
+        {
+            var friendlyName = BlobNaming.FriendlyImageFileName(createdAtUtc,
+                candidate => File.Exists(Path.Combine(directory, candidate)));
+            var newFullPath = Path.Combine(directory, friendlyName);
+
+            if (string.Equals(newFullPath, currentFullPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return currentFullPath;
+            }
+
+            File.Move(currentFullPath, newFullPath);
+            return newFullPath;
+        }
+        catch (Exception ex)
+        {
+            FileLogger.Instance?.Warn("store", $"Failed to rename blob to a friendly name: {ex.GetType().Name}");
+            return currentFullPath;
+        }
     }
 
     // Removes path from stack's Paths and creates a new single-file card at

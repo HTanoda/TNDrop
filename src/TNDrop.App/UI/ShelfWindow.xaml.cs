@@ -1619,11 +1619,13 @@ public partial class ShelfWindow : Window
     /// from a missed one.
     ///
     /// <para>v1.3 Task B: either side of the pair may be a clipboard screenshot (Kind==Image) --
-    /// <see cref="StackGestures.CanAcceptMerge"/> now admits that combination. It is converted to a
-    /// Kind==Files card, via <see cref="TryPrepareCardForMerge"/>, before the same
-    /// <see cref="ItemStore.TryMergeFiles"/> this always used runs; a conversion refusal (the blob
-    /// is missing/undecodable) shakes and reports the same way the cap refusal does, since from the
-    /// user's side both are "the drop did not go through".</para>
+    /// <see cref="StackGestures.CanAcceptMerge"/> now admits that combination.
+    /// <see cref="DragDropSource.TryPrepareCardsForMerge"/> converts whichever side(s) need it to
+    /// Kind==Files BEFORE the same <see cref="ItemStore.TryMergeFiles"/> this always used runs --
+    /// see its remarks for why both sides are resolved before either is mutated (a healthy target
+    /// must never end up silently converted just because the OTHER side's blob turned out to be
+    /// missing). A conversion refusal shakes and reports the same way the cap refusal does, since
+    /// from the user's side both are "the drop did not go through".</para>
     /// </summary>
     private void OnCardDrop(object sender, DragEventArgs e)
     {
@@ -1643,7 +1645,7 @@ public partial class ShelfWindow : Window
 
         var (target, source) = merge.Value;
 
-        if (!TryPrepareCardForMerge(target) || !TryPrepareCardForMerge(source))
+        if (!DragDropSource.TryPrepareCardsForMerge(_itemStore, BlobsDir, target, source))
         {
             FileLogger.Instance?.Info(Module, "merge refused: image content missing");
             ShowStatus(Strings.FileMissing);
@@ -1664,34 +1666,6 @@ public partial class ShelfWindow : Window
         }
 
         ArmRetractIfPointerOutside();
-    }
-
-    /// <summary>
-    /// Converts <paramref name="card"/> into the Kind==Files card <see cref="ItemStore.TryMergeFiles"/>
-    /// requires, when it is currently an Image. Reuses <see cref="DragDropSource.FullImagePath"/> --
-    /// the SAME function drag-out uses to decide what file a card hands to Explorer -- as the ONE
-    /// resolution for "what file does this Image card materialize as" (see
-    /// <see cref="ItemStore.ConvertImageToFileCard"/>'s remarks). Returns false, with the store
-    /// untouched, when the card is an Image whose blob is missing/undecodable -- the same case
-    /// drag-out itself refuses to hand over. Already-Files cards pass through unchanged.
-    /// <para><paramref name="card"/> is mutated in place by ConvertImageToFileCard (same ClipItem
-    /// instance, not a replacement), so the caller's own reference reflects the conversion without
-    /// needing to be reassigned.</para>
-    /// </summary>
-    private bool TryPrepareCardForMerge(ClipItem card)
-    {
-        if (card.Kind != ClipKind.Image)
-        {
-            return true;
-        }
-
-        if (_itemStore is null)
-        {
-            return false;
-        }
-
-        var fullPath = DragDropSource.FullImagePath(card, BlobsDir);
-        return fullPath is not null && _itemStore.ConvertImageToFileCard(card.Id, fullPath) is not null;
     }
 
     /// <summary>
