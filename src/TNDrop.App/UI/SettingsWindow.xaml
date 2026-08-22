@@ -306,6 +306,14 @@
             <Setter Property="Foreground" Value="{StaticResource Settings.Foreground}" />
             <Setter Property="Background" Value="#FF232329" />
             <Setter Property="Padding" Value="8,5" />
+            <!-- Review round 1 fix (Task B): ComboBoxItem is a real keyboard-focus target, not
+                 just a mouse-hover row - opening the dropdown and pressing Down moves literal
+                 Keyboard.FocusedElement onto the highlighted ComboBoxItem (confirmed by review).
+                 Without this setter it fell back to WPF's own default FocusVisualStyle (the
+                 SystemColors-tracking dashed adorner), which is exactly the bug this task
+                 removes everywhere else - reachable via arrow keys in every ComboBox in this
+                 window (AutoDeleteCombo/HistoryCapacityCombo/MonitorCombo). -->
+            <Setter Property="FocusVisualStyle" Value="{StaticResource Settings.FocusVisual}" />
             <Style.Triggers>
                 <Trigger Property="IsHighlighted" Value="True">
                     <Setter Property="Background" Value="#FF34343D" />
