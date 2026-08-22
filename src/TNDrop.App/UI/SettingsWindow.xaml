@@ -41,15 +41,106 @@
         <SolidColorBrush x:Key="Settings.NavBackground" Color="#FF17171B" />
         <SolidColorBrush x:Key="Settings.Border" Color="#22FFFFFF" />
 
+        <!--
+            Full re-template (Task F, v1.3), same reasoning as the ComboBox chrome below: the
+            default Aero2 CheckBox glyph (the box) is drawn from PresentationFramework's own
+            baked-in theme template, not this Style's plain Foreground/Background Setters -
+            confirmed via a throwaway reflection dump of the real default ControlTemplate, whose
+            box/check colors are fixed light-UI hex values (#FFF0F0F0 fill, #FFACACAC border,
+            #FFDCECFC/#FF7EB4EA hover, #FFDAECFC/#FF569DE5 drag) baked for a light window, not
+            SystemColors exactly but just as theme-fixed and just as wrong sitting on this
+            window's permanent #FF1A1A1F dark background - a plain white box glaring out of a
+            dark checkbox row. No TemplatePartAttribute is declared on CheckBox (confirmed via
+            reflection), so this template owes no PART_ name.
+        -->
         <Style TargetType="CheckBox">
             <Setter Property="Foreground" Value="{StaticResource Settings.Foreground}" />
             <Setter Property="Margin" Value="0,0,0,14" />
             <Setter Property="FontSize" Value="13" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border x:Name="Box"
+                                    Width="16" Height="16"
+                                    CornerRadius="4"
+                                    BorderThickness="1.5"
+                                    BorderBrush="{StaticResource Settings.Border}"
+                                    Background="Transparent"
+                                    VerticalAlignment="Center">
+                                <Path x:Name="Check"
+                                      Data="M2.5,8.2 L6.3,12 L13.5,3.6"
+                                      Stretch="Uniform"
+                                      Margin="3"
+                                      Stroke="{StaticResource Settings.Foreground}"
+                                      StrokeThickness="2"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      Visibility="Collapsed" />
+                            </Border>
+                            <ContentPresenter Margin="8,0,0,0"
+                                               VerticalAlignment="Center"
+                                               RecognizesAccessKey="True" />
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="Box" Property="Background" Value="#33FFFFFF" />
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Settings.Foreground}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="BorderBrush" Value="#55FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
+        <!-- Same reasoning as CheckBox above, circular glyph instead of a box. No
+             TemplatePartAttribute on RadioButton either (confirmed via reflection). -->
         <Style TargetType="RadioButton">
             <Setter Property="Foreground" Value="{StaticResource Settings.Foreground}" />
             <Setter Property="Margin" Value="0,0,18,0" />
             <Setter Property="FontSize" Value="13" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Grid Width="16" Height="16" VerticalAlignment="Center">
+                                <Ellipse x:Name="Ring"
+                                         StrokeThickness="1.5"
+                                         Stroke="{StaticResource Settings.Border}"
+                                         Fill="Transparent" />
+                                <Ellipse x:Name="Dot"
+                                         Width="8" Height="8"
+                                         Fill="{StaticResource Settings.Foreground}"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center"
+                                         Visibility="Collapsed" />
+                            </Grid>
+                            <ContentPresenter Margin="8,0,0,0"
+                                               VerticalAlignment="Center"
+                                               RecognizesAccessKey="True" />
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource Settings.Foreground}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Ring" Property="Stroke" Value="#55FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Settings.Foreground}" />
@@ -181,7 +272,101 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+        <!--
+            Foreground was missing here until Task F (v1.3): TextBlock.Foreground is an
+            inheritable property whose OWN CLR default is a fixed Brushes.Black (confirmed via a
+            throwaway reflection probe - not a SystemColors DynamicResource, so it does not track
+            the OS theme at all), and this key-styled Style completely replaces the file's
+            unkeyed/implicit "Style TargetType=TextBlock" (Settings.Foreground) rather than
+            inheriting from it - an explicit Style="{StaticResource ...}" bypasses implicit-style
+            lookup entirely, so nothing here fell back to that default either. Every one of this
+            window's section headers (自動削除, 履歴の容量, エッジ, モニター, ...) was rendering
+            literal black text on the #FF1A1A1F background - confirmed empirically: a probe
+            script that flags every literal (0,0,0) pixel in a rendered screenshot lit up exactly
+            these labels, on every one of the three category pages, and only these labels. This
+            is the single highest-impact fix in the Task F sweep.
+        -->
+        <!--
+            Slider (Task F, v1.3): same reasoning as CheckBox/RadioButton above. The real default
+            Track template needs no PART_ name of its own beyond "PART_Track" (Slider declares
+            [TemplatePart(Name = "PART_Track", Type = typeof(Track))] - confirmed via reflection -
+            and, per a throwaway XamlWriter dump of the actual default ControlTemplate, Slider's
+            own OnApplyTemplate wires PART_Track's Minimum/Maximum/Value/IsDirectionReversed
+            itself; the default template does not TemplateBind any of them, so this one does not
+            either). That same dump also confirms the concrete failure mode: the default thumb
+            and track colors are fixed light-UI hex (#FFF0F0F0/#FFACACAC track+thumb, #FFE7EAEA/
+            #FFD6D6D6 track background) and the selection-range rectangle uses a genuine
+            SystemColors DynamicResource ({DynamicResource {x:Static SystemColors.
+            HighlightBrushKey}}) - unused here (IsSelectionRangeEnabled is never set), but exactly
+            the ambient-theme dependency this whole task exists to close off wherever it CAN
+            matter. Track's two RepeatButtons keep the real default's own trick of an invisible,
+            non-focusable, non-tab-stop hit zone (Focusable/IsTabStop both False) purely for
+            page-by-drag click paging - they carry no visible chrome of their own.
+        -->
+        <Style x:Key="Settings.SliderRepeatButton" TargetType="RepeatButton">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Rectangle Fill="{TemplateBinding Background}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Settings.SliderThumb" TargetType="Thumb">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Height" Value="14" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Ellipse x:Name="Knob" Fill="{StaticResource Settings.Foreground}" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Knob" Property="Fill" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="Slider">
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid VerticalAlignment="Center">
+                            <Border Height="4"
+                                    CornerRadius="2"
+                                    Background="{StaticResource Settings.Border}"
+                                    VerticalAlignment="Center" />
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource Settings.SliderRepeatButton}" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource Settings.SliderRepeatButton}" />
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource Settings.SliderThumb}" />
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="Settings.SectionLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Settings.Foreground}" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,0,0,8" />

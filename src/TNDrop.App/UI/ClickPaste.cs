@@ -3,6 +3,33 @@ using TNDrop.Core;
 namespace TNDrop.UI;
 
 /// <summary>
+/// The four possible outcomes of <see cref="ClickPaste.Resolve"/>: either the click pastes, the
+/// feature does not apply to this click at all (setting off, or a Files/Image card), or exactly
+/// one of the three safety terms suppressed it. Kept as one result type rather than a bool plus a
+/// separately-computed reason string precisely per the "one resolution" rule this file follows:
+/// <see cref="ClickPaste.ShouldPasteOnClick"/> and the Task F (v1.3) suppression-reason log both
+/// read off this SAME switch, so the two can never quietly disagree about which term fired.
+/// </summary>
+public enum ClickPasteResult
+{
+    /// <summary>Send Ctrl+V.</summary>
+    Paste,
+
+    /// <summary>The feature does not apply to this click at all (setting off, or a Files/Image
+    /// card) -- not a suppression worth a log line, since nothing was ever going to paste.</summary>
+    NotApplicable,
+
+    /// <summary>Suppressed: TNDrop's own window holds the foreground.</summary>
+    SelfForeground,
+
+    /// <summary>Suppressed: the shelf's search box holds keyboard focus.</summary>
+    SearchFocus,
+
+    /// <summary>Suppressed: a physical Ctrl/Shift/Alt/Win key is held.</summary>
+    Modifier
+}
+
+/// <summary>
 /// The single rule that decides whether a plain click on a card also pastes into the app the user
 /// is working in (v1.2 Task H).
 /// <para>Pure and parameterised rather than reading <c>App.Settings</c> and Win32 state itself: the
@@ -15,7 +42,10 @@ namespace TNDrop.UI;
 public static class ClickPaste
 {
     /// <summary>
-    /// True when the click that just re-copied <paramref name="kind"/> should also send Ctrl+V.
+    /// The one place all five terms are resolved. Checked in the same order the boolean
+    /// expression below reads them, so a click blocked by more than one term always reports the
+    /// first-listed one -- <paramref name="ownProcessForeground"/> before
+    /// <paramref name="keyboardFocusWithin"/> before <paramref name="modifiersDown"/>.
     /// </summary>
     /// <param name="kind">The clicked card's kind. Only Text and Link paste: a Files or Image
     /// paste lands somewhere the user very likely did not mean it to (a folder view, a document
@@ -36,15 +66,63 @@ public static class ClickPaste
     /// modifier changes what Ctrl+V means in the target app (Ctrl+Shift+V is paste-as-plain-text in
     /// some, Alt+Ctrl+V opens a paste-special dialog in others), so the safe answer is to re-copy
     /// only and let the user paste themselves.</param>
+    public static ClickPasteResult Resolve(
+        ClipKind kind,
+        bool pasteOnClickSetting,
+        bool ownProcessForeground,
+        bool keyboardFocusWithin,
+        bool modifiersDown)
+    {
+        if (!pasteOnClickSetting || (kind != ClipKind.Text && kind != ClipKind.Link))
+        {
+            return ClickPasteResult.NotApplicable;
+        }
+
+        if (ownProcessForeground)
+        {
+            return ClickPasteResult.SelfForeground;
+        }
+
+        if (keyboardFocusWithin)
+        {
+            return ClickPasteResult.SearchFocus;
+        }
+
+        if (modifiersDown)
+        {
+            return ClickPasteResult.Modifier;
+        }
+
+        return ClickPasteResult.Paste;
+    }
+
+    /// <summary>
+    /// True when the click that just re-copied <paramref name="kind"/> should also send Ctrl+V.
+    /// A thin wrapper over <see cref="Resolve"/> -- kept because the five-bool call shape is
+    /// already the tested, documented contract every existing call site and test uses; it must
+    /// keep returning exactly what it always has, which is exactly what the tests in
+    /// ClickPasteTests.cs pin down.
+    /// </summary>
     public static bool ShouldPasteOnClick(
         ClipKind kind,
         bool pasteOnClickSetting,
         bool ownProcessForeground,
         bool keyboardFocusWithin,
         bool modifiersDown) =>
-        pasteOnClickSetting
-        && (kind == ClipKind.Text || kind == ClipKind.Link)
-        && !ownProcessForeground
-        && !keyboardFocusWithin
-        && !modifiersDown;
+        Resolve(kind, pasteOnClickSetting, ownProcessForeground, keyboardFocusWithin, modifiersDown)
+            == ClickPasteResult.Paste;
+
+    /// <summary>
+    /// The log-line reason code for a suppressed <see cref="ClickPasteResult"/>, or null for
+    /// <see cref="ClickPasteResult.Paste"/>/<see cref="ClickPasteResult.NotApplicable"/> (neither
+    /// is a suppression worth logging -- one pasted, the other was never going to). No path, no
+    /// clipboard content, no filename: a fixed reason code only, per the project's logging rule.
+    /// </summary>
+    public static string? SuppressReasonCode(ClickPasteResult result) => result switch
+    {
+        ClickPasteResult.SelfForeground => "self-foreground",
+        ClickPasteResult.SearchFocus => "search-focus",
+        ClickPasteResult.Modifier => "modifier",
+        _ => null
+    };
 }

@@ -1880,15 +1880,28 @@ public partial class ShelfWindow : Window
         // Named arguments: four of the five parameters are bools, and a transposition here (say,
         // foreground where focus belongs) would compile, pass every test that exercises the
         // predicate directly, and only show up as a keystroke in the wrong window.
-        var shouldPaste = ClickPaste.ShouldPasteOnClick(
+        //
+        // Resolve, not ShouldPasteOnClick: the suppression-reason log below (Task F, v1.3) has to
+        // read off the SAME switch that decides whether to paste, not a second expression that
+        // could quietly drift from it -- see ClickPasteResult's own doc comment.
+        var result = ClickPaste.Resolve(
             kind: kind,
             pasteOnClickSetting: global::TNDrop.App.Settings?.PasteOnClick ?? false,
             ownProcessForeground: InputSender.IsOwnProcessForeground(),
             keyboardFocusWithin: IsKeyboardFocusWithin,
             modifiersDown: InputSender.AnyModifierDown());
 
-        if (!shouldPaste)
+        if (result != ClickPasteResult.Paste)
         {
+            // Reason code only -- no path, no clipboard content (per the project's logging rule).
+            // Null for NotApplicable (setting off, or a Files/Image card): nothing was ever going
+            // to paste, so there is nothing worth a log line about.
+            var reason = ClickPaste.SuppressReasonCode(result);
+            if (reason is not null)
+            {
+                FileLogger.Instance?.Info(Module, $"paste suppressed: {reason}");
+            }
+
             return;
         }
 
