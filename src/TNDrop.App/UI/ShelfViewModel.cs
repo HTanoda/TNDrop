@@ -325,11 +325,18 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         // here), so VisibleCount can exceed searchedAll.Count whenever a pinned item does NOT
         // match the current search -- that gap is expected, not a bug to chase.
         var searchedAll = searched.Concat(pinnedItems.Where(i => MatchesSearch(i, _searchText))).ToList();
-        _countAll = searchedAll.Count;
-        _countText = searchedAll.Count(i => i.Kind == ClipKind.Text);
-        _countLinks = searchedAll.Count(i => i.Kind == ClipKind.Link);
-        _countImages = searchedAll.Count(i => i.Kind == ClipKind.Image || IsImageEntity(i));
-        _countFiles = searchedAll.Count(i => i.Kind == ClipKind.Files && !IsImageEntity(i));
+        // v1.3 Task A: each card's contribution to its one badge is Contribution(item) --
+        // IsStack ? Paths.Count : 1 -- not a flat 1 per card, so grouping/splitting files no
+        // longer changes the total file count a badge reports. Every Count* below still reads
+        // `searchedAll` filtered by the exact same MatchesFilter predicate the tabs themselves
+        // use (one-resolution rule), so CountAll == sum of the four sub-counts continues to hold:
+        // MatchesFilter partitions searchedAll into four disjoint groups, and summing the same
+        // per-item weight function over a partition always equals summing it over the whole.
+        _countAll = searchedAll.Sum(Contribution);
+        _countText = searchedAll.Where(i => MatchesFilter(i, CardFilter.Text)).Sum(Contribution);
+        _countLinks = searchedAll.Where(i => MatchesFilter(i, CardFilter.Links)).Sum(Contribution);
+        _countImages = searchedAll.Where(i => MatchesFilter(i, CardFilter.Images)).Sum(Contribution);
+        _countFiles = searchedAll.Where(i => MatchesFilter(i, CardFilter.Files)).Sum(Contribution);
 
         var visible = searched.Where(i => MatchesFilter(i, _filter)).ToList();
 
@@ -384,6 +391,24 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
         CardFilter.Files => item.Kind == ClipKind.Files && !IsImageEntity(item),
         _ => true,
     };
+
+    /// <summary>
+    /// SINGLE RESOLUTION for "how many files does this card contribute to its one badge":
+    /// exactly <see cref="ClipItem.Paths"/>'s count for a stack (Kind==Files with 2+ paths, same
+    /// test <see cref="CardViewModel.IsStack"/> uses), otherwise 1. Every Count* field in
+    /// <see cref="Rebuild"/> sums this over its own MatchesFilter-partitioned slice of
+    /// `searchedAll`, so a card is weighted the same way no matter which one of the five badges
+    /// it lands in -- there is no second place a badge total gets computed.
+    ///
+    /// <para>v1.3 Task A: this replaces the earlier flat "1 per card" weight (badges used to be
+    /// card counts). Grouping N single-file cards into one stack, or splitting a stack back
+    /// apart, changes which cards exist and how many Cards.Count reports (filter membership is
+    /// still card-based, unchanged) -- but must NOT change how many files a badge reports, since
+    /// no files were created or destroyed. Weighting every item by its own file count, rather
+    /// than by 1, is what keeps that total invariant across a merge/split round trip.</para>
+    /// </summary>
+    private static int Contribution(ClipItem item) =>
+        item.Kind == ClipKind.Files && item.Paths.Count > 1 ? item.Paths.Count : 1;
 
     /// <summary>
     /// SINGLE RESOLUTION for "does this item count as 画像 instead of ファイル": both

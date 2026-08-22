@@ -86,72 +86,132 @@ public class ShelfViewModelTests : IDisposable
         Assert.Empty(vm.Cards);
     }
 
+    // v1.3 Task A: badge contribution is now file-count-based -- IsStack ? Paths.Count : 1 --
+    // while MatchesFilter (which cards show under which tab) stays card-based and unchanged
+    // (Cards.Count below is still 1 per stack card, only the Count* badges count paths).
+
     [StaFact]
-    public void All_image_two_file_stack_counts_as_Images_not_Files()
+    public void All_image_two_file_stack_counts_two_toward_Images_not_Files()
     {
         var paths = new[] { @"C:\pics\a.png", @"C:\pics\b.png" };
         _store.TryAdd(ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0]);
         var vm = new ShelfViewModel(_store);
 
-        Assert.Equal(1, vm.CountImages);
+        Assert.Equal(2, vm.CountImages);
         Assert.Equal(0, vm.CountFiles);
 
         vm.Filter = CardFilter.Images;
-        Assert.Single(vm.Cards);
+        Assert.Single(vm.Cards); // filter membership stays card-based
 
         vm.Filter = CardFilter.Files;
         Assert.Empty(vm.Cards);
     }
 
     [StaFact]
-    public void All_image_three_file_stack_counts_as_Images_not_Files()
+    public void All_image_three_file_stack_counts_three_toward_Images_not_Files()
     {
         var paths = new[] { @"C:\pics\a.png", @"C:\pics\b.jpg", @"C:\pics\c.webp" };
         _store.TryAdd(ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0]);
         var vm = new ShelfViewModel(_store);
 
-        Assert.Equal(1, vm.CountImages);
+        Assert.Equal(3, vm.CountImages);
         Assert.Equal(0, vm.CountFiles);
 
         vm.Filter = CardFilter.Images;
-        Assert.Single(vm.Cards);
+        Assert.Single(vm.Cards); // filter membership stays card-based
 
         vm.Filter = CardFilter.Files;
         Assert.Empty(vm.Cards);
     }
 
     [StaFact]
-    public void Image_and_text_mixed_stack_counts_as_Files_not_Images()
+    public void Image_and_text_mixed_stack_counts_Paths_Count_toward_Files_not_Images()
     {
         var paths = new[] { @"C:\pics\a.png", @"C:\docs\b.txt" };
         _store.TryAdd(ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0]);
         var vm = new ShelfViewModel(_store);
 
         Assert.Equal(0, vm.CountImages);
-        Assert.Equal(1, vm.CountFiles);
+        Assert.Equal(2, vm.CountFiles);
 
         vm.Filter = CardFilter.Files;
-        Assert.Single(vm.Cards);
+        Assert.Single(vm.Cards); // filter membership stays card-based
 
         vm.Filter = CardFilter.Images;
         Assert.Empty(vm.Cards);
     }
 
     [StaFact]
-    public void Image_and_video_mixed_stack_counts_as_Files_not_Images()
+    public void Image_and_video_mixed_stack_counts_Paths_Count_toward_Files_not_Images()
     {
         var paths = new[] { @"C:\pics\a.png", @"C:\mov\b.mp4" };
         _store.TryAdd(ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0]);
         var vm = new ShelfViewModel(_store);
 
         Assert.Equal(0, vm.CountImages);
-        Assert.Equal(1, vm.CountFiles);
+        Assert.Equal(2, vm.CountFiles);
 
         vm.Filter = CardFilter.Files;
-        Assert.Single(vm.Cards);
+        Assert.Single(vm.Cards); // filter membership stays card-based
 
         vm.Filter = CardFilter.Images;
         Assert.Empty(vm.Cards);
+    }
+
+    // v1.3 Task A: every single (non-stack) card contributes exactly 1, regardless of kind --
+    // locks the "IsStack ? Paths.Count : 1" contribution rule's non-stack branch across all
+    // five badges at once (one-resolution: all read the same Contribution helper).
+    [StaFact]
+    public void Single_cards_of_every_kind_each_contribute_one()
+    {
+        Add(ClipKind.Text, "a");
+        Add(ClipKind.Link, "https://example.com/page");
+        Add(ClipKind.Files, @"C:\docs\report.txt"); // single file, not a stack
+        _store.TryAdd(new ClipItem
+        {
+            Kind = ClipKind.Image,
+            CreatedAtUtc = DateTime.UtcNow,
+            ContentHash = 999,
+        });
+
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(4, vm.CountAll);
+        Assert.Equal(1, vm.CountText);
+        Assert.Equal(1, vm.CountLinks);
+        Assert.Equal(1, vm.CountImages);
+        Assert.Equal(1, vm.CountFiles);
+        AssertCountAllEqualsSumOfSubcounts(vm);
+    }
+
+    // v1.3 Task A: grouping two single-file cards into a stack, then splitting the stack back
+    // apart, must leave every total exactly where it started -- the badge is a file count, and
+    // neither operation changes how many actual files are on the shelf.
+    [StaFact]
+    public void Merge_then_split_round_trip_leaves_totals_unchanged()
+    {
+        var a = ItemStore.BuildFileItems(new[] { @"C:\pics\a.png" }, DateTime.UtcNow)[0];
+        var b = ItemStore.BuildFileItems(new[] { @"C:\pics\b.png" }, DateTime.UtcNow)[0];
+        _store.TryAdd(a);
+        _store.TryAdd(b);
+
+        var vm = new ShelfViewModel(_store);
+        Assert.Equal(2, vm.CountAll);
+        Assert.Equal(2, vm.CountImages);
+        Assert.Equal(2, vm.Cards.Count);
+        AssertCountAllEqualsSumOfSubcounts(vm);
+
+        Assert.True(_store.TryMergeFiles(a.Id, b.Id));
+        Assert.Equal(2, vm.CountAll); // still 2 files, now inside one stack card
+        Assert.Equal(2, vm.CountImages);
+        Assert.Single(vm.Cards); // filter membership (card count) DID change -- expected
+        AssertCountAllEqualsSumOfSubcounts(vm);
+
+        Assert.NotNull(_store.SplitFile(a.Id, @"C:\pics\b.png"));
+        Assert.Equal(2, vm.CountAll);
+        Assert.Equal(2, vm.CountImages);
+        Assert.Equal(2, vm.Cards.Count);
+        AssertCountAllEqualsSumOfSubcounts(vm);
     }
 
     [StaFact]
@@ -339,10 +399,12 @@ public class ShelfViewModelTests : IDisposable
 
         var vm = new ShelfViewModel(_store);
 
-        Assert.Equal(3, vm.CountAll);
+        // v1.3 Task A: the 3-path all-image stack now contributes 3 (Paths.Count), not 1 --
+        // CountAll = 3 (images) + 1 (text) + 1 (link) = 5.
+        Assert.Equal(5, vm.CountAll);
         Assert.Equal(1, vm.CountText);
         Assert.Equal(1, vm.CountLinks);
-        Assert.Equal(1, vm.CountImages);
+        Assert.Equal(3, vm.CountImages);
         Assert.Equal(0, vm.CountFiles);
         AssertCountAllEqualsSumOfSubcounts(vm);
     }
@@ -360,11 +422,12 @@ public class ShelfViewModelTests : IDisposable
         var vm = new ShelfViewModel(_store);
 
         // The pinned all-image stack lives only in PinnedCards, not Cards -- CountAll (and
-        // CountImages) must still include it, same as the pre-existing pinned-text-item test above.
-        Assert.Equal(3, vm.CountAll);
+        // CountImages) must still include it, same as the pre-existing pinned-text-item test
+        // above. v1.3 Task A: it contributes 3 (Paths.Count), not 1 -- CountAll = 3 + 1 + 1 = 5.
+        Assert.Equal(5, vm.CountAll);
         Assert.Equal(1, vm.CountText);
         Assert.Equal(1, vm.CountLinks);
-        Assert.Equal(1, vm.CountImages);
+        Assert.Equal(3, vm.CountImages);
         Assert.Equal(0, vm.CountFiles);
         AssertCountAllEqualsSumOfSubcounts(vm);
     }
