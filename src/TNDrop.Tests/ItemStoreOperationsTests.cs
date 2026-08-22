@@ -139,6 +139,123 @@ public class ItemStoreOperationsTests : IDisposable
     }
 
     [Fact]
+    public void SplitAll_expands_every_path_into_its_own_card_and_removes_the_stack()
+    {
+        var s = ItemStore.BuildFileItems(new[] { @"C:\x", @"C:\y", @"C:\z" }, DateTime.UtcNow)[0];
+        _store.TryAdd(s);
+
+        var created = _store.SplitAll(s.Id);
+
+        Assert.NotNull(created);
+        Assert.Equal(3, created!.Count);
+        Assert.All(created, c => Assert.Single(c.Paths));
+        Assert.Equal(new[] { @"C:\x", @"C:\y", @"C:\z" },
+            created.Select(c => c.Paths[0]).OrderBy(p => p, StringComparer.Ordinal));
+
+        // The stack itself is gone -- SplitAll fully expands it, unlike SplitFile which lets a
+        // >=2-path remainder survive as itself.
+        Assert.DoesNotContain(_store.Items, i => i.Id == s.Id);
+        Assert.Equal(3, _store.Items.Count);
+        Assert.All(_store.Items, i => Assert.Equal(ClipKind.Files, i.Kind));
+    }
+
+    [Fact]
+    public void SplitAll_inherits_pinned_to_every_child()
+    {
+        // Same principle as SplitFile's own v1.2 fix: with PurgeUnpinnedOnRestart, an unpinned
+        // child would be silently deleted on the next restart even though the user pinned the
+        // stack those paths came from.
+        var s = ItemStore.BuildFileItems(new[] { @"C:\x", @"C:\y", @"C:\z" }, DateTime.UtcNow)[0];
+        s.Pinned = true;
+        _store.TryAdd(s);
+
+        var created = _store.SplitAll(s.Id);
+
+        Assert.NotNull(created);
+        Assert.All(created!, c => Assert.True(c.Pinned));
+    }
+
+    [Fact]
+    public void SplitAll_leaves_children_of_an_unpinned_stack_unpinned()
+    {
+        var s = ItemStore.BuildFileItems(new[] { @"C:\x", @"C:\y", @"C:\z" }, DateTime.UtcNow)[0];
+        _store.TryAdd(s);
+
+        var created = _store.SplitAll(s.Id);
+
+        Assert.NotNull(created);
+        Assert.All(created!, c => Assert.False(c.Pinned));
+    }
+
+    [Fact]
+    public void SplitAll_expands_a_ten_file_stack()
+    {
+        var paths = Enumerable.Range(1, 10).Select(i => $@"C:\f\{i}.txt").ToArray();
+        var s = ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0];
+        _store.TryAdd(s);
+
+        var created = _store.SplitAll(s.Id);
+
+        Assert.NotNull(created);
+        Assert.Equal(10, created!.Count);
+        Assert.Equal(10, _store.Items.Count);
+    }
+
+    [Fact]
+    public void SplitAll_refuses_a_lone_file_card()
+    {
+        var s = ItemStore.BuildFileItems(new[] { @"C:\x" }, DateTime.UtcNow)[0];
+        _store.TryAdd(s);
+
+        Assert.Null(_store.SplitAll(s.Id));
+        Assert.Single(_store.Items);
+    }
+
+    [Fact]
+    public void SplitAll_refuses_a_non_files_card()
+    {
+        var t = Text("not a stack");
+        _store.TryAdd(t);
+
+        Assert.Null(_store.SplitAll(t.Id));
+        Assert.Single(_store.Items);
+    }
+
+    [Fact]
+    public void SplitAll_refuses_an_unknown_id()
+    {
+        Assert.Null(_store.SplitAll("no-such-id"));
+    }
+
+    [Fact]
+    public void SplitAll_raises_Changed_exactly_once()
+    {
+        var s = ItemStore.BuildFileItems(new[] { @"C:\x", @"C:\y", @"C:\z" }, DateTime.UtcNow)[0];
+        _store.TryAdd(s);
+
+        var changedCount = 0;
+        _store.Changed += () => changedCount++;
+
+        _store.SplitAll(s.Id);
+
+        Assert.Equal(1, changedCount);
+    }
+
+    [Fact]
+    public void SplitAll_does_not_raise_Changed_on_refusal()
+    {
+        var s = ItemStore.BuildFileItems(new[] { @"C:\x" }, DateTime.UtcNow)[0];
+        _store.TryAdd(s);
+
+        var changedCount = 0;
+        _store.Changed += () => changedCount++;
+
+        _store.SplitAll(s.Id);
+
+        Assert.Equal(0, changedCount);
+    }
+
+    [Fact]
     public void PurgeOlderThan_skips_pinned_and_deletes_blobs()
     {
         Directory.CreateDirectory(_store.BlobsDir);
@@ -641,6 +758,42 @@ public class ItemStoreOperationsTests : IDisposable
 
         Assert.False(File.Exists(finalBPath));
         Assert.True(File.Exists(finalAPath));
+    }
+
+    [Fact]
+    public void SplitAll_preserves_blob_ownership_so_each_child_owns_exactly_its_own_blob()
+    {
+        // Mirrors SplitFile_moves_blob_ownership_so_deleting_the_old_stack_spares_the_split_out_blob:
+        // a 3-image stack, fully ungrouped, must hand each blob path to exactly one child card --
+        // never duplicated, never orphaned.
+        var (a, aPath, _) = AddImageWithBlobs("splitall-a");
+        var (b, bPath, _) = AddImageWithBlobs("splitall-b");
+        var (c, cPath, _) = AddImageWithBlobs("splitall-c");
+        var convertedA = _store.ConvertImageToFileCard(a.Id, aPath)!;
+        var convertedB = _store.ConvertImageToFileCard(b.Id, bPath)!;
+        var convertedC = _store.ConvertImageToFileCard(c.Id, cPath)!;
+        _store.TryMergeFiles(a.Id, b.Id);
+        _store.TryMergeFiles(a.Id, c.Id);
+        var stackId = _store.Items.Single().Id;
+        var finalAPath = convertedA.Paths[0];
+        var finalBPath = convertedB.Paths[0];
+        var finalCPath = convertedC.Paths[0];
+
+        var created = _store.SplitAll(stackId);
+        Assert.NotNull(created);
+        Assert.Equal(3, created!.Count);
+        Assert.True(File.Exists(finalAPath));
+        Assert.True(File.Exists(finalBPath));
+        Assert.True(File.Exists(finalCPath));
+
+        var bCard = created.Single(x => x.Paths[0] == finalBPath);
+        _store.Remove(bCard.Id);
+
+        // Deleting the split-out B card must delete only B's blob, leaving A's and C's untouched --
+        // ownership moved to each child, never duplicated across them.
+        Assert.False(File.Exists(finalBPath));
+        Assert.True(File.Exists(finalAPath));
+        Assert.True(File.Exists(finalCPath));
     }
 
     [Fact]

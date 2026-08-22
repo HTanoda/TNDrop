@@ -389,4 +389,10 @@
   <data name="SettingsLanguageDesc" xml:space="preserve">
     <value>アプリの表示言語を選びます</value>
   </data>
+  <data name="FlyoutUngroupAll" xml:space="preserve">
+    <value>グループ解除</value>
+  </data>
+  <data name="FlyoutSplitOneTooltip" xml:space="preserve">
+    <value>1 件だけ独立</value>
+  </data>
 </root>

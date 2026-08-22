@@ -384,6 +384,58 @@ public sealed partial class ItemStore
         return card;
     }
 
+    // Explicit-UI counterpart of dragging every row out of a stack one at a time (v1.3 Task C):
+    // fully expands a Files stack into one single-path card per path, in a single Changed
+    // notification. Reuses SplitFile's own "new card, Pinned inherited from the stack" rule
+    // rather than a second version of it -- a caller with just one file to peel off still goes
+    // through SplitFile untouched; this only differs in expanding ALL paths and always removing
+    // the original stack (SplitFile lets a >=2-path remainder survive as itself, but SplitAll's
+    // whole point is that nothing remains grouped).
+    //
+    // Blob ownership (v1.3 Task B's blob-in-Paths convention) needs no separate handling here:
+    // each path string is moved -- not copied -- from the stack's Paths into exactly one new
+    // card's Paths, the same "exactly one live card references a given blob file" invariant
+    // DeleteBlobsFor's remarks describe for SplitFile.
+    //
+    // Returns null (no mutation, no Changed) when stackId does not resolve to a Files stack with
+    // 2+ paths -- IsStack is the SAME single-resolution check CardViewModel.IsStack and the
+    // ungroup-all UI both read, so a lone file or a non-Files card is refused here exactly where
+    // the UI would already have hidden the affordance.
+    public List<ClipItem>? SplitAll(string stackId)
+    {
+        List<ClipItem> created;
+
+        lock (_lock)
+        {
+            var stack = _items.FirstOrDefault(i => i.Id == stackId);
+            if (stack == null || !stack.IsStack)
+            {
+                return null;
+            }
+
+            var paths = stack.Paths.ToList();
+            _items.Remove(stack);
+
+            created = new List<ClipItem>();
+            foreach (var path in paths)
+            {
+                var card = new ClipItem
+                {
+                    Kind = ClipKind.Files,
+                    Paths = new List<string> { path },
+                    CreatedAtUtc = _utcClock(),
+                    ContentHash = Fnv1a(Encoding.UTF8.GetBytes(path)),
+                    Pinned = stack.Pinned
+                };
+                _items.Insert(0, card);
+                created.Add(card);
+            }
+        }
+
+        Changed?.Invoke();
+        return created;
+    }
+
     // Deletes unpinned items whose CreatedAtUtc is older than the threshold
     // and returns the count removed. Also deletes Image blob files
     // (ImageFile/ThumbFile in BlobsDir); deletion failures are swallowed

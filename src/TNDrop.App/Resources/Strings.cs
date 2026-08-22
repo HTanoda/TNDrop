@@ -147,6 +147,12 @@ internal static class Strings
     public static string SettingsIndicatorStyleDesc => Get(nameof(SettingsIndicatorStyleDesc));
     public static string SettingsLanguageDesc => Get(nameof(SettingsLanguageDesc));
 
+    // Stack flyout (v1.3 Task C): explicit ungroup UI, replacing the hidden edge-band drag as the
+    // primary path. CardFilesCountFormat ("ファイル {0} 件") is reused for the header's own count
+    // text rather than adding a near-duplicate string -- same phrase already shown on a stack card.
+    public static string FlyoutUngroupAll => Get(nameof(FlyoutUngroupAll));
+    public static string FlyoutSplitOneTooltip => Get(nameof(FlyoutSplitOneTooltip));
+
     private static string Get(string key) =>
         Manager.GetString(key, CultureInfo.CurrentUICulture) ?? key;
 }

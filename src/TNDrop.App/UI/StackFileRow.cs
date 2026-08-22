@@ -1,6 +1,8 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Windows.Media;
+using TNDrop.Core;
 using TNDrop.Platform;
 using TNDrop.Resources;
 using TNDrop.Services;
@@ -8,9 +10,9 @@ using TNDrop.Services;
 namespace TNDrop.UI;
 
 /// <summary>
-/// One line of the stack flyout: the icon, the file name, and the size (or the "file not found"
-/// notice). Immutable -- the flyout rebuilds its rows every time it opens, and closes itself as
-/// soon as the underlying stack changes, so a row never has to update itself in place.
+/// One line of the stack flyout: the thumbnail/icon, the file name, and the size (or the "file not
+/// found" notice). Immutable -- the flyout rebuilds its rows every time it opens, and closes itself
+/// as soon as the underlying stack changes, so a row never has to update itself in place.
 /// </summary>
 public sealed class StackFileRow
 {
@@ -20,13 +22,18 @@ public sealed class StackFileRow
     private const string FolderGlyph = "\U0001F4C1";   // folder
     private const string MissingGlyph = "\u26A0";      // warning sign
 
-    private StackFileRow(string path, string fileName, string icon, string sizeText, bool exists)
+    /// <summary>Row thumbnail/icon size (v1.3 Task C), matching the design doc's "32px \u524D\u5F8C".</summary>
+    private const int ThumbnailPx = 32;
+
+    private StackFileRow(string path, string fileName, string icon, string sizeText, bool exists,
+        ImageSource? thumbnail)
     {
         Path = path;
         FileName = fileName;
         Icon = icon;
         SizeText = sizeText;
         Exists = exists;
+        Thumbnail = thumbnail;
     }
 
     /// <summary>Full path, exactly as the stack stores it. This is what a row drag/click carries.</summary>
@@ -34,7 +41,20 @@ public sealed class StackFileRow
 
     public string FileName { get; }
 
+    /// <summary>Text glyph fallback, shown when <see cref="Thumbnail"/> is null (missing file, or
+    /// the shell had nothing to offer for this path).</summary>
     public string Icon { get; }
+
+    /// <summary>
+    /// The shell's artwork for this row's left slot (v1.3 Task C): a real preview via
+    /// <see cref="ShellImaging.GetThumbnail"/> for an image or video path (<see cref="MediaKind"/>),
+    /// the shell's extension icon via <see cref="ShellImaging.GetIcon"/> for everything else. Both
+    /// go through ShellImaging's own LRU cache (the same one CardViewModel's Thumbnail/FileIcon use)
+    /// rather than a second cache living here. Null for a missing path (no probe attempted -- there
+    /// is nothing on disk to ask the shell about) and null whenever the shell has nothing to offer,
+    /// in which case <see cref="Icon"/> is the fallback XAML binds to instead.
+    /// </summary>
+    public ImageSource? Thumbnail { get; }
 
     /// <summary>Formatted size for a file, empty for a directory, the FileMissing notice when gone.</summary>
     public string SizeText { get; }
@@ -56,9 +76,22 @@ public sealed class StackFileRow
 
         var icon = !exists ? MissingGlyph : isDirectory ? FolderGlyph : FileGlyph;
         var size = !exists ? Strings.FileMissing : isDirectory ? string.Empty : FormatSize(length);
+        var thumbnail = exists && !isDirectory ? LoadThumbnail(path) : null;
 
-        return new StackFileRow(path, NameOf(path), icon, size, exists);
+        return new StackFileRow(path, NameOf(path), icon, size, exists, thumbnail);
     }
+
+    /// <summary>
+    /// Image/video paths (<see cref="MediaKind.Classify"/>) get the shell's real preview; every
+    /// other existing file gets the shell's extension icon instead -- never the reverse, and never
+    /// both attempted for the same row. A converted screenshot blob (v1.3 Task B) is an ordinary PNG
+    /// under blobs\ by the time it reaches here, so it is classified and thumbnailed exactly like
+    /// any other image file, with no separate code path.
+    /// </summary>
+    private static ImageSource? LoadThumbnail(string path) =>
+        MediaKind.IsMedia(path)
+            ? ShellImaging.GetThumbnail(path, ThumbnailPx)
+            : ShellImaging.GetIcon(path, ThumbnailPx);
 
     /// <summary>
     /// Human-readable byte count. Invariant formatting on purpose: the unit suffixes are not

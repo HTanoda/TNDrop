@@ -174,6 +174,31 @@ public class StackGesturesTests
         DragDropEffects effect, bool inZone, bool expected) =>
         Assert.Equal(expected, StackGestures.ShouldSplit(effect, inZone));
 
+    // ---- split refusal reason codes (v1.3 Task C) -------------------------------------------
+
+    [Theory]
+    [InlineData(DragDropEffects.None, false, "split refused: out-of-band")]
+    [InlineData(DragDropEffects.Copy, true, "split refused: drop accepted")]
+    [InlineData(DragDropEffects.Copy, false, "split refused: drop accepted")]
+    [InlineData(DragDropEffects.Link, true, "split refused: drop accepted")]
+    public void SplitRefusalReason_reports_which_half_of_ShouldSplit_failed(
+        DragDropEffects effect, bool inZone, string expected)
+    {
+        // Only ever called after ShouldSplit already returned false -- assert that precondition
+        // holds for every case here, so this test cannot silently drift from ShouldSplit's own
+        // rule.
+        Assert.False(StackGestures.ShouldSplit(effect, inZone));
+        Assert.Equal(expected, StackGestures.SplitRefusalReason(effect, inZone));
+    }
+
+    [Fact]
+    public void SplitRefusalReason_contains_no_path_or_filename()
+    {
+        // The project-wide "no clipboard content in logs" rule: only a fixed reason code, ever.
+        Assert.DoesNotContain(@"\", StackGestures.SplitRefusalReason(DragDropEffects.None, false));
+        Assert.DoesNotContain(@"\", StackGestures.SplitRefusalReason(DragDropEffects.Copy, true));
+    }
+
     // ---- merge acceptability ---------------------------------------------------------------
 
     private static ClipItem Files(string id, params string[] paths) =>
@@ -374,7 +399,7 @@ public class StackGesturesTests
     public void FormatSize(long bytes, string expected) =>
         Assert.Equal(expected, StackFileRow.FormatSize(bytes));
 
-    [Fact]
+    [StaFact]
     public void Row_reflects_a_real_file_a_directory_and_a_missing_path()
     {
         using var temp = new TempDir();
@@ -400,11 +425,52 @@ public class StackGesturesTests
         Assert.NotEqual(fileRow.Icon, goneRow.Icon);
     }
 
-    [Fact]
+    [StaFact]
     public void Row_falls_back_to_the_whole_path_when_there_is_no_leaf_name()
     {
         var row = StackFileRow.Create(@"D:\");
         Assert.Equal(@"D:\", row.FileName);
+    }
+
+    // -- v1.3 Task C: row thumbnails -----------------------------------------------------------
+
+    [StaFact]
+    public void Row_Thumbnail_is_null_for_a_missing_path()
+    {
+        // No probe attempted -- there is nothing on disk to ask the shell about, same guard
+        // CardViewModelTests exercises for CardViewModel.Thumbnail/FileIcon on a missing path.
+        var row = StackFileRow.Create(@"C:\this-path-does-not-exist\a.png");
+        Assert.False(row.Exists);
+        Assert.Null(row.Thumbnail);
+    }
+
+    [StaFact]
+    public void Row_Thumbnail_is_null_for_a_directory()
+    {
+        using var temp = new TempDir();
+        var dir = Directory.CreateDirectory(System.IO.Path.Combine(temp.Path, "sub")).FullName;
+
+        var row = StackFileRow.Create(dir);
+        Assert.True(row.Exists);
+        Assert.Null(row.Thumbnail);
+    }
+
+    [StaFact]
+    public void Row_Thumbnail_probe_does_not_throw_for_an_existing_file()
+    {
+        // The shell's actual answer (real icon/thumbnail or null) is environment-dependent, so this
+        // only pins down that StackFileRow.Create never throws while probing a real, existing file
+        // of either media or non-media kind.
+        using var temp = new TempDir();
+        var textFile = temp.WriteFile("data.bin", "x");
+        var imageFile = System.IO.Path.Combine(temp.Path, "pic.png");
+        File.WriteAllBytes(imageFile, new byte[] { 0x89, 0x50, 0x4E, 0x47 });
+
+        var textRow = StackFileRow.Create(textFile);
+        var imageRow = StackFileRow.Create(imageFile);
+
+        Assert.True(textRow.Exists);
+        Assert.True(imageRow.Exists);
     }
 
     private sealed class TempDir : IDisposable

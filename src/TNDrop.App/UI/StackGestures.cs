@@ -131,4 +131,15 @@ public static class StackGestures
     /// </summary>
     public static bool ShouldSplit(DragDropEffects dropResult, bool cursorInSplitZone) =>
         dropResult == DragDropEffects.None && cursorInSplitZone;
+
+    /// <summary>Reason code for the one Info line logged when <see cref="ShouldSplit"/> came back
+    /// false (v1.3 Task C). Called from BOTH the card-drag refusal (ShelfWindow.BeginCardDrag) and
+    /// the flyout row refusal (StackFlyout.BeginRowDrag) so the wording can never drift between the
+    /// two -- one function computes the reason, both call sites just log whatever it returns. Must
+    /// stay path/filename-free: only "which half of ShouldSplit failed" is reported, per the
+    /// project's no-clipboard-content-in-logs rule.</summary>
+    public static string SplitRefusalReason(DragDropEffects dropResult, bool cursorInSplitZone) =>
+        dropResult != DragDropEffects.None
+            ? "split refused: drop accepted"
+            : "split refused: out-of-band";
 }

@@ -8,7 +8,8 @@
        PopupAnimation="Fade">
 
     <!--
-        Expanded view of one Files stack: one row per path (icon + name + size).
+        Expanded view of one Files stack: a header (file count + explicit "ungroup all") above one
+        row per path (thumbnail/icon + name + size + a per-row "split this one off" button).
 
         Self-contained on purpose. This Popup is constructed in code by ShelfWindow and is NOT
         part of the window's logical tree, so it inherits neither Cards.xaml's brushes nor the
@@ -17,7 +18,16 @@
         Row gestures (click = copy that one file, drag = a single-file DataObject, released in the
         screen-edge band = split) live in StackFlyout.xaml.cs, wired once on RowsHost rather than
         per row, for the same reason ShelfWindow wires the card gestures once per list: the row
-        visual is a template with no code-behind of its own.
+        visual is a template with no code-behind of its own. The header button and the per-row
+        split button are the v1.3 Task C explicit-UI path onto the SAME SplitRequested/ungroup
+        machinery - the edge-band drag stays as a hidden shortcut, not a second implementation.
+
+        Resx-sourced text (the header button's label, the row button's tooltip) is set from
+        StackFlyout.xaml.cs, not bound in markup - this project never x:Static-binds Strings from
+        XAML (see the class remarks on why: CurrentUICulture is read once at construction, same
+        convention every other window/control here follows). The row tooltip in particular is set
+        through the DynamicResource below so ALL row instances (each a fresh DataTemplate
+        realization) share the one value the constructor writes into Popup.Resources.
     -->
 
     <Popup.Resources>
@@ -29,6 +39,83 @@
              entry has gone before deciding to split or delete it. -->
         <SolidColorBrush x:Key="Flyout.MissingForeground" Color="#FF6B6B73" />
         <SolidColorBrush x:Key="Flyout.RowHover" Color="#40FFFFFF" />
+        <SolidColorBrush x:Key="Flyout.HeaderDivider" Color="#26FFFFFF" />
+        <SolidColorBrush x:Key="Flyout.ButtonBackground" Color="#33FFFFFF" />
+        <SolidColorBrush x:Key="Flyout.ButtonBackgroundHover" Color="#55FFFFFF" />
+
+        <!-- Overwritten in the constructor with Strings.FlyoutSplitOneTooltip - see the class
+             comment above for why a DynamicResource (not x:Static) carries a resx string here. -->
+        <system:String x:Key="Flyout.SplitOneTooltipText" xmlns:system="clr-namespace:System;assembly=mscorlib" />
+
+        <!-- Header "ungroup all" button: a small rounded pill, quiet until hovered/pressed -
+             visible enough to be discoverable (the whole point of Task C) without competing with
+             the row content underneath it. -->
+        <Style x:Key="Flyout.HeaderButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource Flyout.ButtonBackground}" />
+            <Setter Property="Foreground" Value="{StaticResource Flyout.Foreground}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="BorderThickness" Value="0" />
+            <!-- >=24px tall including padding, per the app's hit-target floor even on a
+                 mouse-first desktop surface. -->
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background"
+                                        Value="{StaticResource Flyout.ButtonBackgroundHover}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Per-row "split this one off" button: a fixed 24x24 hit target that stays laid out at
+             all times (Opacity 0/IsHitTestVisible False when idle) so hovering a row never shifts
+             the name/size columns next to it - an Auto column that only gained width on hover
+             would reflow the row every time the pointer crossed it. -->
+        <Style x:Key="Flyout.RowActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource Flyout.SubForeground}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="ToolTip" Value="{DynamicResource Flyout.SplitOneTooltipText}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="5"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background"
+                                        Value="{StaticResource Flyout.ButtonBackgroundHover}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Popup.Resources>
 
     <Border Background="{StaticResource Flyout.Background}"
@@ -39,65 +126,148 @@
             MinWidth="220"
             MaxWidth="360"
             SnapsToDevicePixels="True">
-        <ItemsControl x:Name="RowsHost">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <!-- Transparent, not null: a null Background is invisible to hit-testing, and
-                         the gaps between the three columns have to be draggable/clickable too. -->
-                    <Border x:Name="RowRoot"
-                            Background="Transparent"
-                            CornerRadius="6"
-                            Padding="8,5"
-                            Margin="0,1"
-                            Cursor="Hand">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-                            <TextBlock x:Name="RowIcon"
-                                       Grid.Column="0"
-                                       Text="{Binding Icon}"
-                                       FontSize="13"
-                                       Margin="0,0,7,0"
-                                       VerticalAlignment="Center" />
+            <!-- Header: "ファイル N 件" (reuses CardFilesCountFormat - the same phrase a stack
+                 card's own title already shows) + the explicit ungroup-all button. This is the
+                 PRIMARY path onto SplitAll now; the edge-band drag on the card itself stays as a
+                 hidden shortcut for anyone who already learned it. -->
+            <Grid Grid.Row="0" Margin="4,2,4,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                            <TextBlock x:Name="RowName"
-                                       Grid.Column="1"
-                                       Text="{Binding FileName}"
-                                       ToolTip="{Binding Path}"
-                                       FontSize="12"
-                                       Foreground="{StaticResource Flyout.Foreground}"
-                                       TextTrimming="CharacterEllipsis"
-                                       VerticalAlignment="Center" />
+                <TextBlock x:Name="HeaderCountText"
+                           Grid.Column="0"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource Flyout.Foreground}" />
 
-                            <TextBlock x:Name="RowSize"
-                                       Grid.Column="2"
-                                       Text="{Binding SizeText}"
-                                       FontSize="11"
-                                       Margin="10,0,0,0"
-                                       Foreground="{StaticResource Flyout.SubForeground}"
-                                       VerticalAlignment="Center" />
-                        </Grid>
-                    </Border>
+                <Button x:Name="UngroupAllButton"
+                        Grid.Column="1"
+                        Style="{StaticResource Flyout.HeaderButtonStyle}"
+                        Click="OnUngroupAllClick" />
+            </Grid>
 
-                    <DataTemplate.Triggers>
-                        <DataTrigger Binding="{Binding Exists}" Value="False">
-                            <Setter TargetName="RowName" Property="Foreground"
-                                    Value="{StaticResource Flyout.MissingForeground}" />
-                            <Setter TargetName="RowSize" Property="Foreground"
-                                    Value="{StaticResource Flyout.MissingForeground}" />
-                            <Setter TargetName="RowIcon" Property="Opacity" Value="0.6" />
-                        </DataTrigger>
-                        <Trigger SourceName="RowRoot" Property="IsMouseOver" Value="True">
-                            <Setter TargetName="RowRoot" Property="Background"
-                                    Value="{StaticResource Flyout.RowHover}" />
-                        </Trigger>
-                    </DataTemplate.Triggers>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+            <!-- Scroll-edge divider, not a fixed border stripe: it separates header chrome from
+                 the scrollable content it belongs to, matching the "structural region" role
+                 Scrollbars.xaml's own remarks describe for floating chrome. -->
+            <Border Grid.Row="1"
+                    Height="1"
+                    Margin="4,0,4,4"
+                    Background="{StaticResource Flyout.HeaderDivider}" />
+
+            <!-- Capped to roughly 10 rows (Scrollbars.xaml's own comment documents exactly what a
+                 ScrollViewer added here must do: merge that dictionary explicitly in its own
+                 Resources, since a Popup's content is NOT reached by ShelfWindow.xaml's merge).
+                 Vertical-only, matching every other scrollable surface in the app. -->
+            <ScrollViewer Grid.Row="2"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          MaxHeight="430">
+                <ScrollViewer.Resources>
+                    <ResourceDictionary Source="Scrollbars.xaml" />
+                </ScrollViewer.Resources>
+
+                <ItemsControl x:Name="RowsHost">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <!-- Transparent, not null: a null Background is invisible to hit-testing, and
+                                 the gaps between the columns have to be draggable/clickable too. -->
+                            <Border x:Name="RowRoot"
+                                    Background="Transparent"
+                                    CornerRadius="6"
+                                    Padding="6,5"
+                                    Margin="0,1"
+                                    Cursor="Hand">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="26" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- 32px thumbnail/icon slot - same fixed-size Image+glyph
+                                         fallback pair Cards.xaml uses for a card's own left slot,
+                                         so a converted screenshot (an ordinary PNG under blobs\ by
+                                         the time it reaches here) renders exactly like any other
+                                         image file, no special case. -->
+                                    <Grid Grid.Column="0" Width="32" Height="32" Margin="0,0,7,0">
+                                        <Image x:Name="RowThumbnail"
+                                               Source="{Binding Thumbnail}"
+                                               Width="32" Height="32"
+                                               Stretch="UniformToFill" />
+                                        <TextBlock x:Name="RowIcon"
+                                                   Text="{Binding Icon}"
+                                                   FontSize="15"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Visibility="Collapsed" />
+                                    </Grid>
+
+                                    <TextBlock x:Name="RowName"
+                                               Grid.Column="1"
+                                               Text="{Binding FileName}"
+                                               ToolTip="{Binding Path}"
+                                               FontSize="12"
+                                               Foreground="{StaticResource Flyout.Foreground}"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" />
+
+                                    <TextBlock x:Name="RowSize"
+                                               Grid.Column="2"
+                                               Text="{Binding SizeText}"
+                                               FontSize="11"
+                                               Margin="10,0,0,0"
+                                               Foreground="{StaticResource Flyout.SubForeground}"
+                                               VerticalAlignment="Center" />
+
+                                    <!-- Explicit "split this one off" (v1.3 Task C): fires the SAME
+                                         SplitRequested event the edge-band drag raises, just without
+                                         the drag - see OnRowSplitButtonClick. Revealed by RowRoot's
+                                         hover trigger below, never by its own. -->
+                                    <Button x:Name="RowSplitButton"
+                                            Grid.Column="3"
+                                            Style="{StaticResource Flyout.RowActionButtonStyle}"
+                                            Content="&#10005;"
+                                            Click="OnRowSplitButtonClick" />
+                                </Grid>
+                            </Border>
+
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding Exists}" Value="False">
+                                    <Setter TargetName="RowName" Property="Foreground"
+                                            Value="{StaticResource Flyout.MissingForeground}" />
+                                    <Setter TargetName="RowSize" Property="Foreground"
+                                            Value="{StaticResource Flyout.MissingForeground}" />
+                                    <Setter TargetName="RowIcon" Property="Opacity" Value="0.6" />
+                                    <Setter TargetName="RowThumbnail" Property="Opacity" Value="0.6" />
+                                    <!-- Nothing to split off a file that is already gone. -->
+                                    <Setter TargetName="RowSplitButton" Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Thumbnail}" Value="{x:Null}">
+                                    <Setter TargetName="RowThumbnail" Property="Visibility" Value="Collapsed" />
+                                    <Setter TargetName="RowIcon" Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                                <Trigger SourceName="RowRoot" Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="RowRoot" Property="Background"
+                                            Value="{StaticResource Flyout.RowHover}" />
+                                    <Setter TargetName="RowSplitButton" Property="Opacity" Value="1" />
+                                    <Setter TargetName="RowSplitButton" Property="IsHitTestVisible" Value="True" />
+                                </Trigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
     </Border>
 </Popup>

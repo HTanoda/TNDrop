@@ -8,7 +8,9 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using TNDrop.Core;
 using TNDrop.Platform;
+using TNDrop.Resources;
 using TNDrop.Services;
+using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;
 using DragDrop = System.Windows.DragDrop;
 using DragDropEffects = System.Windows.DragDropEffects;
 using MouseEventArgs = System.Windows.Input.MouseEventArgs;
@@ -65,6 +67,13 @@ public partial class StackFlyout : Popup
         Opened += OnOpened;
         Closed += OnClosed;
 
+        // Resx-sourced, read once at construction (same convention every other window/control in
+        // this project follows -- see the class doc comment). The row tooltip goes through the
+        // resource dictionary rather than a named element, since it has to reach every per-row
+        // button instance the DataTemplate stamps out, not just one.
+        UngroupAllButton.Content = Strings.FlyoutUngroupAll;
+        Resources["Flyout.SplitOneTooltipText"] = Strings.FlyoutSplitOneTooltip;
+
         // Wired once on the host, not per row: the row visual is a DataTemplate with no code-behind
         // and its containers are regenerated every time the flyout opens.
         RowsHost.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent,
@@ -97,8 +106,15 @@ public partial class StackFlyout : Popup
     /// <summary>A row was clicked: put that one file on the clipboard. Argument is the full path.</summary>
     public event Action<string>? FileActivated;
 
-    /// <summary>A row was dragged into the edge band and refused everywhere else: split it out.</summary>
+    /// <summary>A row was dragged into the edge band and refused everywhere else: split it out.
+    /// Also raised directly (no drag) by a row's own "split this one off" button -- see
+    /// <see cref="OnRowSplitButtonClick"/> -- so both paths funnel through the one event ShelfWindow
+    /// already handles.</summary>
     public event Action<string, string>? SplitRequested;
+
+    /// <summary>The header's "ungroup all" button was clicked (v1.3 Task C): expand every path in
+    /// the stack currently on show into its own card. Argument is the stack id.</summary>
+    public event Action<string>? UngroupAllRequested;
 
     /// <summary>A row could not be acted on because its file is gone from disk.</summary>
     public event Action? ContentMissing;
@@ -125,6 +141,10 @@ public partial class StackFlyout : Popup
         _stackItem = stack.Item;
         StackId = stack.Id;
         _paths = stack.Item.Paths.ToList();
+
+        // Reuses CardFilesCountFormat -- the same "ファイル N 件" phrase a stack card's own title
+        // already shows -- rather than a second, near-duplicate format string.
+        HeaderCountText.Text = string.Format(Strings.CardFilesCountFormat, _paths.Count);
 
         RowsHost.ItemsSource = _paths.Select(StackFileRow.Create).ToList();
 
@@ -244,9 +264,59 @@ public partial class StackFlyout : Popup
         }
     }
 
+    /// <summary>Header "ungroup all" button (v1.3 Task C): the explicit-UI primary path onto
+    /// <see cref="Core.ItemStore.SplitAll"/>, wired by ShelfWindow.</summary>
+    private void OnUngroupAllClick(object sender, RoutedEventArgs e)
+    {
+        if (StackId is { } stackId)
+        {
+            UngroupAllRequested?.Invoke(stackId);
+        }
+
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Per-row "split this one off" button (v1.3 Task C): the SAME <see cref="SplitRequested"/>
+    /// event the edge-band drag raises, just fired directly instead of decided from a drag result --
+    /// there is nothing to classify here (no DragDropEffects, no zone check), the click itself IS
+    /// the split decision. The row is read from the clicked element's DataContext, since the button
+    /// lives inside the per-row DataTemplate and has no other way to know which row it belongs to.
+    /// </summary>
+    private void OnRowSplitButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (StackId is { } stackId && sender is FrameworkElement { DataContext: StackFileRow row })
+        {
+            SplitRequested?.Invoke(stackId, row.Path);
+        }
+
+        e.Handled = true;
+    }
+
+    /// <summary>True when a hit-test source is inside the per-row action button -- mirrors
+    /// ShelfWindow.IsWithinActionButton for the same reason: a click that lands on that button must
+    /// be left for its own Click handler, not also read as the row's press/drag gesture.</summary>
+    private static bool IsWithinRowActionButton(object? source)
+    {
+        for (var current = source as DependencyObject; current is not null; current = ParentOf(current))
+        {
+            if (current is ButtonBase)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void OnRowPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _pressedRow = null;
+
+        if (IsWithinRowActionButton(e.OriginalSource))
+        {
+            return;
+        }
 
         var row = RowFrom(e.OriginalSource);
         if (row is null)
@@ -343,7 +413,7 @@ public partial class StackFlyout : Popup
         _pressedRow = null;
         ReleaseGestureCapture();
 
-        if (row is null || _isDragging)
+        if (row is null || _isDragging || IsWithinRowActionButton(e.OriginalSource))
         {
             return;
         }
@@ -401,6 +471,9 @@ public partial class StackFlyout : Popup
         var inZone = CursorInSplitZone?.Invoke() ?? false;
         if (!StackGestures.ShouldSplit(effect, inZone))
         {
+            // No path, no filename -- just the reason half of ShouldSplit failed on, per the
+            // project's no-clipboard-content-in-logs rule. See StackGestures.SplitRefusalReason.
+            FileLogger.Instance?.Info(Module, StackGestures.SplitRefusalReason(effect, inZone));
             return;
         }
 

@@ -1205,8 +1205,12 @@ public partial class ShelfWindow : Window
             return;
         }
 
-        if (!StackGestures.ShouldSplit(effect, IsCursorInSplitZone(StackGestures.CardExtractEdgeBandDip)))
+        var inZone = IsCursorInSplitZone(StackGestures.CardExtractEdgeBandDip);
+        if (!StackGestures.ShouldSplit(effect, inZone))
         {
+            // No path, no filename -- just the reason half of ShouldSplit failed on, per the
+            // project's no-clipboard-content-in-logs rule. See StackGestures.SplitRefusalReason.
+            FileLogger.Instance?.Info(Module, StackGestures.SplitRefusalReason(effect, inZone));
             return;
         }
 
@@ -1325,6 +1329,7 @@ public partial class ShelfWindow : Window
 
         flyout.FileActivated += OnStackFileActivated;
         flyout.SplitRequested += OnStackSplitRequested;
+        flyout.UngroupAllRequested += OnStackUngroupAllRequested;
         flyout.ContentMissing += OnStackContentMissing;
 
         // A row drag blocks in DoDragDrop exactly like a card drag, and can close the popup out
@@ -1554,6 +1559,31 @@ public partial class ShelfWindow : Window
             // The stack changed under the drag (another capture merged it, the file was removed).
             // Nothing to tell the user: no card moved, and the drop itself did nothing either.
             FileLogger.Instance?.Warn(Module, "split refused: the path is no longer part of that stack");
+            return;
+        }
+
+        _itemStore.Save();
+    }
+
+    /// <summary>
+    /// The flyout header's "ungroup all" button (v1.3 Task C): the explicit-UI primary path onto
+    /// <see cref="ItemStore.SplitAll"/>, replacing the hidden edge-band drag as the way most users
+    /// are expected to discover ungrouping. No zone check, no reason-code log -- unlike the drag
+    /// refusal path, a button click can only ever mean "yes, ungroup", so there is nothing to
+    /// refuse silently and nothing worth logging.
+    /// </summary>
+    private void OnStackUngroupAllRequested(string stackId)
+    {
+        if (_itemStore is null)
+        {
+            return;
+        }
+
+        if (_itemStore.SplitAll(stackId) is null)
+        {
+            // The stack changed under the click (another capture merged it, or it was removed) --
+            // same "nothing to tell the user" reasoning as OnStackSplitRequested's own refusal.
+            FileLogger.Instance?.Warn(Module, "ungroup-all refused: the stack no longer exists");
             return;
         }
 
