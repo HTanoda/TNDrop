@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using TNDrop.Core;
 using TNDrop.UI;
 
@@ -211,6 +212,49 @@ public class ShelfViewModelTests : IDisposable
         Assert.Equal(2, vm.CountAll);
         Assert.Equal(2, vm.CountImages);
         Assert.Equal(2, vm.Cards.Count);
+        AssertCountAllEqualsSumOfSubcounts(vm);
+    }
+
+    // v1.3 Task A review fix: the round-trip test above only exercises a 2-path stack collapsing
+    // fully into singletons on split. That leaves the "stack shrinks but stays a stack" case
+    // uncovered -- if Contribution's per-item weight were ever cached at add-time instead of
+    // reading ClipItem.Paths live, this is the case that would silently keep reporting the old
+    // (pre-split) path count. SplitFile mutates Paths in place on the SAME ClipItem instance
+    // (see ItemStore.SplitFile), so this guards specifically against that failure mode.
+    [StaFact]
+    public void SplitFile_shrinking_a_stack_that_stays_a_stack_follows_live_Paths_Count()
+    {
+        var paths = new[] { @"C:\pics\a.png", @"C:\pics\b.jpg", @"C:\pics\c.webp" };
+        var stack = ItemStore.BuildFileItems(paths, DateTime.UtcNow)[0];
+        _store.TryAdd(stack);
+
+        var vm = new ShelfViewModel(_store);
+        Assert.Equal(3, vm.CountAll);
+        Assert.Equal(3, vm.CountImages);
+        Assert.Single(vm.Cards);
+        AssertCountAllEqualsSumOfSubcounts(vm);
+
+        // Split one path off: the stack drops from 3 to 2 paths and stays a stack (2 still > 1),
+        // while the split-off path becomes its own single card. Total files on the shelf is still
+        // 3, but now split across two cards instead of one.
+        Assert.NotNull(_store.SplitFile(stack.Id, @"C:\pics\c.webp"));
+
+        Assert.Equal(3, vm.CountAll);
+        Assert.Equal(3, vm.CountImages);
+        Assert.Equal(2, vm.Cards.Count); // shrunk stack + split-off single, both still cards
+        AssertCountAllEqualsSumOfSubcounts(vm);
+
+        var shrunkStack = vm.Cards.Single(c => c.IsStack);
+        Assert.Equal(2, shrunkStack.StackCount); // Paths.Count, read live -- not cached at 3
+
+        // Split again: 2 -> 1 path, the remaining card stops being a stack. Contribution must
+        // follow that transition too, not just the "still a stack" case above.
+        Assert.NotNull(_store.SplitFile(stack.Id, @"C:\pics\b.jpg"));
+
+        Assert.Equal(3, vm.CountAll);
+        Assert.Equal(3, vm.CountImages);
+        Assert.Equal(3, vm.Cards.Count); // three independent single-file cards now
+        Assert.All(vm.Cards, c => Assert.False(c.IsStack));
         AssertCountAllEqualsSumOfSubcounts(vm);
     }
 

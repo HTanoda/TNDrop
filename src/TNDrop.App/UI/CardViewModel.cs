@@ -182,7 +182,7 @@ public sealed class CardViewModel : INotifyPropertyChanged
         && Item.Paths.Count > 0
         && (!IsMediaFile || (_thumbnailLoaded && _thumbnail is null));
 
-    public bool IsStack => Kind == ClipKind.Files && Item.Paths.Count > 1;
+    public bool IsStack => Item.IsStack;
 
     public int StackCount => Item.Paths.Count;
 

@@ -394,9 +394,9 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
 
     /// <summary>
     /// SINGLE RESOLUTION for "how many files does this card contribute to its one badge":
-    /// exactly <see cref="ClipItem.Paths"/>'s count for a stack (Kind==Files with 2+ paths, same
-    /// test <see cref="CardViewModel.IsStack"/> uses), otherwise 1. Every Count* field in
-    /// <see cref="Rebuild"/> sums this over its own MatchesFilter-partitioned slice of
+    /// exactly <see cref="ClipItem.Paths"/>'s count for a stack (<see cref="ClipItem.IsStack"/>,
+    /// the same check <see cref="CardViewModel.IsStack"/> reads), otherwise 1. Every Count* field
+    /// in <see cref="Rebuild"/> sums this over its own MatchesFilter-partitioned slice of
     /// `searchedAll`, so a card is weighted the same way no matter which one of the five badges
     /// it lands in -- there is no second place a badge total gets computed.
     ///
@@ -405,10 +405,13 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
     /// apart, changes which cards exist and how many Cards.Count reports (filter membership is
     /// still card-based, unchanged) -- but must NOT change how many files a badge reports, since
     /// no files were created or destroyed. Weighting every item by its own file count, rather
-    /// than by 1, is what keeps that total invariant across a merge/split round trip.</para>
+    /// than by 1, is what keeps that total invariant across a merge/split round trip. Reading
+    /// <see cref="ClipItem.IsStack"/> (which itself always reads live off <c>Paths.Count</c>,
+    /// never a cached flag) rather than re-testing Paths.Count here is what keeps this correct
+    /// even when a stack shrinks by one path but stays a stack (SplitFile mutates Paths in place
+    /// on the same ClipItem instance).</para>
     /// </summary>
-    private static int Contribution(ClipItem item) =>
-        item.Kind == ClipKind.Files && item.Paths.Count > 1 ? item.Paths.Count : 1;
+    private static int Contribution(ClipItem item) => item.IsStack ? item.Paths.Count : 1;
 
     /// <summary>
     /// SINGLE RESOLUTION for "does this item count as 画像 instead of ファイル": both
