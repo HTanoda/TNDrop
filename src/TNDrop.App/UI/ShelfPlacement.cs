@@ -66,20 +66,33 @@ public static class ShelfPlacement
             : shelfRect.X + shelfRect.W;
 
     /// <summary>Extra margin (DIPs) beyond the trigger band's own proximity width that the hint
-    /// beacon reacts to -- "close, but not quite there yet". See <see cref="IsNearTriggerButOutside"/>.</summary>
-    public const double HintProximityMarginPx = 8;
+    /// beacon reacts to -- "close, but not quite there yet". See <see cref="IsNearTriggerButOutside"/>.
+    /// v1.4.1 Task A: widened 8->24 -- at typical sensitivity settings the old margin produced a
+    /// near-band only ~11px wide (triggerRect.W, itself clamped to [1,64], plus 8), which users
+    /// reported as too thin to ever land the cursor in. 24 alone is still not enough at the
+    /// smallest sensitivities, which is what <see cref="HintMinBandDip"/> is for.</summary>
+    public const double HintProximityMarginPx = 24;
+
+    /// <summary>Minimum near-band width (DIPs), regardless of how thin <paramref name="triggerRect"/>
+    /// (and therefore <see cref="HintProximityMarginPx"/>'s base) is. v1.4.1 Task A: without this
+    /// floor, a user with TriggerProximityPx clamped near its minimum (1) would still get a near-band
+    /// of only ~25px (1 + 24) -- workable but tighter than the ~30px this floor guarantees. See
+    /// <see cref="IsNearTriggerButOutside"/>.</summary>
+    public const double HintMinBandDip = 30;
 
     /// <summary>
-    /// Whether the trigger proximity hint (v1.2 Task E) should light up: the pointer is within
-    /// <paramref name="triggerRect"/>'s own width plus <see cref="HintProximityMarginPx"/> DIPs of
-    /// <paramref name="edge"/> horizontally, on the target monitor vertically, but OUTSIDE
-    /// <paramref name="triggerRect"/>'s own vertical span -- "right edge, wrong height".
+    /// Whether the trigger proximity hint (v1.2 Task E) should light up: the pointer is within the
+    /// near-band (<paramref name="triggerRect"/>'s own width plus <see cref="HintProximityMarginPx"/>
+    /// DIPs, floored at <see cref="HintMinBandDip"/>) of <paramref name="edge"/> horizontally, on the
+    /// target monitor vertically, but OUTSIDE <paramref name="triggerRect"/>'s own vertical span --
+    /// "right edge, wrong height".
     ///
     /// <para>Takes <paramref name="triggerRect"/>'s width as the one source of the real band's
     /// size rather than re-deriving it from a separate <c>proximityPx</c> parameter --
     /// <see cref="TriggerRect"/> already clamps that value; a second clamp here computing the same
     /// quantity a second way is exactly the kind of drift a settings change to the clamp range
-    /// could silently break.</para>
+    /// could silently break. The width formula below (margin plus floor) is likewise resolved in
+    /// this ONE place; nothing else in the codebase computes a near-band width.</para>
     ///
     /// <para>The exclusion check below only tests the VERTICAL span, not horizontal, and that is
     /// deliberate rather than an oversight: <paramref name="triggerRect"/>'s width is entirely
@@ -89,12 +102,13 @@ public static class ShelfPlacement
     /// horizontal case left to reject that the near-band and vertical checks don't already cover.
     /// Such a cursor would have already fired WPF's own MouseEnter and opened the shelf (see
     /// EdgeTriggerWindow), so the hint has nothing left to hint at by the time anything could ask
-    /// this function about it.</para>
+    /// this function about it. The floor does not change this reasoning: it only ever WIDENS the
+    /// near-band relative to triggerRect.W, so the containment argument still holds.</para>
     /// </summary>
     public static bool IsNearTriggerButOutside(Rect workArea, Rect triggerRect, EdgeSide edge,
                                                 double cursorX, double cursorY)
     {
-        var nearWidth = triggerRect.W + HintProximityMarginPx;
+        var nearWidth = Math.Max(HintMinBandDip, triggerRect.W + HintProximityMarginPx);
 
         var distFromEdge = edge == EdgeSide.Left
             ? cursorX - workArea.X

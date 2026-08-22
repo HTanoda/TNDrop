@@ -381,7 +381,7 @@
     <value>ホットゾーンを画面の端のどの位置に配置するかを選びます</value>
   </data>
   <data name="SettingsTriggerHintDesc" xml:space="preserve">
-    <value>カーソルが端に近づいたときに、トリガー位置を薄く光らせて知らせます</value>
+    <value>カーソルが端に近づいたときに、トリガー位置をやさしく光らせて知らせます</value>
   </data>
   <data name="SettingsTextScaleDesc" xml:space="preserve">
     <value>シェルフ内の文字の大きさを調整します</value>

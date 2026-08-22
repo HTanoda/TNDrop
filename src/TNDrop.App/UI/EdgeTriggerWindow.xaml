@@ -22,16 +22,30 @@
          which is how a drag arriving at the edge can open the shelf. MouseEnter cannot do that job
          while a drag is in flight, because no WM_MOUSEMOVE is delivered during one. -->
     <Grid>
+        <!-- v1.4.1 Task A: widened 2px->5px and re-colored into the brand-blue family (see
+             IndicatorBrightness's BaseR/BaseG/BaseB) so the hint is actually noticeable, per user
+             feedback that the old 2px/white-25%-alpha beacon went unseen even when lit. The mid
+             GradientStop's #CC5AC8FA below is only a PLACEHOLDER, same as IndicatorWindow.xaml's
+             brightened-fill placeholders - EdgeTriggerWindow.xaml.cs's constructor overwrites it
+             from IndicatorBrightness's UNBRIGHTENED base RGB/alpha, the one real source for the
+             brand hue, so this literal can never quietly drift from it. Using the base (pre-
+             Brighten) values, not Brighten()'s output, is what keeps this persistent lamp dimmer
+             than IndicatorWindow's momentary flash while still sitting in the same color family.
+             Opacity starts at 0 (not the Rectangle default of 1) because SetHintVisible/
+             StartBreathing/StopBreathing in the code-behind now animate this element's Opacity for
+             fade in/out and the breathing loop; a base value of 1 would make the very first fade-in
+             start already at full brightness. -->
         <Rectangle x:Name="HintBeacon"
-                   Width="2"
+                   Width="5"
+                   Opacity="0"
                    HorizontalAlignment="Left"
                    IsHitTestVisible="False"
                    Visibility="Collapsed">
             <Rectangle.Fill>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                    <GradientStop Offset="0.0" Color="#00FFFFFF" />
-                    <GradientStop Offset="0.5" Color="#40FFFFFF" />
-                    <GradientStop Offset="1.0" Color="#00FFFFFF" />
+                    <GradientStop Offset="0.0" Color="#005AC8FA" />
+                    <GradientStop x:Name="HintBeaconMidStop" Offset="0.5" Color="#CC5AC8FA" />
+                    <GradientStop Offset="1.0" Color="#005AC8FA" />
                 </LinearGradientBrush>
             </Rectangle.Fill>
         </Rectangle>

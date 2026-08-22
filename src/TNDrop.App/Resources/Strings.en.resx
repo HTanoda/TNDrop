@@ -381,7 +381,7 @@
     <value>Choose where along the screen edge the hot zone is positioned.</value>
   </data>
   <data name="SettingsTriggerHintDesc" xml:space="preserve">
-    <value>Shows a faint glow at the trigger position when the cursor approaches the edge.</value>
+    <value>Gently lights up the trigger position when the cursor approaches the edge.</value>
   </data>
   <data name="SettingsTextScaleDesc" xml:space="preserve">
     <value>Adjusts the size of the text shown in the shelf.</value>

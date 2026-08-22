@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using TNDrop.Core;
 using TNDrop.Platform;
@@ -34,6 +35,11 @@ public partial class EdgeTriggerWindow : Window
     private readonly DispatcherTimer _hintTimer;
     private bool _hintFeatureEnabled;
 
+    /// <summary>Last state actually applied via <see cref="SetHintVisible"/> -- lets the 250ms poll
+    /// call SetHintVisible(show) every tick without restarting the fade/breathing animation on every
+    /// single tick where the state hasn't changed (see <see cref="OnHintTimerTick"/>).</summary>
+    private bool _hintVisible;
+
     /// <summary>Geometry snapshot for the proximity-hint timer, refreshed only when <see cref="Place"/>
     /// runs (ApplySettings / DPI change / display-settings change) -- NOT on every 250ms tick. See
     /// <see cref="OnHintTimerTick"/>.</summary>
@@ -55,6 +61,16 @@ public partial class EdgeTriggerWindow : Window
     public EdgeTriggerWindow()
     {
         InitializeComponent();
+
+        // v1.4.1 Task A: the beacon's mid-stop color comes from IndicatorBrightness's base (NOT
+        // Brighten()'d) RGB/alpha -- one source for the brand hue instead of a second hand-picked
+        // hex literal in XAML that could drift from it. Using the base (pre-Brighten) values, not
+        // Brighten()'s output, is what keeps this persistent lamp dimmer than IndicatorWindow's
+        // momentary flash while still sitting in the same color family; see the XAML comment above
+        // HintBeacon for the fuller rationale.
+        HintBeaconMidStop.Color = System.Windows.Media.Color.FromArgb(
+            IndicatorBrightness.BaseAlphaShared,
+            IndicatorBrightness.BaseR, IndicatorBrightness.BaseG, IndicatorBrightness.BaseB);
 
         MouseEnter += (_, _) => Triggered?.Invoke();
         DpiChanged += OnDpiChanged;
@@ -192,12 +208,121 @@ public partial class EdgeTriggerWindow : Window
         DragTriggered?.Invoke();
     }
 
-    /// <summary>Shows or hides the faint 2px beacon that hints where the shelf lives. The display
-    /// primitive: callers that decide WHEN it should be lit (currently only
-    /// <see cref="OnHintTimerTick"/>/<see cref="UpdateHintTimerState"/> below) go through this,
-    /// not HintBeacon.Visibility directly.</summary>
+    /// <summary>Shows or hides the beacon that hints where the shelf lives. The display primitive:
+    /// callers that decide WHEN it should be lit (currently only <see cref="OnHintTimerTick"/>/
+    /// <see cref="UpdateHintTimerState"/> below) go through this, not HintBeacon.Visibility or
+    /// HintBeacon.Opacity directly -- this is still the ONE place visibility (now: visibility AND
+    /// its fade) flows through.
+    ///
+    /// <para>v1.4.1 Task A: lighting/extinguishing now animates a short opacity fade
+    /// (<see cref="HintBeaconTiming.FadeDuration"/>) instead of an instant Visibility snap, and lit state starts
+    /// a slow "breathing" loop (<see cref="StartBreathing"/>). <see cref="OnHintTimerTick"/> calls
+    /// this every 250ms regardless of whether the state actually changed, so <see cref="_hintVisible"/>
+    /// dedupes: a call that repeats the current state is a no-op, which is what keeps the breathing
+    /// loop running smoothly instead of being restarted from scratch 4x/second.</para>
+    ///
+    /// <para>This does NOT give <see cref="SetHintEnabled"/>'s force-hide guarantee -- that path
+    /// uses <see cref="ForceHideHintImmediately"/> instead, specifically to avoid leaving a fade (or
+    /// the breathing loop) running past the moment the feature is disabled. See that method's doc
+    /// comment.</para>
+    /// </summary>
     public void SetHintVisible(bool visible)
-        => HintBeacon.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    {
+        if (visible == _hintVisible)
+        {
+            // Already in the requested state (including mid-fade toward it) -- nothing to do.
+            // Without this guard, OnHintTimerTick's every-250ms call would restart the fade-in
+            // storyboard (and therefore StartBreathing) on every single tick while the pointer sits
+            // in the near-band, which would never let the breathing loop actually run.
+            return;
+        }
+
+        _hintVisible = visible;
+
+        if (visible)
+        {
+            HintBeacon.Visibility = Visibility.Visible;
+
+            var fadeIn = new DoubleAnimation(HintBeacon.Opacity, HintBeaconTiming.OpacityLit, HintBeaconTiming.FadeDuration)
+            {
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseOut },
+            };
+            fadeIn.Completed += (_, _) =>
+            {
+                // Guard against a fast off/on/off flicker: only start breathing if we're still
+                // supposed to be visible by the time this fade's Completed callback runs.
+                if (_hintVisible)
+                    StartBreathing();
+            };
+            HintBeacon.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+        }
+        else
+        {
+            // Read the CURRENT (possibly mid-breath) opacity before touching the animation, per
+            // apple-design's "animate from the presentation value, not the target" -- fading out
+            // from wherever the breathing loop happened to be, rather than snapping to
+            // HintBeaconTiming.OpacityLit first, avoids a visible pop right as the fade-out begins.
+            var current = HintBeacon.Opacity;
+            StopBreathing();
+
+            var fadeOut = new DoubleAnimation(current, 0.0, HintBeaconTiming.FadeDuration)
+            {
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseIn },
+            };
+            fadeOut.Completed += (_, _) =>
+            {
+                if (!_hintVisible)
+                    HintBeacon.Visibility = Visibility.Collapsed;
+            };
+            HintBeacon.BeginAnimation(UIElement.OpacityProperty, fadeOut);
+        }
+    }
+
+    /// <summary>Starts the slow breathing loop (v1.4.1 Task A) once the fade-in has landed at
+    /// <see cref="HintBeaconTiming.OpacityLit"/>. Gentle by design: a single sine-eased AutoReverse animation
+    /// between <see cref="HintBeaconTiming.OpacityLit"/> and <see cref="HintBeaconTiming.OpacityBreatheLow"/>, ~2s per full
+    /// cycle, forever for as long as the beacon stays lit -- not the "aggressive strobing" the brief
+    /// explicitly rules out.</summary>
+    private void StartBreathing()
+    {
+        var breathe = new DoubleAnimation
+        {
+            From = HintBeaconTiming.OpacityLit,
+            To = HintBeaconTiming.OpacityBreatheLow,
+            Duration = HintBeaconTiming.BreathHalfCycle,
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+        };
+        HintBeacon.BeginAnimation(UIElement.OpacityProperty, breathe);
+    }
+
+    /// <summary>Stops the breathing loop (if running) and pins Opacity's local value to whatever
+    /// the animation's current effective value was, so a caller that immediately starts a new
+    /// animation (the fade-out in <see cref="SetHintVisible"/>) reads a stable starting point rather
+    /// than the DoubleAnimation removal reverting to the XAML default.</summary>
+    private void StopBreathing()
+    {
+        var current = HintBeacon.Opacity;
+        HintBeacon.BeginAnimation(UIElement.OpacityProperty, null);
+        HintBeacon.Opacity = current;
+    }
+
+    /// <summary>
+    /// The disable-path guarantee <see cref="SetHintEnabled"/>'s doc comment promises: a complete,
+    /// synchronous, IMMEDIATE stop -- no fade, no breathing loop left running. Deliberately separate
+    /// from <see cref="SetHintVisible"/>'s animated hide (used by the normal near/far poll
+    /// transitions) because EdgeHintEnabled=false must never leave an orphaned animation clock on a
+    /// collapsed element waiting to finish; BeginAnimation(..., null) removes the clock outright
+    /// rather than letting a fade run its course.
+    /// </summary>
+    private void ForceHideHintImmediately()
+    {
+        _hintVisible = false;
+        HintBeacon.BeginAnimation(UIElement.OpacityProperty, null);
+        HintBeacon.Opacity = 0.0;
+        HintBeacon.Visibility = Visibility.Collapsed;
+    }
 
     /// <summary>
     /// Turns the proximity hint feature on/off (AppSettings.EdgeHintEnabled). While enabled AND
@@ -227,7 +352,7 @@ public partial class EdgeTriggerWindow : Window
         else
         {
             _hintTimer.Stop();
-            SetHintVisible(false);
+            ForceHideHintImmediately();
         }
     }
 
@@ -269,4 +394,38 @@ public partial class EdgeTriggerWindow : Window
         if (_settings is not null)
             ApplySettings(_settings);
     }
+}
+
+/// <summary>
+/// Pure animation-parameter class for <see cref="EdgeTriggerWindow"/>'s HintBeacon (v1.4.1 Task A).
+/// The one place the fade duration, breathing half-cycle, and breathing opacity range are decided,
+/// so a future edit cannot silently drift the beacon into the "aggressive strobing" (too-short fade,
+/// too-fast breathing) or "unnoticeable" (near-zero breathing amplitude) territory the brief rules
+/// out, without a test noticing -- the same role <see cref="IndicatorTiming"/> and
+/// <see cref="IndicatorBrightness"/> play for IndicatorWindow. Public, not internal, for the same
+/// reason those two are: TNDrop.Tests references TNDrop.App as an ordinary project reference with no
+/// InternalsVisibleTo.
+/// </summary>
+public static class HintBeaconTiming
+{
+    /// <summary>Duration of the beacon's fade in/out. Short and deliberate -- long enough to read
+    /// as a transition rather than a snap, short enough that it never looks like it is lagging the
+    /// 250ms poll that drives it.</summary>
+    public static readonly TimeSpan FadeDuration = TimeSpan.FromMilliseconds(180);
+
+    /// <summary>Half-cycle of the "breathing" loop while the beacon is lit: with
+    /// <see cref="System.Windows.Media.Animation.DoubleAnimation.AutoReverse"/> this yields a full
+    /// ~2s in-out cycle, matching the brief's "2s 周期程度" ask. Slow enough to read as a gentle,
+    /// ambient lamp -- not a strobe -- and outside the near-0.2Hz/5s range apple-design flags as a
+    /// reduced-motion concern.</summary>
+    public static readonly TimeSpan BreathHalfCycle = TimeSpan.FromSeconds(1);
+
+    /// <summary>Peak opacity while lit (also the fade-in target / fade-out start).</summary>
+    public const double OpacityLit = 1.0;
+
+    /// <summary>Trough opacity of the breathing loop. Amplitude (<see cref="OpacityLit"/> minus
+    /// this, 0.28) is deliberately modest per the brief ("振幅は控えめ") -- the brightness boost
+    /// that makes the beacon noticeable lives in HintBeaconMidStop's color/width (see
+    /// EdgeTriggerWindow's constructor and XAML), not in a wide breathing swing.</summary>
+    public const double OpacityBreatheLow = 0.72;
 }
