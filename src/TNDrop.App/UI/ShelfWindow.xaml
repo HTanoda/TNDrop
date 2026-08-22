@@ -185,9 +185,18 @@
                               Margin="0,6,0,4"
                               HorizontalScrollBarVisibility="Disabled"
                               VerticalScrollBarVisibility="Auto">
+                    <!-- Padding="0,8,0,0" (v1.3 Task D review round 1): reserves room, inside the
+                         scrollable viewport itself, for the hover-action pill's ~6px overhang above
+                         a card's own top edge (see Cards.xaml's ActionPill comment) - the
+                         ScrollViewer's viewport clip is always active regardless of ClipToBounds
+                         elsewhere in the tree, so at scroll offset 0 (where the shelf always opens)
+                         the topmost card's pill would otherwise have its top corners flattened
+                         against the viewport edge. Matches CardsList's own Padding below so the
+                         pinned and unpinned sections behave identically. -->
                     <ItemsControl x:Name="PinnedList"
                                   ItemsSource="{Binding PinnedCards}"
-                                  ItemTemplate="{StaticResource CardItemTemplate}">
+                                  ItemTemplate="{StaticResource CardItemTemplate}"
+                                  Padding="0,8,0,0">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Orientation="Vertical" />
@@ -200,8 +209,12 @@
                 </ScrollViewer>
             </StackPanel>
 
+            <!-- Padding="0,8,0,0" (v1.3 Task D review round 1): see PinnedList's own comment above
+                 for why - reserves room inside the ListBox's internal ScrollViewer viewport for the
+                 hover-action pill's overhang above the topmost card, at scroll offset 0. -->
             <ListBox x:Name="CardsList"
                      Grid.Row="4"
+                     Padding="0,8,0,0"
                      ItemsSource="{Binding Cards}"
                      Background="Transparent"
                      BorderThickness="0"

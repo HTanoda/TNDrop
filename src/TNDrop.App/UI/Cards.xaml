@@ -425,22 +425,32 @@
                      the invisible Delete button eat clicks/taps meant for whatever's behind it
                      when the card isn't hovered. It is now driven by the Enter/ExitActions
                      storyboards below (see the IsMouseOver trigger) instead of a plain Setter, so
-                     leaving the card fades the pill out over ~100ms instead of popping it away on
+                     leaving the card fades the pill out over ~120ms instead of popping it away on
                      the first frame - a plain Setter reverts the instant the trigger goes false,
                      which would cut the fade-out animation off before it is ever seen.
 
                      The negative top margin lets the pill overlap CardRoot's own rounded top edge,
-                     like the reference screenshot. That is safe here because nothing between this
-                     Border and the ScrollViewer clips: CardRoot has no ClipToBounds, neither does
-                     Card.ListBoxItemStyle's ContentPresenter template, and neither StackPanel nor
-                     VirtualizingStackPanel (ShelfWindow.xaml's ItemsPanel for PinnedList/CardsList)
-                     clips per item - only the ScrollViewer's own viewport does, at the very top/
-                     bottom of the scrollable area. -8 would put the pill's top edge flush with
-                     CardRoot's outer border (CardRoot's Padding="8" is what the Grid above is
-                     already inset by); the extra -6 is the actual overhang past that edge, capped
-                     there so it stays inside the 8px gap Card.ListBoxItemStyle's own
-                     Margin="0,0,0,8" leaves between one card and the next and never touches the
-                     card above. -->
+                     like the reference screenshot. Nothing BETWEEN this Border and the ScrollViewer
+                     clips it: CardRoot has no ClipToBounds, neither does Card.ListBoxItemStyle's
+                     ContentPresenter template, and neither StackPanel nor VirtualizingStackPanel
+                     (ShelfWindow.xaml's ItemsPanel for PinnedList/CardsList) clips per item. -8
+                     would put the pill's top edge flush with CardRoot's outer border (CardRoot's
+                     Padding="8" is what the Grid above is already inset by); the extra -6 is the
+                     actual overhang past that edge, capped there so it stays inside the 8px gap
+                     Card.ListBoxItemStyle's own Margin="0,0,0,8" leaves between one card and the
+                     next and never touches the card above.
+
+                     The ScrollViewer's OWN viewport clip is a separate matter, and IS always active
+                     regardless of ClipToBounds elsewhere (review round 1 finding): at scroll offset
+                     0 the topmost card sits at content Y=0, so a naive -6px overhang above it would
+                     land at Y<0 and get its top corners flattened. Fixed at the source, not by
+                     shrinking the overhang: ShelfWindow.xaml gives CardsList and PinnedList (the
+                     two ItemsControls this template renders inside) Padding="0,8,0,0" each, so the
+                     scrollable content itself starts 8px below the viewport's top edge and the
+                     6px overhang always lands inside that reserved band, at every scroll position
+                     including offset 0 - not just for the first card, since the same reservation
+                     exists at the top of the list regardless of which card ends up there after a
+                     store rebuild. -->
                 <Border x:Name="ActionPill"
                         Style="{StaticResource Card.ActionPillStyle}"
                         HorizontalAlignment="Right"
@@ -571,9 +581,10 @@
             </DataTrigger>
             <!-- ActionPill's Visibility/Opacity are animated, not Setter-driven (see the comment
                  above ActionPill itself for why): EnterActions plays a ~130ms fade in, ExitActions
-                 a ~100ms fade out with Visibility flipped to Collapsed only once that fade has
-                 actually finished (the DiscreteObjectKeyFrame's KeyTime), so leaving the card is
-                 visibly a fade rather than a pop. -->
+                 a ~120ms fade out (both inside the brief's ~120-150ms target) with Visibility
+                 flipped to Collapsed only once that fade has actually finished (the
+                 DiscreteObjectKeyFrame's KeyTime), so leaving the card is visibly a fade rather
+                 than a pop. -->
             <Trigger SourceName="CardRoot" Property="IsMouseOver" Value="True">
                 <Setter TargetName="CardRoot" Property="Background" Value="{StaticResource Card.HoverBackground}" />
                 <Trigger.EnterActions>
@@ -591,9 +602,9 @@
                     <BeginStoryboard>
                         <Storyboard>
                             <DoubleAnimation Storyboard.TargetName="ActionPill" Storyboard.TargetProperty="Opacity"
-                                             To="0" Duration="0:0:0.1" />
+                                             To="0" Duration="0:0:0.12" />
                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ActionPill" Storyboard.TargetProperty="Visibility">
-                                <DiscreteObjectKeyFrame KeyTime="0:0:0.1" Value="{x:Static Visibility.Collapsed}" />
+                                <DiscreteObjectKeyFrame KeyTime="0:0:0.12" Value="{x:Static Visibility.Collapsed}" />
                             </ObjectAnimationUsingKeyFrames>
                         </Storyboard>
                     </BeginStoryboard>
