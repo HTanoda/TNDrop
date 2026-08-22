@@ -109,8 +109,18 @@ public static class StackGestures
         target is not null
         && source is not null
         && !string.Equals(target.Id, source.Id, StringComparison.Ordinal)
-        && target.Kind == ClipKind.Files
-        && source.Kind == ClipKind.Files;
+        && IsMergeableKind(target.Kind)
+        && IsMergeableKind(source.Kind);
+
+    /// <summary>
+    /// v1.3 Task B: a card is a merge candidate when it is Kind==Files (the original v1.2 rule,
+    /// unchanged) OR Kind==Image -- a clipboard screenshot is converted to a single-path Files card
+    /// (see <see cref="Core.ItemStore.ConvertImageToFileCard"/>) at the moment the drop actually
+    /// happens, so this drag-over predicate only has to know an Image card CAN become mergeable,
+    /// not perform the conversion itself. Text/Link stay excluded: there is no merge story for them.
+    /// </summary>
+    private static bool IsMergeableKind(ClipKind kind) =>
+        kind == ClipKind.Files || kind == ClipKind.Image;
 
     /// <summary>
     /// Whether a finished row drag means "split". Both halves are required: the drop must have gone

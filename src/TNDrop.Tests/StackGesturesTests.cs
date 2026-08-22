@@ -199,12 +199,32 @@ public class StackGesturesTests
     [Theory]
     [InlineData(ClipKind.Text)]
     [InlineData(ClipKind.Link)]
-    [InlineData(ClipKind.Image)]
-    public void CanAcceptMerge_refuses_every_non_files_combination(ClipKind other)
+    public void CanAcceptMerge_refuses_every_non_mergeable_combination(ClipKind other)
     {
         Assert.False(StackGestures.CanAcceptMerge(Files("a", @"C:\1.txt"), Of("b", other)));
         Assert.False(StackGestures.CanAcceptMerge(Of("a", other), Files("b", @"C:\1.txt")));
         Assert.False(StackGestures.CanAcceptMerge(Of("a", other), Of("b", other)));
+    }
+
+    // v1.3 Task B: a clipboard screenshot (Kind=Image) is now a merge candidate too -- it is
+    // converted to a Kind=Files card at drop time (ItemStore.ConvertImageToFileCard), so the
+    // drag-over predicate only needs to admit the kind combination, not perform the conversion.
+    [Fact]
+    public void CanAcceptMerge_accepts_image_onto_files()
+    {
+        Assert.True(StackGestures.CanAcceptMerge(Files("a", @"C:\1.txt"), Of("b", ClipKind.Image)));
+    }
+
+    [Fact]
+    public void CanAcceptMerge_accepts_files_onto_image()
+    {
+        Assert.True(StackGestures.CanAcceptMerge(Of("a", ClipKind.Image), Files("b", @"C:\1.txt")));
+    }
+
+    [Fact]
+    public void CanAcceptMerge_accepts_image_onto_image()
+    {
+        Assert.True(StackGestures.CanAcceptMerge(Of("a", ClipKind.Image), Of("b", ClipKind.Image)));
     }
 
     [Fact]

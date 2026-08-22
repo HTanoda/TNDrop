@@ -108,6 +108,43 @@ public class ShelfViewModelTests : IDisposable
         Assert.Empty(vm.Cards);
     }
 
+    // v1.3 Task B: two clipboard screenshots (Kind=Image), merged via ConvertImageToFileCard +
+    // TryMergeFiles, must land in the SAME Images bucket a plain two-file image stack does -- the
+    // conversion's whole point is that a screenshot merge is indistinguishable from an ordinary
+    // image-file merge once it lands in the store.
+    [StaFact]
+    public void Converted_image_plus_image_merge_counts_two_toward_Images_not_Files()
+    {
+        Directory.CreateDirectory(_store.BlobsDir);
+        var aPath = Path.Combine(_store.BlobsDir, "shot-a.png");
+        var bPath = Path.Combine(_store.BlobsDir, "shot-b.png");
+        File.WriteAllBytes(aPath, new byte[] { 1 });
+        File.WriteAllBytes(bPath, new byte[] { 2 });
+
+        var a = new ClipItem { Kind = ClipKind.Image, ImageFile = "shot-a.png",
+            CreatedAtUtc = DateTime.UtcNow, ContentHash = 1 };
+        var b = new ClipItem { Kind = ClipKind.Image, ImageFile = "shot-b.png",
+            CreatedAtUtc = DateTime.UtcNow, ContentHash = 2 };
+        _store.TryAdd(a); _store.TryAdd(b);
+
+        Assert.NotNull(_store.ConvertImageToFileCard(a.Id, aPath));
+        Assert.NotNull(_store.ConvertImageToFileCard(b.Id, bPath));
+        Assert.True(_store.TryMergeFiles(a.Id, b.Id));
+
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(2, vm.CountImages);
+        Assert.Equal(0, vm.CountFiles);
+
+        vm.Filter = CardFilter.Images;
+        var card = Assert.Single(vm.Cards);
+        Assert.Equal(ClipKind.Files, card.Kind);
+        Assert.True(card.IsStack);
+
+        vm.Filter = CardFilter.Files;
+        Assert.Empty(vm.Cards);
+    }
+
     [StaFact]
     public void All_image_three_file_stack_counts_three_toward_Images_not_Files()
     {

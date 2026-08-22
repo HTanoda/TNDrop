@@ -254,6 +254,52 @@ public sealed partial class ItemStore
         return true;
     }
 
+    // Converts an Image item in place into the single-path Kind=Files card TryMergeFiles requires,
+    // so a clipboard screenshot can join a merge exactly like any other file card (v1.3 Task B).
+    // `filePath` is resolved by the CALLER via Platform.DragDropSource.FullImagePath -- the SAME
+    // function drag-out uses to decide what file a card hands to Explorer -- so "what file this
+    // Image card materializes as" is never answered twice (one-resolution). Returns null (no
+    // mutation) when the item is missing, is not Kind==Image, or filePath is empty (the caller
+    // already found nothing draggable, mirroring DragDropSource's own "nothing to drag" refusal).
+    //
+    // Id/Pinned/CreatedAtUtc are left untouched, so a merge that follows keeps inheriting them the
+    // same way TryMergeFiles already does for two Files cards. ImageFile/ThumbFile are cleared so
+    // the persisted card carries no Image-specific fields once Kind==Files. The now-orphaned
+    // thumbnail blob -- no longer reachable from anywhere, since CardViewModel only reads ThumbFile
+    // for Kind==Image -- is deleted right here through the same DeleteBlobIfPresent path every
+    // other blob cleanup uses, rather than left to leak (nothing will ever reference it again).
+    public ClipItem? ConvertImageToFileCard(string itemId, string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return null;
+        }
+
+        ClipItem? item;
+        string? orphanedThumb;
+
+        lock (_lock)
+        {
+            item = _items.FirstOrDefault(i => i.Id == itemId);
+            if (item == null || item.Kind != ClipKind.Image)
+            {
+                return null;
+            }
+
+            orphanedThumb = item.ThumbFile;
+
+            item.Kind = ClipKind.Files;
+            item.Paths = new List<string> { filePath };
+            item.ContentHash = Fnv1a(Encoding.UTF8.GetBytes(filePath));
+            item.ImageFile = null;
+            item.ThumbFile = null;
+        }
+
+        DeleteBlobIfPresent(orphanedThumb);
+        Changed?.Invoke();
+        return item;
+    }
+
     // Removes path from stack's Paths and creates a new single-file card at
     // the head. Returns null when path isn't present or stack isn't Files.
     // If the stack drops to a single remaining path it stays as its own card.
@@ -380,13 +426,79 @@ public sealed partial class ItemStore
     // Single blob-deletion path shared by Remove/RemoveMany/RemoveAll/PurgeOlderThan: any code
     // path that drops items from _items routes their Image blobs through here so a delete is
     // never "removed from the list but still on disk". Non-Image items have no ImageFile/
-    // ThumbFile and are no-ops.
+    // ThumbFile and are no-ops for those two calls.
+    //
+    // v1.3 Task B: a Kind==Files card can now hold a path inside BlobsDir too (an Image card
+    // converted via ConvertImageToFileCard, alone or folded into a stack by TryMergeFiles), so its
+    // Paths are checked the same way. SplitFile moves a blob path from one card's Paths to
+    // another's rather than copying it, so at any point exactly one live card's Paths references a
+    // given blob file -- deleting THAT card is what deletes the blob, and deleting any other card
+    // never can (no orphan, no double-delete).
     private void DeleteBlobsFor(List<ClipItem> items)
     {
         foreach (var item in items)
         {
             DeleteBlobIfPresent(item.ImageFile);
             DeleteBlobIfPresent(item.ThumbFile);
+
+            if (item.Kind == ClipKind.Files)
+            {
+                foreach (var path in item.Paths)
+                {
+                    DeleteBlobPathIfUnderBlobsDir(path);
+                }
+            }
+        }
+    }
+
+    // Deletes `path` ONLY when it resolves (after full-path normalization) to somewhere inside
+    // BlobsDir. A plain string prefix check on the raw path would be wrong on Windows: paths are
+    // case-insensitive, can carry "." segments or mixed slashes, and a naive prefix test would also
+    // match a sibling directory whose name merely starts with "blobs" (e.g. "blobsEvil") -- so both
+    // sides go through Path.GetFullPath and the comparison is case-insensitive with an explicit
+    // trailing separator appended to the blobs side before the StartsWith check. Anything outside
+    // BlobsDir -- every ordinary user file a ClipKind.Files card points at -- is left completely
+    // untouched; this must never become a general "delete files behind a deleted card" feature.
+    private void DeleteBlobPathIfUnderBlobsDir(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        string fullPath;
+        string blobsRoot;
+
+        try
+        {
+            fullPath = Path.GetFullPath(path);
+            blobsRoot = Path.GetFullPath(BlobsDir);
+        }
+        catch (Exception ex)
+        {
+            FileLogger.Instance?.Warn("store", $"blob-path containment check failed: {ex.GetType().Name}");
+            return;
+        }
+
+        var blobsRootWithSeparator = blobsRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? blobsRoot
+            : blobsRoot + Path.DirectorySeparatorChar;
+
+        if (!fullPath.StartsWith(blobsRootWithSeparator, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.Instance?.Warn("store", $"Failed to delete blob path: {ex.Message}");
         }
     }
 
