@@ -872,10 +872,11 @@ public partial class ShelfWindow : Window
     }
 
     /// <summary>
-    /// Refreshes the footer's card-count line from <see cref="ShelfViewModel.TotalCount"/> /
+    /// Refreshes the footer's file-count line from <see cref="ShelfViewModel.TotalCount"/> /
     /// <see cref="ShelfViewModel.VisibleCount"/> / <see cref="ShelfViewModel.IsFilterActive"/> -
-    /// the VM's single resolution for what those numbers are (see its own doc comments), so this
-    /// method only formats them, never recomputes them.
+    /// the VM's single resolution for what those numbers are (see its own doc comments, and note
+    /// v1.4 Task A: both are now file counts weighted the same way the filter badges are, not
+    /// card counts), so this method only formats them, never recomputes them.
     /// <para>Only updates <see cref="CountText"/>'s text, not its Visibility: while
     /// <see cref="StatusText"/> is showing a transient failure message, the two share the same
     /// footer cell and <see cref="ShowStatus"/>/<see cref="OnStatusTick"/> own that switch. Text

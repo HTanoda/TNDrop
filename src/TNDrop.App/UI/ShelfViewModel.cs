@@ -110,7 +110,7 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
 
     public int CountFiles => _countFiles;
 
-    /// <summary>Total items in the store, across everything - pinned and unpinned, every kind -
+    /// <summary>Total FILES in the store, across everything - pinned and unpinned, every kind -
     /// independent of the current filter/search. Backs the footer's "全 {0} 件" (v1.1 Task C).
     /// Read straight off the store rather than cached in a field: Rebuild already re-raises
     /// PropertyChanged for it on every path that could change it (a store change, or the user's
@@ -118,8 +118,16 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
     /// <para>Deliberately NOT filtered by search (unlike <see cref="CountAll"/>): this is the
     /// footer's "how much exists at all" number, and only equals CountAll once the search box is
     /// empty. Do not change one of these two without checking whether the other still needs to
-    /// agree with it in the no-search case.</para></summary>
-    public int TotalCount => _store.Items.Count;
+    /// agree with it in the no-search case.</para>
+    /// <para>v1.4 Task A: weighted by <see cref="Contribution"/> -- the SAME per-card weight the
+    /// five filter badges use (<see cref="ClipItem.IsStack"/> ? Paths.Count : 1) -- rather than a
+    /// flat <c>_store.Items.Count</c>. Before this, grouping N single-file cards into one stack
+    /// silently dropped the footer's "全 N 件" from N to 1 while the badges (already file-weighted
+    /// since v1.3 Task A) kept reading N, so the footer and the badges disagreed about how many
+    /// files existed. Reusing Contribution here instead of re-deriving the same weight a second
+    /// way is the one-resolution rule (CLAUDE.md): a stack's file count has exactly one place it
+    /// is computed.</para></summary>
+    public int TotalCount => _store.Items.Sum(Contribution);
 
     /// <summary>
     /// Count of cards actually on screen right now: the filtered/searched <see cref="Cards"/>
@@ -136,16 +144,22 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
     /// search (pre-existing v1.1 design, unchanged here). So VisibleCount can be larger than
     /// CountAll while a search is active and a pinned item does not match it. This is expected, not
     /// a drift to fix.</para>
-    /// <para>DECISION (v1.2 Task H, the pinned accordion): this stays Cards.Count +
-    /// PinnedCards.Count whether the accordion is expanded or COLLAPSED. It is an item count, not
+    /// <para>DECISION (v1.2 Task H, the pinned accordion): this keeps summing every card in both
+    /// collections whether the accordion is expanded or COLLAPSED. It is an item count, not
     /// a pixel count -- collapsing the section hides the cards behind one click without removing
     /// them from the shelf, exactly as scrolling the main list past a card does not remove it
     /// either, and neither has ever been subtracted here. Making the footer number jump when a
     /// purely visual section folds would also put this view model in the business of tracking
     /// ShelfWindow's chrome state, which it deliberately does not do (the accordion's open/closed
     /// flag lives in ShelfWindow and AppSettings.PinnedExpanded, not here).</para>
+    /// <para>v1.4 Task A: weighted by <see cref="Contribution"/>, the same per-card weight
+    /// <see cref="TotalCount"/> and the five filter badges use, rather than a flat
+    /// <c>Cards.Count + PinnedCards.Count</c>. This is the ONLY other reader of the raw card
+    /// counts besides the footer itself (checked before this change): no other consumer needs a
+    /// card-based number here, so the property is reweighted in place rather than adding a
+    /// second, differently-scoped file-count property next to it.</para>
     /// </summary>
-    public int VisibleCount => Cards.Count + PinnedCards.Count;
+    public int VisibleCount => Cards.Concat(PinnedCards).Sum(c => Contribution(c.Item));
 
     /// <summary>True while a filter other than All is active, or the search box has text - i.e.
     /// whichever moment the footer's format should switch from "全 {0} 件" to "{0} / 全 {1} 件".

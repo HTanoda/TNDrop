@@ -624,7 +624,7 @@ public sealed partial class ItemStore
         }
         catch (Exception ex)
         {
-            FileLogger.Instance?.Warn("store", $"Failed to delete blob file '{fileName}': {ex.Message}");
+            FileLogger.Instance?.Warn("store", $"Failed to delete blob file: {ex.GetType().Name}");
         }
     }
 

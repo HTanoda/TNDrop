@@ -366,6 +366,12 @@ public class ShelfViewModelTests : IDisposable
     [StaFact]
     public void VisibleCount_is_exactly_the_two_card_collections_and_knows_nothing_of_the_accordion()
     {
+        // No stack in this fixture, so every card's Contribution weight is 1 and
+        // Cards.Count + PinnedCards.Count coincides with the file-weighted VisibleCount (see the
+        // v1.4 Task A tests below for the case where that stops being true). What this test
+        // actually locks down is unaffected by the v1.4 reweighting: VisibleCount is derived from
+        // the two collections and nothing else, so this view model has no way to observe the
+        // accordion in the first place.
         Add(ClipKind.Text, "hello");
         Add(ClipKind.Link, "https://example.com/page");
         Add(ClipKind.Files, @"C:\docs\a.txt");
@@ -379,6 +385,111 @@ public class ShelfViewModelTests : IDisposable
 
         vm.SearchText = "nothing matches this";
         Assert.Equal(vm.Cards.Count + vm.PinnedCards.Count, vm.VisibleCount);
+    }
+
+    // -- v1.4 Task A: footer counts FILES, not cards, matching the badges' own weighting --------
+    //
+    // v1.3 Task A made the five filter badges (CountAll etc.) weight each card by Contribution --
+    // IsStack ? Paths.Count : 1 -- so grouping/splitting files never changes a badge's total. The
+    // footer's TotalCount/VisibleCount had not been updated to match: grouping 3 single-file
+    // cards into one stack made the badge read "すべて 3" while the footer read "全 1 件" -- same
+    // files, two different totals. These tests lock TotalCount/VisibleCount onto the same
+    // Contribution weighting the badges use, reusing that helper rather than adding a second
+    // counting path (one-resolution rule, CLAUDE.md). SelectedCount is deliberately untouched --
+    // selection operates on cards, not files, so it stays card-based.
+
+    [StaFact]
+    public void TotalCount_weighs_a_stack_by_its_file_count_not_as_one_card()
+    {
+        Add(ClipKind.Text, "a");
+        Add(ClipKind.Link, "https://example.com/page");
+        _store.TryAdd(ItemStore.BuildFileItems(
+            new[] { @"C:\docs\a.txt", @"C:\docs\b.txt", @"C:\docs\c.txt" }, DateTime.UtcNow)[0]);
+
+        var vm = new ShelfViewModel(_store);
+
+        // 3 cards on the shelf (text, link, one 3-file stack) but 5 files total.
+        Assert.Equal(3, vm.Cards.Count);
+        Assert.Equal(5, vm.TotalCount);
+        Assert.Equal(vm.TotalCount, vm.CountAll);
+    }
+
+    [StaFact]
+    public void VisibleCount_weighs_pinned_and_filtered_stacks_by_file_count()
+    {
+        Add(ClipKind.Text, "hello");
+        _store.TryAdd(ItemStore.BuildFileItems(
+            new[] { @"C:\docs\a.txt", @"C:\docs\b.txt" }, DateTime.UtcNow)[0]);
+        _store.SetPinned(_store.Items[0].Id, true); // pins the 2-file stack
+
+        var vm = new ShelfViewModel(_store);
+
+        // All filter: 1 unpinned text card (1 file) + 1 pinned 2-file stack = 3 files.
+        Assert.Equal(3, vm.VisibleCount);
+
+        vm.Filter = CardFilter.Text;
+
+        // Text filter hides the (Files) stack from Cards, but the pinned deck always shows
+        // regardless of filter -- so VisibleCount still counts its 2 files.
+        Assert.Equal(3, vm.VisibleCount);
+    }
+
+    [StaFact]
+    public void SelectedCount_stays_card_based_even_when_a_stack_is_selected()
+    {
+        // Deliberately NOT reweighted by Contribution: selection is a per-card gesture (Ctrl+click
+        // a card, not a file within it), so one selected 3-file stack must count as 1 selected
+        // card, the same as any other single selected card.
+        Add(ClipKind.Text, "a");
+        _store.TryAdd(ItemStore.BuildFileItems(
+            new[] { @"C:\docs\a.txt", @"C:\docs\b.txt", @"C:\docs\c.txt" }, DateTime.UtcNow)[0]);
+
+        var vm = new ShelfViewModel(_store);
+        Assert.Equal(2, vm.Cards.Count);
+
+        foreach (var card in vm.Cards)
+        {
+            vm.ToggleSelected(card.Id);
+        }
+
+        Assert.Equal(2, vm.SelectedCount);
+        Assert.Equal(4, vm.VisibleCount); // 1 text file + 3-file stack = 4 files, unaffected by selection
+    }
+
+    [StaFact]
+    public void Footer_counts_stay_invariant_across_a_group_then_ungroup_round_trip()
+    {
+        Add(ClipKind.Files, @"C:\docs\a.txt");
+        Add(ClipKind.Files, @"C:\docs\b.txt");
+        Add(ClipKind.Files, @"C:\docs\c.txt");
+
+        var vm = new ShelfViewModel(_store);
+
+        Assert.Equal(3, vm.Cards.Count);
+        Assert.Equal(3, vm.TotalCount);
+        Assert.Equal(3, vm.VisibleCount);
+        Assert.Equal(vm.TotalCount, vm.CountAll);
+
+        // Group two of the three single-file cards into one 2-file stack: 3 files still exist,
+        // just spread across 2 cards instead of 3. _store.Items is newest-first: [2]=c.txt's
+        // predecessor... use the ids directly rather than assuming index-to-content mapping.
+        var stackTargetId = _store.Items[1].Id;
+        var mergedAwayId = _store.Items[2].Id;
+        Assert.True(_store.TryMergeFiles(stackTargetId, mergedAwayId));
+
+        Assert.Equal(2, vm.Cards.Count);
+        Assert.Equal(3, vm.TotalCount);
+        Assert.Equal(3, vm.VisibleCount);
+        Assert.Equal(vm.TotalCount, vm.CountAll);
+
+        // Split the stack back apart: cards go back to 3, files stay at 3 throughout.
+        var created = _store.SplitAll(stackTargetId);
+        Assert.NotNull(created);
+
+        Assert.Equal(3, vm.Cards.Count);
+        Assert.Equal(3, vm.TotalCount);
+        Assert.Equal(3, vm.VisibleCount);
+        Assert.Equal(vm.TotalCount, vm.CountAll);
     }
 
     // -- v1.1 final fix wave: CountAll vs TotalCount agreement when items are pinned ----------
