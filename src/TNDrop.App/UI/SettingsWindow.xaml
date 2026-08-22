@@ -46,6 +46,39 @@
         <SolidColorBrush x:Key="Settings.HoverBorder" Color="#55FFFFFF" />
 
         <!--
+            Shared FocusVisualStyle (Task B, v1.4): WPF's own default FocusVisualStyle draws its
+            dashed keyboard-focus adorner with {DynamicResource SystemColors.ControlTextBrushKey},
+            which tracks the OS theme, not this window's own permanent dark palette - on a
+            light-theme OS (the department default) that resolves to near-black, invisible against
+            this window's #FF1A1A1F background. Confirmed in the v1.3 final review as the one
+            deliberate leftover from the Task F black-text sweep: FocusVisualStyle is an adorner
+            resolved by the focus-visual layer outside the control's own ControlTemplate, so the
+            grep-based black-pixel sweep that caught every other literal-black label never saw it.
+            One Style, referenced by a FocusVisualStyle Setter on every focusable control's own
+            Style below (CheckBox/RadioButton/ComboBox/Slider/Settings.NavButton) rather than each
+            one carrying its own copy - same one-shared-resource precedent as Settings.Border and
+            Settings.HoverBorder above. Negative margin expands the adorner rectangle outward from
+            the adorned control's own bounds (WPF resolves FocusVisualStyle against an
+            AdornedElementPlaceholder sized to the control's render bounds), so the ring sits just
+            outside each control instead of overlapping its own label/glyph.
+        -->
+        <Style x:Key="Settings.FocusVisual">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Rectangle Margin="-2"
+                                   SnapsToDevicePixels="True"
+                                   UseLayoutRounding="True"
+                                   Stroke="#B3FFFFFF"
+                                   StrokeThickness="1.5"
+                                   StrokeDashArray="1 2"
+                                   RadiusX="5" RadiusY="5" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!--
             Full re-template (Task F, v1.3), same reasoning as the ComboBox chrome below: the
             default Aero2 CheckBox glyph (the box) is drawn from PresentationFramework's own
             baked-in theme template, not this Style's plain Foreground/Background Setters -
@@ -61,6 +94,7 @@
             <Setter Property="Foreground" Value="{StaticResource Settings.Foreground}" />
             <Setter Property="Margin" Value="0,0,0,14" />
             <Setter Property="FontSize" Value="13" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource Settings.FocusVisual}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
@@ -110,6 +144,7 @@
             <Setter Property="Foreground" Value="{StaticResource Settings.Foreground}" />
             <Setter Property="Margin" Value="0,0,18,0" />
             <Setter Property="FontSize" Value="13" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource Settings.FocusVisual}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
@@ -201,6 +236,7 @@
             <Setter Property="Background" Value="#FF232329" />
             <Setter Property="BorderBrush" Value="{StaticResource Settings.Border}" />
             <Setter Property="Padding" Value="10,6" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource Settings.FocusVisual}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBox">
@@ -351,6 +387,7 @@
         </Style>
         <Style TargetType="Slider">
             <Setter Property="Height" Value="24" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource Settings.FocusVisual}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Slider">
@@ -402,6 +439,7 @@
             <Setter Property="FontSize" Value="13" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Margin" Value="6,2" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource Settings.FocusVisual}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
