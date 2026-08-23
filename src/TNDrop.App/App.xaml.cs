@@ -237,8 +237,8 @@ public partial class App : System.Windows.Application
 
             // (8) Fullscreen: while a fullscreen/presentation app owns the screen, hovering the
             // edge would fight it for the pointer, so hide the trigger band (and with it the edge
-            // hint). Capture itself keeps running -- this only stops the hover affordance, exactly
-            // like the reference app. Restored on exit from fullscreen only if hover-to-open is still the
+            // hint). Capture itself keeps running -- this only stops the hover affordance.
+            // Restored on exit from fullscreen only if hover-to-open is still the
             // user's setting.
             _fullscreenDetector = new FullscreenDetector();
             _fullscreenDetector.Changed += OnFullscreenChanged;
@@ -776,7 +776,7 @@ public partial class App : System.Windows.Application
 
     /// <summary>
     /// Fullscreen/presentation mode started or ended. Only the hover affordance is touched --
-    /// capture keeps running the whole time, matching the reference app's behavior -- and exiting
+    /// capture keeps running the whole time -- and exiting
     /// fullscreen restores the trigger band only if hover-to-open is still the user's setting
     /// (mirrors <see cref="OnHoverEnabledChanged"/>'s "true" branch).
     /// <para>The "false" (exit-fullscreen) branch below does NOT need to re-check

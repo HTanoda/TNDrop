@@ -28,8 +28,8 @@
     <!-- Hover-action pill (v1.3 Task D): a dark, near-opaque ground the pin/delete icons always
          sit on, so they stay legible over any card content including a white image - the earlier
          plain icons drawn straight onto the card were invisible there (spec feedback, referencing
-         a reference app's own pill toolbar). Alpha E6 (~90%) rather than fully opaque keeps
-         a hint of the card color coming through, matching the reference's translucency without
+         a similar pill toolbar pattern). Alpha E6 (~90%) rather than fully opaque keeps
+         a hint of the card color coming through, matching that translucency without
          risking legibility on light content. -->
     <SolidColorBrush x:Key="Card.PillBackground" Color="#E61E1E23" />
     <SolidColorBrush x:Key="Card.PillSeparator" Color="#33FFFFFF" />
