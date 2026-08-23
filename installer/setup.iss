@@ -3,7 +3,7 @@
 ; ユーザー単位 (管理者権限不要) インストール。本番機はオフライン x64 Windows のため、
 ; [Files] は dotnet publish の self-contained 出力フォルダ (dist\publish) を丸ごと同梱する。
 #define MyAppName       "TNDrop"
-#define MyAppVersion    "1.4.1"
+#define MyAppVersion    "1.4.2"
 #define MyAppPublisher  "HIROKI TANODA (TND)"
 #define MyAppCopyright  "Copyright (c) 2026 HIROKI TANODA (TND). All rights reserved."
 #define MyAppExeName    "TNDrop.exe"
@@ -24,6 +24,9 @@ DisableProgramGroupPage=yes
 OutputDir=..\dist
 OutputBaseFilename=TNDrop-Setup-{#MyAppVersion}
 SetupIconFile=..\assets\app.ico
+; MIT ライセンス全文をインストール時に表示する (v1.4.2)。英文のまま表示される
+; (ja 言語選択時も同じ英文) が、これは許容範囲の確定方針。
+LicenseFile=..\LICENSE
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2
 SolidCompression=yes

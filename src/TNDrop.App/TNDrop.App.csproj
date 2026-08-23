@@ -10,7 +10,7 @@
     <SelfContained>true</SelfContained>
     <AssemblyName>TNDrop</AssemblyName>
     <RootNamespace>TNDrop</RootNamespace>
-    <Version>1.4.1</Version>
+    <Version>1.4.2</Version>
     <Authors>HIROKI TANODA (TND)</Authors>
     <Copyright>Copyright (c) 2026 HIROKI TANODA (TND). All rights reserved.</Copyright>
     <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
@@ -26,6 +26,17 @@
          change - [Files] already copies dist\publish\* wholesale (verified by build). -->
     <Content Include="..\..\assets\README.html">
       <Link>README.html</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- v1.4.2 MIT licensing: repo-root LICENSE / THIRD-PARTY-NOTICES.txt, same
+         Link + CopyToOutputDirectory pattern as README.html above, so both land in
+         dist\publish (and therefore {app} via setup.iss's wholesale [Files] copy). -->
+    <Content Include="..\..\LICENSE">
+      <Link>LICENSE</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\THIRD-PARTY-NOTICES.txt">
+      <Link>THIRD-PARTY-NOTICES.txt</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
