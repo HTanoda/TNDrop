@@ -138,6 +138,13 @@ public partial class App : System.Windows.Application
             // change, see its doc comment.
             TextScaleMap.Apply(Settings.TextScale, Resources);
 
+            // v1.5: 自動開始デフォルト有効化の一回限り移行。自己修復より前に走らせることで、
+            // 移行で ON になった分もこの同じ起動内でレジストリ Run 値まで書かれる。
+            if (SettingsMigration.ApplyAutoStartDefault(Settings))
+            {
+                SaveSettings();
+            }
+
             // Self-heal: compares against the exact stored value, not just whether one is
             // present. AutoStart.IsEnabled() alone would miss a STALE registry value -- the exe
             // moved (reinstall, drive letter change) since the Run value was written, so it still
@@ -704,6 +711,27 @@ public partial class App : System.Windows.Application
     {
         Settings.IndicatorEnabled = value;
         SaveSettings();
+    }
+
+    /// <summary>インジケーター基準色 (v1.5)。塗り/縁/リムへの展開は IndicatorWindow.ApplyPalette
+    /// 経由で IndicatorPalette.Resolve ただ 1 か所が行う。プレビューフラッシュは呼び出し元
+    /// (SettingsWindow) が FlashIndicator で行う -- スタイル変更 (OnIndicatorStyleChanged) と
+    /// 同じ分担。</summary>
+    public static void SetIndicatorColor(string hex)
+    {
+        Settings.IndicatorColor = hex;
+        SaveSettings();
+        Indicator?.ApplyPalette();
+    }
+
+    /// <summary>フラッシュのピーク不透明度 % (v1.5)。範囲は設定 UI 側も 30..100 に固定して
+    /// いるが、公開静的メソッドなのでここでもクランプする (SettingsStore.Load と同じ範囲)。</summary>
+    public static void SetIndicatorOpacityPercent(int value)
+    {
+        Settings.IndicatorOpacityPercent = Math.Clamp(
+            value, AppSettings.MinIndicatorOpacityPercent, AppSettings.MaxIndicatorOpacityPercent);
+        SaveSettings();
+        Indicator?.ApplyPalette();
     }
 
     /// <summary>
