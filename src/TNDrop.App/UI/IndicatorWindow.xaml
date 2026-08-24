@@ -95,5 +95,47 @@
                 </Ellipse.Stroke>
             </Ellipse>
         </Grid>
+
+        <!-- Bulge (v1.5, new default): an opaque dark blob that squishes out of the edge with a
+             white glyph inside - figure/ground contrast it carries with it, so it reads on any
+             background. Drawn for the LEFT edge; FlashBulge mirrors it in place for the right
+             edge via BulgeMirror (ScaleX -1 about the horizontal center) and grows it from the
+             edge via BulgeScale (animated 0 to 1, CenterX pinned to the edge-side face). The
+             1.5px bright rim is the outline principle inverted, for dark backgrounds. -->
+        <Grid x:Name="BulgeGroup" Opacity="0" Width="34" Height="150" VerticalAlignment="Center"
+              HorizontalAlignment="Left">
+            <Grid.RenderTransform>
+                <TransformGroup>
+                    <ScaleTransform x:Name="BulgeMirror" ScaleX="1" CenterX="17" />
+                    <ScaleTransform x:Name="BulgeScale" ScaleX="0" CenterX="0" />
+                </TransformGroup>
+            </Grid.RenderTransform>
+            <Path x:Name="BulgeBody"
+                  Data="M 0,0 C 0,45 28,50 28,75 C 28,100 0,105 0,150 Z"
+                  StrokeThickness="1.5">
+                <Path.Fill>
+                    <SolidColorBrush x:Name="BulgeBodyBrush" Color="#FF325F73" />
+                </Path.Fill>
+                <Path.Stroke>
+                    <SolidColorBrush x:Name="BulgeRimBrush" Color="#FFBDE9FD" />
+                </Path.Stroke>
+            </Path>
+            <!-- White copy glyph: two rounded rectangles, the front one filled with the body
+                 color so it occludes the back one. Positioned in the blob's visual center. -->
+            <Grid Width="16" Height="18" HorizontalAlignment="Left" VerticalAlignment="Center"
+                  Margin="7,0,0,0">
+                <Border Width="11" Height="13" CornerRadius="2.5"
+                        BorderBrush="White" BorderThickness="1.5"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" />
+                <Border x:Name="BulgeGlyphFront"
+                        Width="11" Height="13" CornerRadius="2.5"
+                        BorderBrush="White" BorderThickness="1.5"
+                        HorizontalAlignment="Left" VerticalAlignment="Bottom">
+                    <Border.Background>
+                        <SolidColorBrush x:Name="BulgeGlyphFillBrush" Color="#FF325F73" />
+                    </Border.Background>
+                </Border>
+            </Grid>
+        </Grid>
     </Grid>
 </Window>

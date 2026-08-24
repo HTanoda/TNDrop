@@ -30,6 +30,14 @@ public partial class IndicatorWindow : Window
     private static readonly Duration PulseDuration = new(IndicatorTiming.Scale(450));
     private static readonly Duration CornerDuration = new(IndicatorTiming.Scale(350));
 
+    // v1.5 Bulge: 設計書パート4の絶対値。出現 350ms (軽いオーバーシュート) + 保持 400ms +
+    // 退場 300ms (同じ経路を戻る, バウンスなし) = 約 1.05s。既存 4 スタイルの
+    // IndicatorTiming.DurationBoost は「v1.3 で既存スタイルを一括で長くした」補正なので
+    // Bulge には適用しない。
+    private static readonly TimeSpan BulgeAppear = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan BulgeHold = TimeSpan.FromMilliseconds(400);
+    private static readonly TimeSpan BulgeRetract = TimeSpan.FromMilliseconds(300);
+
     // v1.5: flash's peak opacity (Settings.IndicatorOpacityPercent / 100).
     // FlashElement / FlashPulse use this instead of 1.0. Updated by ApplyPalette.
     private double _peakOpacity = 1.0;
@@ -60,7 +68,7 @@ public partial class IndicatorWindow : Window
             IndicatorPalette.TryParseHex(IndicatorPalette.DefaultColorHex, out baseColor);
         }
 
-        var (fill, outline, _) = IndicatorPalette.Resolve(baseColor.R, baseColor.G, baseColor.B);
+        var (fill, outline, rim) = IndicatorPalette.Resolve(baseColor.R, baseColor.G, baseColor.B);
         var fillColor = System.Windows.Media.Color.FromArgb(255, fill.R, fill.G, fill.B);
         var fillTransparent = System.Windows.Media.Color.FromArgb(0, fill.R, fill.G, fill.B);
         var outlineColor = System.Windows.Media.Color.FromArgb(255, outline.R, outline.G, outline.B);
@@ -78,6 +86,11 @@ public partial class IndicatorWindow : Window
         PulseStrokeBrush.Color = outlineColor;
         CornerBrush.Color = fillColor;
         CornerStrokeBrush.Color = outlineColor;
+
+        var rimColor = System.Windows.Media.Color.FromArgb(255, rim.R, rim.G, rim.B);
+        BulgeBodyBrush.Color = outlineColor;
+        BulgeGlyphFillBrush.Color = outlineColor;
+        BulgeRimBrush.Color = rimColor;
 
         _peakOpacity = (settings?.IndicatorOpacityPercent ?? 100) / 100.0;
     }
@@ -115,6 +128,9 @@ public partial class IndicatorWindow : Window
                     break;
                 case IndicatorStyle.Corner:
                     FlashElement(CornerGroup, edge, CornerDuration);
+                    break;
+                case IndicatorStyle.Bulge:
+                    FlashBulge(edge);
                     break;
             }
         }
@@ -212,6 +228,50 @@ public partial class IndicatorWindow : Window
         PulseGroup.BeginAnimation(OpacityProperty, fade);
         PulseScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, grow);
         PulseScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, grow);
+    }
+
+    /// <summary>
+    /// Bulge (v1.5): 画面端から不透明のこぶが「うにょっ」と出て、保持し、出てきた方向へ
+    /// 縮んで戻る。1 本のキーフレームアニメーション (ScaleX) にまとめてあるので、連続
+    /// キャプチャ時の restart 契約は他スタイルと同じ (途中でも先頭からやり直し)。出現の
+    /// オーバーシュート (BackEase) はこぶの物性の性格づけとして意図的 -- 退場は spatial
+    /// consistency (出た経路を戻る) を守りバウンスなしの EaseIn。右エッジは形状を
+    /// BulgeMirror でその場鏡映し、成長の支点 (BulgeScale.CenterX) をエッジ側の面に置く。
+    /// </summary>
+    private void FlashBulge(EdgeSide edge)
+    {
+        BulgeGroup.HorizontalAlignment = edge == EdgeSide.Left
+            ? System.Windows.HorizontalAlignment.Left
+            : System.Windows.HorizontalAlignment.Right;
+        BulgeMirror.ScaleX = edge == EdgeSide.Left ? 1.0 : -1.0;
+        BulgeScale.CenterX = edge == EdgeSide.Left ? 0.0 : BulgeGroup.Width;
+
+        BulgeGroup.BeginAnimation(OpacityProperty, null);
+        BulgeScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, null);
+
+        BulgeGroup.Opacity = _peakOpacity;
+        BulgeScale.ScaleX = 0.0;
+
+        var grow = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = new Duration(BulgeAppear + BulgeHold + BulgeRetract),
+            FillBehavior = FillBehavior.Stop,
+        };
+        grow.KeyFrames.Add(new EasingDoubleKeyFrame(1.0,
+            KeyTime.FromTimeSpan(BulgeAppear),
+            new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.3 }));
+        grow.KeyFrames.Add(new DiscreteDoubleKeyFrame(1.0,
+            KeyTime.FromTimeSpan(BulgeAppear + BulgeHold)));
+        grow.KeyFrames.Add(new EasingDoubleKeyFrame(0.0,
+            KeyTime.FromTimeSpan(BulgeAppear + BulgeHold + BulgeRetract),
+            new QuadraticEase { EasingMode = EasingMode.EaseIn }));
+        grow.Completed += (_, _) =>
+        {
+            BulgeScale.ScaleX = 0.0;
+            BulgeGroup.Opacity = 0.0;
+        };
+
+        BulgeScale.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, grow);
     }
 }
 
