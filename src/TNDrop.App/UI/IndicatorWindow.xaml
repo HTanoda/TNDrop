@@ -14,73 +14,86 @@
         UseLayoutRounding="True"
         Left="-1000" Top="0" Width="64" Height="400"
         Background="Transparent">
-    <!-- Every visual here starts Opacity="0"; Flash() picks one, restarts its animation, then
-         resets Opacity back to 0 when the animation completes (see IndicatorWindow.xaml.cs).
-         The window itself is click-through (WindowStyles.MakeClickThrough), so hit-testing on
-         these elements is already moot, but IsHitTestVisible="False" documents the intent.
+    <!-- Every group starts Opacity="0"; Flash() picks one, restarts its animation, then resets
+         Opacity back to 0 when the animation completes (see IndicatorWindow.xaml.cs). The window
+         is click-through (WindowStyles.MakeClickThrough), so IsHitTestVisible="False" documents
+         intent rather than changing behavior.
 
-         v1.3 Task E (review round 1): the brightened fill colors below are NOT hand-picked hex
-         literals - they are placeholders, overwritten in the constructor by
-         IndicatorBrightness.Brighten (see IndicatorWindow.xaml.cs), the single function that turns
-         a target proportional brightness gain into an actual RGB. Round 1's original fix used ONE
-         shared opaque color for all 4 styles, which measured out to a +43% gain for Beacon/Bar/
-         Pulse (baseline alpha 0xCC, lots of headroom before clipping to opaque) but only +27% for
-         Corner (baseline alpha 0xE6, most of that headroom already spent) - same final color,
-         different starting brightness, different proportional gain. Corner therefore gets its OWN
-         brighter placeholder/target (Indicator.BrandColorCorner-shaped, not shared with the other
-         3) computed from the SAME IndicatorBrightness.TargetGain, so both land at the same
-         proportional gain instead of the same absolute color. Elements are x:Name'd individually
-         (not via a shared StaticResource) specifically so the constructor can set each one's Color
-         precisely without fighting WPF's StaticResource-is-resolved-once-at-parse-time semantics. -->
+         v1.5: each style is a "body + outline" pair inside one container Grid, and the flash
+         animates the CONTAINER's opacity so both always light up together. The dark outline
+         carries visibility on bright backgrounds, the bright fill on dark ones - the production
+         feedback that started v1.5 was exactly "invisible on light desktops". All colors here are
+         placeholders overwritten by ApplyPalette() in code-behind, the single funnel from the
+         IndicatorColor setting through IndicatorPalette.Resolve; they are kept roughly correct as
+         a design-time fallback only. Elements are x:Name'd individually because StaticResource is
+         resolved once at parse time and could not be retargeted per-setting-change. -->
     <Grid IsHitTestVisible="False">
-        <!-- Beacon: a soft 6px-wide vertical light at the edge, centered on the work area. -->
-        <Rectangle x:Name="BeaconLight"
-                   Width="6" Height="140"
-                   Opacity="0"
-                   VerticalAlignment="Center">
-            <Rectangle.Fill>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                    <GradientStop x:Name="BeaconGradientStart" Offset="0.0" Color="#0076D1FB" />
-                    <GradientStop x:Name="BeaconGradientMid" Offset="0.5" Color="#FF76D1FB" />
-                    <GradientStop x:Name="BeaconGradientEnd" Offset="1.0" Color="#0076D1FB" />
-                </LinearGradientBrush>
-            </Rectangle.Fill>
-        </Rectangle>
+        <!-- Beacon: a soft 6px light with a 10px dark halo behind it, centered on the edge. -->
+        <Grid x:Name="BeaconGroup" Opacity="0" VerticalAlignment="Center">
+            <Rectangle x:Name="BeaconOutlineRect" Width="10" Height="140">
+                <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop x:Name="BeaconOutlineStart" Offset="0.0" Color="#00325F73" />
+                        <GradientStop x:Name="BeaconOutlineMid" Offset="0.5" Color="#FF325F73" />
+                        <GradientStop x:Name="BeaconOutlineEnd" Offset="1.0" Color="#00325F73" />
+                    </LinearGradientBrush>
+                </Rectangle.Fill>
+            </Rectangle>
+            <Rectangle x:Name="BeaconLight" Width="6" Height="140">
+                <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop x:Name="BeaconGradientStart" Offset="0.0" Color="#005AC8FA" />
+                        <GradientStop x:Name="BeaconGradientMid" Offset="0.5" Color="#FF5AC8FA" />
+                        <GradientStop x:Name="BeaconGradientEnd" Offset="1.0" Color="#005AC8FA" />
+                    </LinearGradientBrush>
+                </Rectangle.Fill>
+            </Rectangle>
+        </Grid>
 
-        <!-- Bar: a thin 3px bar spanning the full work-area height. -->
-        <Rectangle x:Name="BarLight"
-                   Width="3"
-                   Opacity="0"
-                   VerticalAlignment="Stretch">
-            <Rectangle.Fill>
-                <SolidColorBrush x:Name="BarBrush" Color="#FF76D1FB" />
-            </Rectangle.Fill>
-        </Rectangle>
+        <!-- Bar: a 3px bar on a 7px dark backing, spanning the full work-area height. -->
+        <Grid x:Name="BarGroup" Opacity="0" VerticalAlignment="Stretch">
+            <Rectangle x:Name="BarOutlineRect" Width="7" VerticalAlignment="Stretch">
+                <Rectangle.Fill>
+                    <SolidColorBrush x:Name="BarOutlineBrush" Color="#FF325F73" />
+                </Rectangle.Fill>
+            </Rectangle>
+            <Rectangle x:Name="BarLight" Width="3" VerticalAlignment="Stretch">
+                <Rectangle.Fill>
+                    <SolidColorBrush x:Name="BarBrush" Color="#FF5AC8FA" />
+                </Rectangle.Fill>
+            </Rectangle>
+        </Grid>
 
-        <!-- Pulse: a circle at the edge's vertical center that expands and fades. -->
-        <Ellipse x:Name="PulseCircle"
-                 Width="8" Height="8"
-                 Opacity="0"
-                 VerticalAlignment="Center"
-                 RenderTransformOrigin="0.5,0.5">
-            <Ellipse.Fill>
-                <SolidColorBrush x:Name="PulseBrush" Color="#FF76D1FB" />
-            </Ellipse.Fill>
-            <Ellipse.RenderTransform>
-                <ScaleTransform x:Name="PulseScale" ScaleX="1" ScaleY="1" />
-            </Ellipse.RenderTransform>
-        </Ellipse>
+        <!-- Pulse: an expanding circle; the 2px stroke keeps a dark rim while it grows. -->
+        <Grid x:Name="PulseGroup" Opacity="0" VerticalAlignment="Center">
+            <Ellipse x:Name="PulseCircle"
+                     Width="8" Height="8"
+                     StrokeThickness="2"
+                     RenderTransformOrigin="0.5,0.5">
+                <Ellipse.Fill>
+                    <SolidColorBrush x:Name="PulseBrush" Color="#FF5AC8FA" />
+                </Ellipse.Fill>
+                <Ellipse.Stroke>
+                    <SolidColorBrush x:Name="PulseStrokeBrush" Color="#FF325F73" />
+                </Ellipse.Stroke>
+                <Ellipse.RenderTransform>
+                    <ScaleTransform x:Name="PulseScale" ScaleX="1" ScaleY="1" />
+                </Ellipse.RenderTransform>
+            </Ellipse>
+        </Grid>
 
-        <!-- Corner: a small dot near the bottom of the work area, on the edge side. Its own
-             (brighter) brush - see the comment above the Grid for why. -->
-        <Ellipse x:Name="CornerDot"
-                 Width="10" Height="10"
-                 Opacity="0"
-                 VerticalAlignment="Bottom"
-                 Margin="0,0,0,24">
-            <Ellipse.Fill>
-                <SolidColorBrush x:Name="CornerBrush" Color="#FFA6E1FC" />
-            </Ellipse.Fill>
-        </Ellipse>
+        <!-- Corner: a small outlined dot near the bottom of the work area. -->
+        <Grid x:Name="CornerGroup" Opacity="0" VerticalAlignment="Bottom" Margin="0,0,0,24">
+            <Ellipse x:Name="CornerDot"
+                     Width="10" Height="10"
+                     StrokeThickness="1.5">
+                <Ellipse.Fill>
+                    <SolidColorBrush x:Name="CornerBrush" Color="#FF5AC8FA" />
+                </Ellipse.Fill>
+                <Ellipse.Stroke>
+                    <SolidColorBrush x:Name="CornerStrokeBrush" Color="#FF325F73" />
+                </Ellipse.Stroke>
+            </Ellipse>
+        </Grid>
     </Grid>
 </Window>

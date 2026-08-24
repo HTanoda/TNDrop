@@ -28,6 +28,13 @@ public partial class EdgeTriggerWindow : Window
     /// or recompute the trigger rect on every tick; see the fields below and Place's doc comment.</summary>
     private static readonly TimeSpan HintPollInterval = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>Alpha for the persistent hover beacon's mid-stop (v1.4.1 Task A). This lamp is
+    /// NOT user-configurable (unlike IndicatorWindow's flash, which reads
+    /// Settings.IndicatorColor/IndicatorOpacityPercent via ApplyPalette) - it always uses this
+    /// fixed alpha over IndicatorPalette's DEFAULT base RGB, which is what keeps it dimmer than
+    /// IndicatorWindow's momentary flash while still sitting in the same color family.</summary>
+    private const byte HintBeaconAlpha = 0xCC;
+
     private AppSettings? _settings;
     private bool _applying;
     private bool _reapplyRequested;
@@ -62,15 +69,16 @@ public partial class EdgeTriggerWindow : Window
     {
         InitializeComponent();
 
-        // v1.4.1 Task A: the beacon's mid-stop color comes from IndicatorBrightness's base (NOT
-        // Brighten()'d) RGB/alpha -- one source for the brand hue instead of a second hand-picked
-        // hex literal in XAML that could drift from it. Using the base (pre-Brighten) values, not
-        // Brighten()'s output, is what keeps this persistent lamp dimmer than IndicatorWindow's
-        // momentary flash while still sitting in the same color family; see the XAML comment above
-        // HintBeacon for the fuller rationale.
+        // v1.4.1 Task A (v1.5: source retired from IndicatorBrightness to IndicatorPalette when
+        // IndicatorBrightness was removed): the beacon's mid-stop color comes from
+        // IndicatorPalette's DEFAULT base RGB at a fixed alpha -- one source for the brand hue
+        // instead of a second hand-picked hex literal in XAML that could drift from it. This
+        // lamp intentionally does NOT read Settings.IndicatorColor (unlike IndicatorWindow's
+        // flash) - see HintBeaconAlpha's doc comment; see the XAML comment above HintBeacon for
+        // the fuller rationale.
+        IndicatorPalette.TryParseHex(IndicatorPalette.DefaultColorHex, out var hintBaseColor);
         HintBeaconMidStop.Color = System.Windows.Media.Color.FromArgb(
-            IndicatorBrightness.BaseAlphaShared,
-            IndicatorBrightness.BaseR, IndicatorBrightness.BaseG, IndicatorBrightness.BaseB);
+            HintBeaconAlpha, hintBaseColor.R, hintBaseColor.G, hintBaseColor.B);
 
         MouseEnter += (_, _) => Triggered?.Invoke();
         DpiChanged += OnDpiChanged;
@@ -401,9 +409,10 @@ public partial class EdgeTriggerWindow : Window
 /// The one place the fade duration, breathing half-cycle, and breathing opacity range are decided,
 /// so a future edit cannot silently drift the beacon into the "aggressive strobing" (too-short fade,
 /// too-fast breathing) or "unnoticeable" (near-zero breathing amplitude) territory the brief rules
-/// out, without a test noticing -- the same role <see cref="IndicatorTiming"/> and
-/// <see cref="IndicatorBrightness"/> play for IndicatorWindow. Public, not internal, for the same
-/// reason those two are: TNDrop.Tests references TNDrop.App as an ordinary project reference with no
+/// out, without a test noticing -- the same role <see cref="IndicatorTiming"/> plays for
+/// IndicatorWindow (v1.5: IndicatorBrightness, the pre-v1.5 analogue for color, was retired and
+/// replaced by <see cref="TNDrop.Core.IndicatorPalette"/>). Public, not internal, for the same
+/// reason: TNDrop.Tests references TNDrop.App as an ordinary project reference with no
 /// InternalsVisibleTo.
 /// </summary>
 public static class HintBeaconTiming
