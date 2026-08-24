@@ -342,6 +342,7 @@ public partial class ShelfWindow : Window
 
         _retractTimer.Interval = TimeSpan.FromMilliseconds(Math.Clamp(s.RetractDelayMs, 100, 10_000));
         _pinned = s.ShelfPinned;
+        UpdatePinButtonVisual();
 
         // A settings change mid-slide-out finishes the retract rather than leaving the shelf
         // parked halfway with no timer running.
@@ -646,6 +647,11 @@ public partial class ShelfWindow : Window
         // alongside the tray's private event handler), × slides the shelf out exactly like the
         // retract timer. Tooltips only, no Content text -- Header.IconButtonStyle sizes these as
         // small square icon buttons.
+        // Pin (v1.5 追補): クリックでトグルし、見た目・タイマー・永続化をこの場で更新する。
+        // Settings への書き込み経路はこのハンドラ経由の App.SetShelfPinned だけ。
+        HeaderPinButton.Click += (_, _) => OnPinButtonClick();
+        UpdatePinButtonVisual();
+
         HeaderSettingsButton.ToolTip = Strings.HeaderSettingsTooltip;
         HeaderSettingsButton.Click += (_, _) => global::TNDrop.App.OpenSettingsWindow();
 
@@ -2036,6 +2042,38 @@ public partial class ShelfWindow : Window
             FileLogger.Instance?.Warn(Module, "help open failed: start-error");
             ShowStatus(Strings.HelpOpenFailed);
         }
+    }
+
+    private void OnPinButtonClick()
+    {
+        _pinned = !_pinned;
+        global::TNDrop.App.SetShelfPinned(_pinned);
+        UpdatePinButtonVisual();
+
+        if (_pinned)
+        {
+            _retractTimer.Stop();
+        }
+        else
+        {
+            ArmRetractIfPointerOutside();
+        }
+    }
+
+    /// <summary>ピンボタンのオン/オフ表示 (v1.5 追補)。ピン中はグリフを E840 (pinned) +
+    /// アクセント色にし、うっすら固定背景でトグルのオン状態を常時見せる。ホバー時は
+    /// Header.IconButtonStyle のテンプレートトリガーが背景を上書きするので、ここで設定する
+    /// Background は非ホバー時の土台だけを受け持つ。</summary>
+    private void UpdatePinButtonVisual()
+    {
+        HeaderPinButton.ToolTip = _pinned ? Strings.HeaderPinActiveTooltip : Strings.HeaderPinTooltip;
+        HeaderPinIcon.Text = _pinned ? "\uE840" : "\uE718";
+        HeaderPinIcon.Foreground = _pinned
+            ? (Brush)FindResource("Card.SelectedAccent")
+            : (Brush)FindResource("Card.Foreground");
+        HeaderPinButton.Background = _pinned
+            ? new SolidColorBrush(Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF))
+            : System.Windows.Media.Brushes.Transparent;
     }
 
     /// <summary>

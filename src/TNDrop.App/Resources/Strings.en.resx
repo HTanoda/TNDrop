@@ -353,6 +353,12 @@
   <data name="HeaderHideTooltip" xml:space="preserve">
     <value>Hide the shelf</value>
   </data>
+  <data name="HeaderPinTooltip" xml:space="preserve">
+    <value>Keep the shelf open</value>
+  </data>
+  <data name="HeaderPinActiveTooltip" xml:space="preserve">
+    <value>Unpin the shelf</value>
+  </data>
   <data name="HelpButtonTooltip" xml:space="preserve">
     <value>Help</value>
   </data>

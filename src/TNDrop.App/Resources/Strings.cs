@@ -126,6 +126,11 @@ internal static class Strings
     // Shelf header + footer (v1.1 Task C): the ⚙/× buttons' tooltips and the card-count line.
     public static string HeaderSettingsTooltip => Get(nameof(HeaderSettingsTooltip));
     public static string HeaderHideTooltip => Get(nameof(HeaderHideTooltip));
+
+    // Pin button (v1.5 addendum): toggles auto-retract suppression -- see ShelfWindow's
+    // UpdatePinButtonVisual, which picks between these two based on _pinned.
+    public static string HeaderPinTooltip => Get(nameof(HeaderPinTooltip));
+    public static string HeaderPinActiveTooltip => Get(nameof(HeaderPinActiveTooltip));
     public static string TotalCountFormat => Get(nameof(TotalCountFormat));
     public static string FilteredCountFormat => Get(nameof(FilteredCountFormat));
 

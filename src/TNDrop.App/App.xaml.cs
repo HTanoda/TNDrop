@@ -765,6 +765,16 @@ public partial class App : System.Windows.Application
     /// 更新してからこれを呼ぶ。</summary>
     public static void SetShelfPinned(bool value)
     {
+        // Null-guarded, same reason as SetPinnedExpanded above: this one's caller is the SHELF's
+        // pin button click handler, and ShelfWindow's constructor wires that handler unconditionally
+        // -- so this can be reached before App.OnStartup ever runs (the XAML designer, a probe).
+        // Settings is `null!` until OnStartup assigns it, so an unguarded write would take those
+        // hosts down on a header click.
+        if (Settings is null)
+        {
+            return;
+        }
+
         Settings.ShelfPinned = value;
         SaveSettings();
     }

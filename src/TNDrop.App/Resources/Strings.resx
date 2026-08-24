@@ -353,6 +353,12 @@
   <data name="HeaderHideTooltip" xml:space="preserve">
     <value>シェルフを隠す</value>
   </data>
+  <data name="HeaderPinTooltip" xml:space="preserve">
+    <value>ピン止めして開いたままにする</value>
+  </data>
+  <data name="HeaderPinActiveTooltip" xml:space="preserve">
+    <value>ピン止めを解除</value>
+  </data>
   <data name="HelpButtonTooltip" xml:space="preserve">
     <value>使い方</value>
   </data>

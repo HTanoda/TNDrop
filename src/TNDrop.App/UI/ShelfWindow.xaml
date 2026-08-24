@@ -40,16 +40,18 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- Header (v1.1 Task C): app name left, settings (opens the same window the tray's
+            <!-- Header (v1.1 Task C): app name left, pin (v1.5 addendum, suppresses auto-retract -
+                 see ShelfWindow.OnPinButtonClick), settings (opens the same window the tray's
                  own "設定..." menu item opens - see App.OpenSettingsWindow), help (v1.3.1, opens
                  the bundled README.html - see ShelfWindow.OnHelpButtonClick) and hide (SlideOut,
                  same as the retract timer) right, in that order - matching the "?" button's slot
                  between the gear and the × in the README's own hero mockup (assets/README.html).
-                 All three buttons use Header.IconButtonStyle (Cards.xaml), which sets
+                 All four buttons use Header.IconButtonStyle (Cards.xaml), which sets
                  Focusable=False so a click never steals keyboard focus. -->
             <Grid Grid.Row="0" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
@@ -68,18 +70,33 @@
                            FontWeight="SemiBold"
                            Foreground="#FFF2F2F7" />
 
-                <Button x:Name="HeaderSettingsButton"
+                <!-- Pin (v1.5 addendum): toggles auto-retract suppression. A Segoe MDL2 Assets
+                     glyph (E718 pin / E840 pinned) instead of a text char so Foreground can carry
+                     the on-state accent - emoji glyphs ignore Foreground. Visual state is swapped
+                     in code-behind (UpdatePinButtonVisual), same Header.IconButtonStyle as its
+                     neighbors. -->
+                <Button x:Name="HeaderPinButton"
                         Grid.Column="1"
+                        Style="{StaticResource Header.IconButtonStyle}">
+                    <TextBlock x:Name="HeaderPinIcon"
+                               FontFamily="Segoe MDL2 Assets"
+                               FontSize="13"
+                               Text="&#xE718;"
+                               Foreground="{StaticResource Card.Foreground}" />
+                </Button>
+
+                <Button x:Name="HeaderSettingsButton"
+                        Grid.Column="2"
                         Content="&#9881;"
                         Style="{StaticResource Header.IconButtonStyle}" />
 
                 <Button x:Name="HeaderHelpButton"
-                        Grid.Column="2"
+                        Grid.Column="3"
                         Content="?"
                         Style="{StaticResource Header.IconButtonStyle}" />
 
                 <Button x:Name="HeaderHideButton"
-                        Grid.Column="3"
+                        Grid.Column="4"
                         Content="&#215;"
                         Style="{StaticResource Header.IconButtonStyle}" />
             </Grid>
