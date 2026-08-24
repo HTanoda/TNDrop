@@ -43,6 +43,16 @@ public sealed class SettingsStore
             settings.HistoryCapacity = Math.Clamp(
                 settings.HistoryCapacity, AppSettings.MinHistoryCapacity, AppSettings.MaxHistoryCapacity);
 
+            // v1.5: 同じ「どこから来た値でも読む前に直す」方針。透明度は範囲クランプ、
+            // 色はパース不能ならデフォルトへ (以降の読み手は常にパース可能とみなせる)。
+            settings.IndicatorOpacityPercent = Math.Clamp(
+                settings.IndicatorOpacityPercent,
+                AppSettings.MinIndicatorOpacityPercent, AppSettings.MaxIndicatorOpacityPercent);
+            if (!IndicatorPalette.TryParseHex(settings.IndicatorColor, out _))
+            {
+                settings.IndicatorColor = IndicatorPalette.DefaultColorHex;
+            }
+
             return settings;
         }
         catch

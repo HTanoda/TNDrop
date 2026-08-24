@@ -4,7 +4,7 @@ public enum EdgeSide { Left, Right }
 public enum TriggerAlign { Top, Center, Bottom }
 public enum AutoDeletePolicy { Off, Hours1, Hours6, Hours24, Days7 }
 public enum TextScale { Small, Normal, Medium, Large }
-public enum IndicatorStyle { Beacon, Bar, Pulse, Corner }
+public enum IndicatorStyle { Beacon, Bar, Pulse, Corner, Bulge }
 
 public sealed class AppSettings
 {
@@ -22,12 +22,15 @@ public sealed class AppSettings
     public TriggerAlign TriggerAlign { get; set; } = TriggerAlign.Center;
     public int RetractDelayMs { get; set; } = 800;
     public bool SoundsEnabled { get; set; } = true;
-    public bool AutoStartEnabled { get; set; } = false;
+
+    /// <summary>v1.5 からデフォルト有効。既存プロファイルへの一回限りの適用は
+    /// <see cref="SettingsMigration.ApplyAutoStartDefault"/> が担う。</summary>
+    public bool AutoStartEnabled { get; set; } = true;
     public bool IncognitoMode { get; set; } = false;
     public AutoDeletePolicy AutoDelete { get; set; } = AutoDeletePolicy.Off;
     public bool MoveToTopOnCopy { get; set; } = true;
     public TextScale TextScale { get; set; } = TextScale.Normal;
-    public IndicatorStyle IndicatorStyle { get; set; } = IndicatorStyle.Beacon;
+    public IndicatorStyle IndicatorStyle { get; set; } = IndicatorStyle.Bulge;
     public string Language { get; set; } = "ja";
     public bool HoverEnabled { get; set; } = true;
 
@@ -64,4 +67,22 @@ public sealed class AppSettings
     /// process in front, search-box focus, physical modifier keys) this flag deliberately does
     /// not encode.</summary>
     public bool PasteOnClick { get; set; } = true;
+
+    /// <summary>Allowed range for <see cref="IndicatorOpacityPercent"/>; SettingsStore.Load
+    /// clamps into this range. 下限 30 は「設定したのに全く見えない」事故防止 (v1.5)。</summary>
+    public const int MinIndicatorOpacityPercent = 30;
+    public const int MaxIndicatorOpacityPercent = 100;
+
+    /// <summary>インジケーター基準色 "#RRGGBB" (v1.5)。ここから塗り/縁/リムを導出する
+    /// のは IndicatorPalette.Resolve ただ 1 か所。パース不能な値は SettingsStore.Load が
+    /// デフォルトに置き換えるので、読む側は常にパース可能とみなしてよい。</summary>
+    public string IndicatorColor { get; set; } = IndicatorPalette.DefaultColorHex;
+
+    /// <summary>フラッシュのピーク不透明度 (%) (v1.5)。IndicatorWindow が 1.0 の代わりに
+    /// この値 /100 をピークに使う。</summary>
+    public int IndicatorOpacityPercent { get; set; } = 100;
+
+    /// <summary>自動開始デフォルト有効化 (v1.5) の一回限り移行が済んだか。
+    /// <see cref="SettingsMigration.ApplyAutoStartDefault"/> だけが立てる。</summary>
+    public bool AutoStartDefaultMigrated { get; set; } = false;
 }

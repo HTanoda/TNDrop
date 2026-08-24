@@ -151,4 +151,66 @@ public class SettingsStoreTests : IDisposable
         store.Save(new AppSettings { Edge = EdgeSide.Right });
         Assert.Contains("\"Right\"", File.ReadAllText(Path.Combine(_dir, "settings.json")));
     }
+
+    // v1.5: インジケーター色/透明度の新設定と、自動開始・スタイルの新デフォルト。
+    [Fact]
+    public void Load_returns_defaults_for_the_v1_5_settings_when_file_missing()
+    {
+        var s = new SettingsStore(_dir).Load();
+        Assert.Equal("#5AC8FA", s.IndicatorColor);
+        Assert.Equal(100, s.IndicatorOpacityPercent);
+        Assert.True(s.AutoStartEnabled);            // v1.4 までは false だった
+        Assert.False(s.AutoStartDefaultMigrated);   // 移行は App.OnStartup 側の責務
+        Assert.Equal(IndicatorStyle.Bulge, s.IndicatorStyle);
+    }
+
+    [Fact]
+    public void Load_clamps_indicator_opacity_into_range()
+    {
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings { IndicatorOpacityPercent = 29 });
+        Assert.Equal(30, store.Load().IndicatorOpacityPercent);
+        store.Save(new AppSettings { IndicatorOpacityPercent = 101 });
+        Assert.Equal(100, store.Load().IndicatorOpacityPercent);
+    }
+
+    [Theory]
+    [InlineData("xyz")]
+    [InlineData("#12")]
+    [InlineData("")]
+    public void Load_falls_back_to_default_color_for_unparsable_hex(string bad)
+    {
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings { IndicatorColor = bad });
+        Assert.Equal(IndicatorPalette.DefaultColorHex, store.Load().IndicatorColor);
+    }
+
+    [Fact]
+    public void Load_keeps_a_valid_non_preset_color()
+    {
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings { IndicatorColor = "#123456" });
+        Assert.Equal("#123456", store.Load().IndicatorColor);
+    }
+
+    // 旧バージョンの settings.json (キーなし) はコード側デフォルトで埋まる。
+    // ここで AutoStartEnabled が true で埋まっても、実際の有効化は移行関数 +
+    // 起動時自己修復が担う (SettingsMigrationTests を参照)。
+    [Fact]
+    public void Load_fills_in_v1_5_defaults_for_an_older_settings_file()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "settings.json"), """
+            {
+              "Edge": "Right",
+              "IndicatorStyle": "Bar"
+            }
+            """);
+
+        var s = new SettingsStore(_dir).Load();
+        Assert.Equal(IndicatorStyle.Bar, s.IndicatorStyle); // 既存ユーザーのスタイルは尊重
+        Assert.Equal("#5AC8FA", s.IndicatorColor);
+        Assert.Equal(100, s.IndicatorOpacityPercent);
+        Assert.False(s.AutoStartDefaultMigrated);
+    }
 }
