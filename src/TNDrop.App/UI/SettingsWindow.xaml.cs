@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -532,6 +533,7 @@ public partial class SettingsWindow : Window
                 ToolTip = name,
                 IsChecked = string.Equals(settings.IndicatorColor, hex, StringComparison.OrdinalIgnoreCase),
             };
+            AutomationProperties.SetName(swatch, name);
             swatch.Checked += (_, _) => OnIndicatorColorChanged(hex);
             IndicatorColorSwatchPanel.Children.Add(swatch);
         }

@@ -716,10 +716,13 @@ public partial class App : System.Windows.Application
     /// <summary>インジケーター基準色 (v1.5)。塗り/縁/リムへの展開は IndicatorWindow.ApplyPalette
     /// 経由で IndicatorPalette.Resolve ただ 1 か所が行う。プレビューフラッシュは呼び出し元
     /// (SettingsWindow) が FlashIndicator で行う -- スタイル変更 (OnIndicatorStyleChanged) と
-    /// 同じ分担。</summary>
+    /// 同じ分担。公開静的メソッドなので、パース不能な値は SettingsStore.Load と同じく
+    /// IndicatorPalette.DefaultColorHex にフォールバックする防御。</summary>
     public static void SetIndicatorColor(string hex)
     {
-        Settings.IndicatorColor = hex;
+        Settings.IndicatorColor = IndicatorPalette.TryParseHex(hex, out _)
+            ? hex
+            : IndicatorPalette.DefaultColorHex;
         SaveSettings();
         Indicator?.ApplyPalette();
     }
