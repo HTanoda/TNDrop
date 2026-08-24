@@ -85,4 +85,9 @@ public sealed class AppSettings
     /// <summary>自動開始デフォルト有効化 (v1.5) の一回限り移行が済んだか。
     /// <see cref="SettingsMigration.ApplyAutoStartDefault"/> だけが立てる。</summary>
     public bool AutoStartDefaultMigrated { get; set; } = false;
+
+    /// <summary>シェルフのピン止め (v1.5 追補): true の間は自動格納のカウントダウンを
+    /// 起動しない (ShelfRetract.ShouldArm)。ヘッダーのピンボタンが唯一の書き込み手で、
+    /// App.SetShelfPinned 経由で永続化される。PinnedExpanded と同じ view-state パターン。</summary>
+    public bool ShelfPinned { get; set; } = false;
 }

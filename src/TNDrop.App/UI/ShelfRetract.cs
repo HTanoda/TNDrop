@@ -32,10 +32,24 @@ public static class ShelfRetract
     ///
     /// <para>A hidden shelf never arms: it has nothing to retract, and a live timer would fire
     /// against the next appearance instead.</para>
+    ///
+    /// <para><paramref name="pinned"/> (v1.5 追補) overrides every other term: while pinned, no
+    /// countdown is ever armed, regardless of pointer or grace state. Pinned means "suppress
+    /// auto-retract"; an explicit close (the shelf's × button / SlideOut) does not go through this
+    /// rule at all, so pinning never blocks the user from closing the shelf on purpose.</para>
     /// </summary>
-    public static bool ShouldArm(bool isVisible, bool pointerInside, bool dragOpenGraceActive)
+    public static bool ShouldArm(bool isVisible, bool pinned, bool pointerInside, bool dragOpenGraceActive)
     {
         if (!isVisible)
+        {
+            return false;
+        }
+
+        // v1.5: ピン中は何があってもカウントダウンを起動しない。ピンは「自動格納の抑止」
+        // だけを意味し、明示的な閉じる (× / SlideOut 呼び出し) はこの関数を通らないので
+        // 従来どおり効く。ピン中のシェルフは × で常に閉じられるため、「タイマーのない
+        // 可視シェルフは詰む」という上の段落の前提はピンには当てはまらない。
+        if (pinned)
         {
             return false;
         }

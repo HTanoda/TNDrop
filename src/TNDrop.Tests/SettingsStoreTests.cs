@@ -213,4 +213,19 @@ public class SettingsStoreTests : IDisposable
         Assert.Equal(100, s.IndicatorOpacityPercent);
         Assert.False(s.AutoStartDefaultMigrated);
     }
+
+    // v1.5 追補: シェルフのピン止め (ヘッダーのピンボタン)。既定 false、再起動後も保持。
+    [Fact]
+    public void Load_returns_default_shelf_pinned_false_when_file_missing()
+    {
+        Assert.False(new SettingsStore(_dir).Load().ShelfPinned);
+    }
+
+    [Fact]
+    public void Save_then_load_roundtrips_shelf_pinned()
+    {
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings { ShelfPinned = true });
+        Assert.True(store.Load().ShelfPinned);
+    }
 }

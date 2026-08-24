@@ -19,7 +19,7 @@ public class ShelfRetractTests
         // reached the shelf yet (so no MouseEnter and no DragEnter has happened), and the ONLY
         // thing holding it open is the self-expiring grace -- which is also why IsPointerInside is
         // true. This must still arm, or nothing will ever retract the shelf.
-        Assert.True(ShelfRetract.ShouldArm(isVisible: true, pointerInside: true, dragOpenGraceActive: true));
+        Assert.True(ShelfRetract.ShouldArm(isVisible: true, pinned: false, pointerInside: true, dragOpenGraceActive: true));
     }
 
     [Fact]
@@ -28,7 +28,7 @@ public class ShelfRetractTests
         // The next tick after the deadline passes: the grace term drops out of IsPointerInside and
         // the plain rule takes over. Same answer, reached by the other branch -- which is what makes
         // the retract actually happen on that tick.
-        Assert.True(ShelfRetract.ShouldArm(isVisible: true, pointerInside: false, dragOpenGraceActive: false));
+        Assert.True(ShelfRetract.ShouldArm(isVisible: true, pinned: false, pointerInside: false, dragOpenGraceActive: false));
     }
 
     // ---- the ordinary rule is unchanged -------------------------------------------------------
@@ -36,13 +36,13 @@ public class ShelfRetractTests
     [Fact]
     public void A_pointer_on_the_shelf_suppresses_the_countdown()
     {
-        Assert.False(ShelfRetract.ShouldArm(isVisible: true, pointerInside: true, dragOpenGraceActive: false));
+        Assert.False(ShelfRetract.ShouldArm(isVisible: true, pinned: false, pointerInside: true, dragOpenGraceActive: false));
     }
 
     [Fact]
     public void Nothing_holding_a_visible_shelf_arms_it()
     {
-        Assert.True(ShelfRetract.ShouldArm(isVisible: true, pointerInside: false, dragOpenGraceActive: false));
+        Assert.True(ShelfRetract.ShouldArm(isVisible: true, pinned: false, pointerInside: false, dragOpenGraceActive: false));
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public class ShelfRetractTests
         // Reachable in practice: OnShelfDragLeave re-arms while a grace from an earlier
         // SlideInForDrag has not been cleared yet. Arming is right either way -- the tick handler
         // re-evaluates.
-        Assert.True(ShelfRetract.ShouldArm(isVisible: true, pointerInside: false, dragOpenGraceActive: true));
+        Assert.True(ShelfRetract.ShouldArm(isVisible: true, pinned: false, pointerInside: false, dragOpenGraceActive: true));
     }
 
     // ---- a hidden shelf never arms ------------------------------------------------------------
@@ -65,6 +65,28 @@ public class ShelfRetractTests
     {
         // Including with the grace still running: OnSelfVisibleChanged clears it, but a timer armed
         // against a hidden shelf would fire into the NEXT appearance rather than this one.
-        Assert.False(ShelfRetract.ShouldArm(isVisible: false, pointerInside, dragOpenGraceActive));
+        Assert.False(ShelfRetract.ShouldArm(isVisible: false, pinned: false, pointerInside, dragOpenGraceActive));
+    }
+
+    // ---- v1.5: ピン止めは自動格納を一切起動しない --------------------------------------------
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void A_pinned_shelf_never_arms(bool pointerInside, bool dragOpenGraceActive)
+    {
+        // ピンは「自動格納の抑止」そのもの。pointer/grace のどの組合せでもタイマーを
+        // 起動しない。明示的な閉じる (×) は ShouldArm を通らないので影響を受けない。
+        Assert.False(ShelfRetract.ShouldArm(
+            isVisible: true, pinned: true, pointerInside, dragOpenGraceActive));
+    }
+
+    [Fact]
+    public void A_hidden_shelf_never_arms_even_when_pinned()
+    {
+        Assert.False(ShelfRetract.ShouldArm(
+            isVisible: false, pinned: true, pointerInside: false, dragOpenGraceActive: false));
     }
 }

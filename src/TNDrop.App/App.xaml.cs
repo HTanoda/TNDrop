@@ -760,6 +760,15 @@ public partial class App : System.Windows.Application
         SaveSettings();
     }
 
+    /// <summary>シェルフのピン止め (v1.5 追補)。SetPinnedExpanded と同じく永続化のみで
+    /// 伝播なし: 描画する ShelfWindow 自身が唯一の呼び出し元で、自分の見た目とタイマーを
+    /// 更新してからこれを呼ぶ。</summary>
+    public static void SetShelfPinned(bool value)
+    {
+        Settings.ShelfPinned = value;
+        SaveSettings();
+    }
+
     /// <summary>Click-to-paste on Text/Link cards (v1.2 Task H): persisted here, enforced in one
     /// place -- <see cref="TNDrop.UI.ClickPaste.ShouldPasteOnClick"/>, read fresh on every click --
     /// so no live push to the shelf is needed.</summary>

@@ -111,6 +111,10 @@ public partial class ShelfWindow : Window
     private readonly DispatcherTimer _retractTimer;
     private readonly DispatcherTimer _statusTimer;
 
+    // v1.5 追補: 自動格納の抑止 (ヘッダーのピンボタン)。Settings.ShelfPinned と常に同値。
+    // 書き込みはピンボタンのクリックハンドラだけ (Task B)、ここは ApplySettings で読むのみ。
+    private bool _pinned;
+
     private AppSettings? _settings;
     private EdgeSide _edge = EdgeSide.Left;
     private double _shownX;
@@ -337,6 +341,7 @@ public partial class ShelfWindow : Window
         PinnedScroll.MaxHeight = Math.Max(PinnedMinMaxHeightDip, rect.H * PinnedMaxHeightFraction);
 
         _retractTimer.Interval = TimeSpan.FromMilliseconds(Math.Clamp(s.RetractDelayMs, 100, 10_000));
+        _pinned = s.ShelfPinned;
 
         // A settings change mid-slide-out finishes the retract rather than leaving the shelf
         // parked halfway with no timer running.
@@ -568,7 +573,7 @@ public partial class ShelfWindow : Window
         // exact defect the v1.2 Task B probe caught (a drag-opened shelf that armed no timer and so
         // could never notice its own grace expiring). This method is only the wiring: read the live
         // state, ask, start.
-        if (ShelfRetract.ShouldArm(IsVisible, IsPointerInside, IsWithinDragOpenGrace))
+        if (ShelfRetract.ShouldArm(IsVisible, _pinned, IsPointerInside, IsWithinDragOpenGrace))
         {
             _retractTimer.Start();
         }
@@ -576,6 +581,14 @@ public partial class ShelfWindow : Window
 
     private void OnRetractTick(object? sender, EventArgs e)
     {
+        if (_pinned)
+        {
+            // ピン操作とタイマー発火の競合対策の二重ガード。ピンした瞬間にクリックハンドラ
+            // (Task B) が Stop するが、その前にキューされた 1 tick がここに届き得る。
+            _retractTimer.Stop();
+            return;
+        }
+
         if (IsPointerInside)
         {
             // Suppressed, not cancelled. Re-arm rather than drop the timer: if IsPointerInside is
