@@ -463,6 +463,40 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- Circular color swatch (v1.5): a RadioButton whose Background carries the preset
+             color (set per instance in code-behind, where the swatches are built from the same
+             preset table that maps hex to name). Re-templated for the same reason as
+             CheckBox/RadioButton above - every color must be a Setter here, not an ambient
+             default. The outer ring shows the checked state. -->
+        <Style x:Key="Settings.ColorSwatch" TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource Settings.FocusVisual}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid Width="26" Height="26">
+                            <Ellipse x:Name="Ring" Stroke="Transparent" StrokeThickness="2" />
+                            <Ellipse Width="18" Height="18"
+                                     Fill="{TemplateBinding Background}"
+                                     Stroke="#33FFFFFF" StrokeThickness="1" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource Settings.Foreground}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource Settings.HoverBorder}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         </ResourceDictionary>
     </Window.Resources>
 
@@ -633,12 +667,26 @@
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">
                             <TextBlock x:Name="IndicatorStyleLabelText" Style="{StaticResource Settings.SectionLabel}" />
                             <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="IndicatorBulgeRadio" GroupName="IndicatorStyle" />
                                 <RadioButton x:Name="IndicatorBeaconRadio" GroupName="IndicatorStyle" />
                                 <RadioButton x:Name="IndicatorBarRadio" GroupName="IndicatorStyle" />
                                 <RadioButton x:Name="IndicatorPulseRadio" GroupName="IndicatorStyle" />
                                 <RadioButton x:Name="IndicatorCornerRadio" GroupName="IndicatorStyle" />
                             </StackPanel>
                             <TextBlock x:Name="IndicatorStyleDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <StackPanel Style="{StaticResource Settings.FieldGroup}">
+                            <TextBlock x:Name="IndicatorColorLabelText" Style="{StaticResource Settings.SectionLabel}" />
+                            <StackPanel x:Name="IndicatorColorSwatchPanel" Orientation="Horizontal" />
+                            <TextBlock x:Name="IndicatorColorDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <StackPanel Style="{StaticResource Settings.FieldGroup}">
+                            <TextBlock x:Name="IndicatorOpacityLabelText" Style="{StaticResource Settings.SectionLabel}" />
+                            <Slider x:Name="IndicatorOpacitySlider" Width="220" HorizontalAlignment="Left" />
+                            <TextBlock x:Name="IndicatorOpacityValueText" Style="{StaticResource Settings.HintText}" />
+                            <TextBlock x:Name="IndicatorOpacityDescText" Style="{StaticResource Settings.HintText}" TextWrapping="Wrap" />
                         </StackPanel>
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">

@@ -275,6 +275,48 @@
   <data name="SettingsIndicatorStyleCorner" xml:space="preserve">
     <value>コーナー</value>
   </data>
+  <data name="SettingsIndicatorStyleBulge" xml:space="preserve">
+    <value>ふくらみ</value>
+  </data>
+  <data name="SettingsIndicatorColor" xml:space="preserve">
+    <value>色</value>
+  </data>
+  <data name="SettingsIndicatorColorDesc" xml:space="preserve">
+    <value>フラッシュの基準色。縁取りの濃色は自動で導出されます。</value>
+  </data>
+  <data name="SettingsIndicatorOpacity" xml:space="preserve">
+    <value>透明度</value>
+  </data>
+  <data name="SettingsIndicatorOpacityValueFormat" xml:space="preserve">
+    <value>{0}%</value>
+  </data>
+  <data name="SettingsIndicatorOpacityDesc" xml:space="preserve">
+    <value>フラッシュの濃さ。100% が最も見えやすい設定です。</value>
+  </data>
+  <data name="SettingsIndicatorColorSkyBlue" xml:space="preserve">
+    <value>水色</value>
+  </data>
+  <data name="SettingsIndicatorColorBlue" xml:space="preserve">
+    <value>青</value>
+  </data>
+  <data name="SettingsIndicatorColorGreen" xml:space="preserve">
+    <value>緑</value>
+  </data>
+  <data name="SettingsIndicatorColorOrange" xml:space="preserve">
+    <value>オレンジ</value>
+  </data>
+  <data name="SettingsIndicatorColorRed" xml:space="preserve">
+    <value>レッド</value>
+  </data>
+  <data name="SettingsIndicatorColorPurple" xml:space="preserve">
+    <value>パープル</value>
+  </data>
+  <data name="SettingsIndicatorColorWhite" xml:space="preserve">
+    <value>白</value>
+  </data>
+  <data name="SettingsIndicatorColorGray" xml:space="preserve">
+    <value>グレー</value>
+  </data>
   <data name="SettingsIndicatorEnabled" xml:space="preserve">
     <value>コピーインジケーター</value>
   </data>

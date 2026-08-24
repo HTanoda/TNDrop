@@ -489,18 +489,68 @@ public partial class SettingsWindow : Window
 
         IndicatorStyleLabelText.Text = Strings.SettingsIndicatorStyle;
         IndicatorStyleDescText.Text = Strings.SettingsIndicatorStyleDesc;
+        IndicatorBulgeRadio.Content = Strings.SettingsIndicatorStyleBulge;
         IndicatorBeaconRadio.Content = Strings.SettingsIndicatorStyleBeacon;
         IndicatorBarRadio.Content = Strings.SettingsIndicatorStyleBar;
         IndicatorPulseRadio.Content = Strings.SettingsIndicatorStylePulse;
         IndicatorCornerRadio.Content = Strings.SettingsIndicatorStyleCorner;
+        IndicatorBulgeRadio.IsChecked = settings.IndicatorStyle == IndicatorStyle.Bulge;
         IndicatorBeaconRadio.IsChecked = settings.IndicatorStyle == IndicatorStyle.Beacon;
         IndicatorBarRadio.IsChecked = settings.IndicatorStyle == IndicatorStyle.Bar;
         IndicatorPulseRadio.IsChecked = settings.IndicatorStyle == IndicatorStyle.Pulse;
         IndicatorCornerRadio.IsChecked = settings.IndicatorStyle == IndicatorStyle.Corner;
+        IndicatorBulgeRadio.Checked += (_, _) => OnIndicatorStyleChanged(IndicatorStyle.Bulge);
         IndicatorBeaconRadio.Checked += (_, _) => OnIndicatorStyleChanged(IndicatorStyle.Beacon);
         IndicatorBarRadio.Checked += (_, _) => OnIndicatorStyleChanged(IndicatorStyle.Bar);
         IndicatorPulseRadio.Checked += (_, _) => OnIndicatorStyleChanged(IndicatorStyle.Pulse);
         IndicatorCornerRadio.Checked += (_, _) => OnIndicatorStyleChanged(IndicatorStyle.Corner);
+
+        // インジケーターの色 (v1.5): プリセット 8 色のスワッチ。保存値は HEX そのもの。
+        // プリセット外の (手書きされた) 有効な HEX はどのスワッチも選択されないまま尊重
+        // される -- SettingsStore.Load がパース可能性は保証済み。
+        IndicatorColorLabelText.Text = Strings.SettingsIndicatorColor;
+        IndicatorColorDescText.Text = Strings.SettingsIndicatorColorDesc;
+        (string Hex, string Name)[] colorPresets =
+        {
+            ("#5AC8FA", Strings.SettingsIndicatorColorSkyBlue),
+            ("#0A84FF", Strings.SettingsIndicatorColorBlue),
+            ("#34C759", Strings.SettingsIndicatorColorGreen),
+            ("#FF9F0A", Strings.SettingsIndicatorColorOrange),
+            ("#FF453A", Strings.SettingsIndicatorColorRed),
+            ("#BF5AF2", Strings.SettingsIndicatorColorPurple),
+            ("#FFFFFF", Strings.SettingsIndicatorColorWhite),
+            ("#8E8E93", Strings.SettingsIndicatorColorGray),
+        };
+        foreach (var (hex, name) in colorPresets)
+        {
+            var swatch = new System.Windows.Controls.RadioButton
+            {
+                Style = (Style)FindResource("Settings.ColorSwatch"),
+                GroupName = "IndicatorColor",
+                Background = new SolidColorBrush(
+                    (Color)System.Windows.Media.ColorConverter.ConvertFromString(hex)),
+                ToolTip = name,
+                IsChecked = string.Equals(settings.IndicatorColor, hex, StringComparison.OrdinalIgnoreCase),
+            };
+            swatch.Checked += (_, _) => OnIndicatorColorChanged(hex);
+            IndicatorColorSwatchPanel.Children.Add(swatch);
+        }
+
+        // 透明度 (v1.5): RetractDelaySlider と同じ Slider 部品・同じ wiring 形。
+        IndicatorOpacityLabelText.Text = Strings.SettingsIndicatorOpacity;
+        IndicatorOpacityDescText.Text = Strings.SettingsIndicatorOpacityDesc;
+        IndicatorOpacitySlider.Minimum = AppSettings.MinIndicatorOpacityPercent;
+        IndicatorOpacitySlider.Maximum = AppSettings.MaxIndicatorOpacityPercent;
+        IndicatorOpacitySlider.TickFrequency = 5;
+        IndicatorOpacitySlider.IsSnapToTickEnabled = true;
+        IndicatorOpacitySlider.Value = settings.IndicatorOpacityPercent;
+        UpdateIndicatorOpacityText(settings.IndicatorOpacityPercent);
+        IndicatorOpacitySlider.ValueChanged += (_, e) =>
+        {
+            var value = (int)Math.Round(e.NewValue);
+            UpdateIndicatorOpacityText(value);
+            OnIndicatorOpacityChanged(value);
+        };
 
         LanguageLabelText.Text = Strings.SettingsLanguage;
         LanguageDescText.Text = Strings.SettingsLanguageDesc;
@@ -534,6 +584,7 @@ public partial class SettingsWindow : Window
     {
         IndicatorStyleLabelText.IsEnabled = enabled;
         IndicatorStyleLabelText.Opacity = enabled ? 1.0 : 0.4;
+        IndicatorBulgeRadio.IsEnabled = enabled;
         IndicatorBeaconRadio.IsEnabled = enabled;
         IndicatorBarRadio.IsEnabled = enabled;
         IndicatorPulseRadio.IsEnabled = enabled;
@@ -544,6 +595,21 @@ public partial class SettingsWindow : Window
         // the group visibly greys out.
         IndicatorStyleDescText.IsEnabled = enabled;
         IndicatorStyleDescText.Opacity = enabled ? 1.0 : 0.4;
+
+        // Color + opacity groups (v1.5): dim together with the style picker above, same reasoning
+        // -- neither is a meaningful choice while the indicator itself is off.
+        IndicatorColorLabelText.IsEnabled = enabled;
+        IndicatorColorLabelText.Opacity = enabled ? 1.0 : 0.4;
+        IndicatorColorSwatchPanel.IsEnabled = enabled;
+        IndicatorColorDescText.IsEnabled = enabled;
+        IndicatorColorDescText.Opacity = enabled ? 1.0 : 0.4;
+        IndicatorOpacityLabelText.IsEnabled = enabled;
+        IndicatorOpacityLabelText.Opacity = enabled ? 1.0 : 0.4;
+        IndicatorOpacitySlider.IsEnabled = enabled;
+        IndicatorOpacityValueText.IsEnabled = enabled;
+        IndicatorOpacityValueText.Opacity = enabled ? 1.0 : 0.4;
+        IndicatorOpacityDescText.IsEnabled = enabled;
+        IndicatorOpacityDescText.Opacity = enabled ? 1.0 : 0.4;
     }
 
     private void OnTextScaleChanged(TextScale scale)
@@ -567,6 +633,41 @@ public partial class SettingsWindow : Window
 
         global::TNDrop.App.SetIndicatorStyle(style);
         global::TNDrop.App.FlashIndicator(style, global::TNDrop.App.Settings.Edge);
+    }
+
+    /// <summary>色変更 (v1.5): 適用してから、スタイル変更と同じテストフラッシュで
+    /// 「その色が画面端でどう見えるか」を見せる。</summary>
+    private void OnIndicatorColorChanged(string hex)
+    {
+        if (_initializing)
+        {
+            return;
+        }
+
+        global::TNDrop.App.SetIndicatorColor(hex);
+        global::TNDrop.App.FlashIndicator(
+            global::TNDrop.App.Settings.IndicatorStyle, global::TNDrop.App.Settings.Edge);
+    }
+
+    /// <summary>透明度変更 (v1.5): ドラッグ中も毎変更でフラッシュを restart するので、
+    /// つまみを動かしている間は実質プレビューが出続ける。</summary>
+    private void OnIndicatorOpacityChanged(int value)
+    {
+        if (_initializing)
+        {
+            return;
+        }
+
+        global::TNDrop.App.SetIndicatorOpacityPercent(value);
+        global::TNDrop.App.FlashIndicator(
+            global::TNDrop.App.Settings.IndicatorStyle, global::TNDrop.App.Settings.Edge);
+    }
+
+    private void UpdateIndicatorOpacityText(int value)
+    {
+        IndicatorOpacityValueText.Text = string.Format(
+            CultureInfo.CurrentUICulture,
+            Strings.SettingsIndicatorOpacityValueFormat, value);
     }
 
     private void OnLanguageChanged(string language)

@@ -275,6 +275,48 @@
   <data name="SettingsIndicatorStyleCorner" xml:space="preserve">
     <value>Corner</value>
   </data>
+  <data name="SettingsIndicatorStyleBulge" xml:space="preserve">
+    <value>Bulge</value>
+  </data>
+  <data name="SettingsIndicatorColor" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="SettingsIndicatorColorDesc" xml:space="preserve">
+    <value>Base color of the flash. The dark outline shade is derived automatically.</value>
+  </data>
+  <data name="SettingsIndicatorOpacity" xml:space="preserve">
+    <value>Opacity</value>
+  </data>
+  <data name="SettingsIndicatorOpacityValueFormat" xml:space="preserve">
+    <value>{0}%</value>
+  </data>
+  <data name="SettingsIndicatorOpacityDesc" xml:space="preserve">
+    <value>Strength of the flash. 100% is the most visible.</value>
+  </data>
+  <data name="SettingsIndicatorColorSkyBlue" xml:space="preserve">
+    <value>Sky Blue</value>
+  </data>
+  <data name="SettingsIndicatorColorBlue" xml:space="preserve">
+    <value>Blue</value>
+  </data>
+  <data name="SettingsIndicatorColorGreen" xml:space="preserve">
+    <value>Green</value>
+  </data>
+  <data name="SettingsIndicatorColorOrange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="SettingsIndicatorColorRed" xml:space="preserve">
+    <value>Red</value>
+  </data>
+  <data name="SettingsIndicatorColorPurple" xml:space="preserve">
+    <value>Purple</value>
+  </data>
+  <data name="SettingsIndicatorColorWhite" xml:space="preserve">
+    <value>White</value>
+  </data>
+  <data name="SettingsIndicatorColorGray" xml:space="preserve">
+    <value>Gray</value>
+  </data>
   <data name="SettingsIndicatorEnabled" xml:space="preserve">
     <value>Copy indicator</value>
   </data>
