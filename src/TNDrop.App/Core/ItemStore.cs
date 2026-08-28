@@ -64,10 +64,15 @@ public sealed partial class ItemStore
 
     public event Action? Changed;
 
-    // Fires once per successful Save(), OUTSIDE _lock (see Save()'s remarks) so that a handler
-    // is free to call back into CopyDataTo/ReadDecryptedJson (both of which take _lock
-    // themselves) without deadlocking. This is the daily-auto-backup trigger Task 5's
-    // BackupService subscribes to; it never fires when Save() catches and logs a failure.
+    // Fires once per successful Save(), OUTSIDE _lock. lock/Monitor is re-entrant on the same
+    // thread, so a handler calling back into CopyDataTo/ReadDecryptedJson would not deadlock
+    // even if raised from inside the lock -- the real reasons to raise outside are (1) a handler
+    // is arbitrary code we don't control, and one that blocks waiting on ANOTHER thread that
+    // itself needs _lock (e.g. a Dispatcher.Invoke back onto the UI thread while that thread is
+    // blocked on _lock) genuinely can deadlock, and (2) holding _lock across a slow handler (a
+    // multi-file backup copy) would stall every other Save/Load/TryAdd on the capture path behind
+    // it. This is the daily-auto-backup trigger Task 5's BackupService subscribes to; it never
+    // fires when Save() catches and logs a failure.
     public event Action? Saved;
 
     public bool LoadFailed { get; private set; }
@@ -706,8 +711,9 @@ public sealed partial class ItemStore
             }
         }
 
-        // Raised outside _lock (see Saved's remarks): a handler that calls CopyDataTo or
-        // ReadDecryptedJson would otherwise re-enter _lock on the same thread and deadlock.
+        // Raised outside _lock -- see Saved's remarks: the risk isn't same-thread re-entrancy
+        // (lock is re-entrant) but an arbitrary handler blocking on another thread that needs
+        // _lock, or a slow handler stalling the next Save/Load/TryAdd behind it.
         if (ok)
         {
             Saved?.Invoke();
@@ -734,6 +740,12 @@ public sealed partial class ItemStore
 
             var destBlobsDir = Path.Combine(destDir, "blobs");
             Directory.CreateDirectory(destBlobsDir);
+
+            // BlobsDir is created best-effort in the constructor (its own try/catch just logs on
+            // failure), so it is not guaranteed to exist here -- Directory.GetFiles throws
+            // DirectoryNotFoundException on a missing directory, which would turn a legitimately
+            // empty/never-created blobs dir into a hard failure of the whole copy.
+            Directory.CreateDirectory(BlobsDir);
 
             foreach (var blobPath in Directory.GetFiles(BlobsDir))
             {
@@ -804,6 +816,24 @@ public sealed partial class ItemStore
     // loudly; Task 5's rollback path relies on catching this exception before anything changes.
     // The same TryLoadFrom() call that validates srcDir's items.dat also produces the item list
     // used for the in-memory swap below -- one parse, not a validate-then-reload-again pair.
+    //
+    // items.dat is swapped the SAME way Save() writes it -- via _tmpPath then File.Replace (or
+    // File.Move when there is no existing items.dat) -- rather than delete-then-copy. A
+    // delete-then-copy sequence has a window, after items.bak is deleted and before the new file
+    // lands, where a crash leaves NEITHER a live items.dat NOR a recovery .bak: the next Load()
+    // would then report a fresh install and the user's whole history is silently gone. The atomic
+    // swap never deletes _bakPath itself; when srcDir has no items.dat (restoring to empty
+    // history), only the live _itemsPath is deleted and the existing _bakPath is left in place as
+    // the recovery copy.
+    //
+    // Caller contract: an InvalidDataException means nothing on disk or in memory was touched.
+    // Any OTHER exception thrown after the items.dat swap below leaves items.dat and _items
+    // consistent with each other (they are always updated together, before any blob I/O runs) but
+    // the blobs\ directory's contents are indeterminate -- blob delete/copy is best-effort
+    // (per-file catch-and-warn, matching DeleteBlobIfPresent's convention elsewhere in this file)
+    // specifically so that one locked/inaccessible blob file cannot leave items.dat and _items
+    // out of sync with each other, at the cost of a possible partial blobs\ swap the caller may
+    // need to re-run or report.
     public void ReplaceDataFrom(string srcDir)
     {
         var srcItemsPath = Path.Combine(srcDir, "items.dat");
@@ -825,29 +855,45 @@ public sealed partial class ItemStore
                 newItems = new List<ClipItem>();
             }
 
-            if (File.Exists(_itemsPath))
+            // Atomic items.dat swap, same shape as Save(): stage into _tmpPath, then
+            // File.Replace (existing items.dat -> becomes the new .bak) or File.Move (no existing
+            // items.dat). _bakPath is never deleted here -- see the remarks above.
+            if (File.Exists(srcItemsPath))
+            {
+                File.Copy(srcItemsPath, _tmpPath, overwrite: true);
+
+                if (File.Exists(_itemsPath))
+                {
+                    File.Replace(_tmpPath, _itemsPath, _bakPath);
+                }
+                else
+                {
+                    File.Move(_tmpPath, _itemsPath);
+                }
+            }
+            else if (File.Exists(_itemsPath))
             {
                 File.Delete(_itemsPath);
             }
 
-            if (File.Exists(_bakPath))
-            {
-                File.Delete(_bakPath);
-            }
+            // Commit the in-memory swap immediately after the on-disk items.dat swap, and BEFORE
+            // any blob I/O -- see the caller-contract remarks above.
+            _items = newItems;
 
-            if (File.Exists(_tmpPath))
-            {
-                File.Delete(_tmpPath);
-            }
-
-            if (File.Exists(srcItemsPath))
-            {
-                File.Copy(srcItemsPath, _itemsPath, overwrite: true);
-            }
+            // BlobsDir is created best-effort in the constructor, so it is not guaranteed to
+            // exist here (see CopyDataTo's matching comment).
+            Directory.CreateDirectory(BlobsDir);
 
             foreach (var existingBlob in Directory.GetFiles(BlobsDir))
             {
-                File.Delete(existingBlob);
+                try
+                {
+                    File.Delete(existingBlob);
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.Instance?.Warn("store", $"Failed to delete blob during restore: {ex.GetType().Name}");
+                }
             }
 
             var srcBlobsDir = Path.Combine(srcDir, "blobs");
@@ -855,11 +901,16 @@ public sealed partial class ItemStore
             {
                 foreach (var blobPath in Directory.GetFiles(srcBlobsDir))
                 {
-                    File.Copy(blobPath, Path.Combine(BlobsDir, Path.GetFileName(blobPath)), overwrite: true);
+                    try
+                    {
+                        File.Copy(blobPath, Path.Combine(BlobsDir, Path.GetFileName(blobPath)), overwrite: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        FileLogger.Instance?.Warn("store", $"Failed to copy blob during restore: {ex.GetType().Name}");
+                    }
                 }
             }
-
-            _items = newItems;
         }
 
         // Raised outside _lock, matching every other mutator in this file (TryAdd/Remove/etc.).

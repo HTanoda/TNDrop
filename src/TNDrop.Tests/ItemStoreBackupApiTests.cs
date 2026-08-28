@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using TNDrop.Core;
 
@@ -99,6 +100,15 @@ public class ItemStoreBackupApiTests : IDisposable
         File.WriteAllBytes(Path.Combine(_dest, "items.dat"), new byte[] { 1, 2, 3, 4 });
 
         Assert.Throws<InvalidDataException>(() => source.ReplaceDataFrom(_dest));
+
+        // Contract: InvalidDataException means nothing was touched -- neither the live store's
+        // in-memory items nor its own items.dat on disk changed.
+        Assert.Contains(source.Items, i => i.Text == "keep");
+
+        var reloaded = new ItemStore(_dir);
+        reloaded.Load();
+        Assert.False(reloaded.LoadFailed);
+        Assert.Contains(reloaded.Items, i => i.Text == "keep");
     }
 
     [Fact]
@@ -116,5 +126,32 @@ public class ItemStoreBackupApiTests : IDisposable
         Assert.True(changed);
         Assert.Contains(source.Items, i => i.Text == "new-content");
         Assert.DoesNotContain(source.Items, i => i.Text == "old-content");
+    }
+
+    [Fact]
+    public void ReplaceDataFrom_ReplacesBlobsWithSourceDirBlobsOnly()
+    {
+        var source = NewStoreWithOneItem("old-content");
+        File.WriteAllBytes(Path.Combine(source.BlobsDir, "old.png"), new byte[] { 1 });
+
+        var stagingStore = new ItemStore(_dest);
+        stagingStore.TryAdd(new ClipItem { Kind = ClipKind.Text, Text = "new-content", CreatedAtUtc = DateTime.UtcNow });
+        stagingStore.Save();
+        File.WriteAllBytes(Path.Combine(stagingStore.BlobsDir, "new1.png"), new byte[] { 2, 2 });
+        File.WriteAllBytes(Path.Combine(stagingStore.BlobsDir, "new2.png"), new byte[] { 3, 3, 3 });
+
+        var changed = false;
+        source.Changed += () => changed = true;
+        source.ReplaceDataFrom(_dest);
+
+        Assert.True(changed);
+        Assert.Contains(source.Items, i => i.Text == "new-content");
+        Assert.DoesNotContain(source.Items, i => i.Text == "old-content");
+
+        var remainingBlobNames = Directory.GetFiles(source.BlobsDir)
+            .Select(Path.GetFileName)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+        Assert.Equal(new[] { "new1.png", "new2.png" }, remainingBlobNames);
     }
 }
