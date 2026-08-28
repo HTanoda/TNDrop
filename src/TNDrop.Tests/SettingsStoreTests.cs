@@ -228,4 +228,24 @@ public class SettingsStoreTests : IDisposable
         store.Save(new AppSettings { ShelfPinned = true });
         Assert.True(store.Load().ShelfPinned);
     }
+
+    // v1.6: 自動バックアップの有効化と最後の実行日時。
+    [Fact]
+    public void BackupSettings_RoundTrip()
+    {
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings { AutoBackupEnabled = false, LastAutoBackupDate = "2026-08-29" });
+
+        var s = store.Load();
+        Assert.False(s.AutoBackupEnabled);
+        Assert.Equal("2026-08-29", s.LastAutoBackupDate);
+    }
+
+    [Fact]
+    public void BackupSettings_Defaults()
+    {
+        var s = new AppSettings();
+        Assert.True(s.AutoBackupEnabled);
+        Assert.Equal("", s.LastAutoBackupDate);
+    }
 }

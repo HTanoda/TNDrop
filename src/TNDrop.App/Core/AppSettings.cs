@@ -90,4 +90,11 @@ public sealed class AppSettings
     /// 起動しない (ShelfRetract.ShouldArm)。ヘッダーのピンボタンが唯一の書き込み手で、
     /// App.SetShelfPinned 経由で永続化される。PinnedExpanded と同じ view-state パターン。</summary>
     public bool ShelfPinned { get; set; } = false;
+
+    /// <summary>v1.6: 自動バックアップ (日次 + 終了時) を有効にするか。手動/退避には影響しない。</summary>
+    public bool AutoBackupEnabled { get; set; } = true;
+
+    /// <summary>v1.6: 最後に日次自動バックアップを取った日 ("yyyy-MM-dd"、ローカル日付)。
+    /// 同日 2 回目の日次バックアップを抑止するための記録で、空文字は「まだ一度もない」。</summary>
+    public string LastAutoBackupDate { get; set; } = "";
 }
