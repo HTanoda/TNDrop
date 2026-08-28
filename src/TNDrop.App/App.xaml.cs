@@ -54,12 +54,23 @@ public partial class App : System.Windows.Application
     private static Task? _pendingDailyBackup;
 
     /// <summary>
-    /// <see cref="OnSessionEnding"/> が終了時バックアップを取り終えたか (v1.6 最終レビュー修正)。
-    /// OS がそのままシャットダウンへ進むと直後に OnExit も走るため、これが無いと OS の締め切りの
-    /// 中で**同じ内容をもう一度 ZIP 化**することになる。トレイからの終了は SessionEnding を
-    /// 通らないので、このフラグは false のままで OnExit が通常どおりバックアップを取る。
+    /// <see cref="OnSessionEnding"/> が終了時バックアップを取り終えた時刻 (UTC。未取得は
+    /// <see cref="DateTime.MinValue"/>)。v1.6 最終レビュー修正。
+    /// <para>真偽値ではなく**時刻**なのは、このハンドラが実行時点では
+    /// 「シャットダウンがこのまま進むのか、他アプリに拒否されるのか」を知り得ないため。
+    /// 真偽値だと、9:00 に拒否されたサインアウトのフラグが立ちっぱなしになり、17:00 の
+    /// トレイ終了でその日の最後のバックアップを黙って飛ばしてしまう。時刻 +
+    /// <see cref="SessionEndBackupSkipWindow"/> なら、判定を「直前に取ったか」に狭められる。</para>
     /// </summary>
-    private bool _sessionEndBackupDone;
+    private DateTime _sessionEndBackupAtUtc = DateTime.MinValue;
+
+    /// <summary>
+    /// <see cref="OnSessionEnding"/> のバックアップ直後の OnExit が、自分の分を省いてよい猶予。
+    /// シャットダウンがそのまま進む場合、OnExit は SessionEnding の数ミリ秒〜数百ミリ秒後に走る
+    /// ので 30 秒は十分に広く、かつ「拒否されて何時間も動き続けた後のトレイ終了」を確実に外す
+    /// ほどには狭い。
+    /// </summary>
+    private static readonly TimeSpan SessionEndBackupSkipWindow = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// How long a resume-from-sleep or unlock keeps <see cref="ClipboardMonitor.IgnoreUntil"/>
@@ -357,11 +368,16 @@ public partial class App : System.Windows.Application
         // where Settings/Backup were never assigned.
         try
         {
-            if (_sessionEndBackupDone)
+            if (DateTime.UtcNow - _sessionEndBackupAtUtc < SessionEndBackupSkipWindow)
             {
-                // SessionEnding が既に同じ内容を ZIP 化している (OS はそのままシャットダウンへ
-                // 進んだ)。OS の締め切りの中でもう一度回す価値はない。
-                FileLogger.Instance?.Info("backup", "exit backup skipped; the session-ending backup already made it");
+                // ついさっき SessionEnding が同じ内容を ZIP 化したところ = OS はそのまま
+                // シャットダウンへ進んでおり、OnExit はその数ミリ秒後に走っている。OS の
+                // 締め切りの中で同じ内容をもう一度 ZIP 化する価値はないので省く。
+                // 逆に、サインアウトが他アプリに拒否されて何時間も動き続けた後のトレイ終了は
+                // この猶予の外に出るので、通常どおりバックアップを取る (真偽値フラグだと
+                // 拒否されたサインアウトの痕跡が立ちっぱなしになり、その日の最後の
+                // バックアップを黙って飛ばしてしまう)。
+                FileLogger.Instance?.Info("backup", "exit backup skipped; the session-ending backup just made it");
             }
             else if (Settings?.AutoBackupEnabled == true)
             {
@@ -1109,11 +1125,14 @@ public partial class App : System.Windows.Application
 
             if (Settings?.AutoBackupEnabled == true)
             {
-                // 成功したときだけ OnExit の分を省く (失敗したなら OnExit にもう一度やらせる)。
-                // 既知の割り切り: 他アプリが WM_QUERYENDSESSION を拒否してシャットダウンが
-                // 取り消された場合、このフラグは立ったまま残り、その後のトレイ終了で OnExit の
-                // バックアップが省かれる。二重 ZIP 化を避ける側を優先した判断。
-                _sessionEndBackupDone = Backup?.CreateBackup(BackupKind.Auto) is not null;
+                // 成功したときだけ時刻を記録する (失敗したなら OnExit にもう一度やらせる)。
+                // 真偽値ではなく時刻なのは、このハンドラは実行時点では「シャットダウンが
+                // このまま進むのか、他アプリに拒否されるのか」を知り得ないため —
+                // <see cref="_sessionEndBackupAtUtc"/> と OnExit 側の判定を参照。
+                if (Backup?.CreateBackup(BackupKind.Auto) is not null)
+                {
+                    _sessionEndBackupAtUtc = DateTime.UtcNow;
+                }
             }
         }
         catch (Exception ex)
