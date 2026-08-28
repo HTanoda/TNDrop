@@ -74,6 +74,9 @@
   <data name="TraySettings" xml:space="preserve">
     <value>設定...</value>
   </data>
+  <data name="TrayBackup" xml:space="preserve">
+    <value>データのバックアップ・移行...</value>
+  </data>
   <data name="TrayAbout" xml:space="preserve">
     <value>TNDrop について</value>
   </data>

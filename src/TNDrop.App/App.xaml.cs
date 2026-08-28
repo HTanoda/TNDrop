@@ -72,6 +72,13 @@ public partial class App : System.Windows.Application
     /// </summary>
     public static IndicatorWindow? Indicator { get; private set; }
 
+    /// <summary>
+    /// バックアップ / 復元 / 移行のファイル層 (v1.6)。<see cref="Indicator"/> と同じく OnStartup が
+    /// そこまで進むまで null なので、呼び出し側は必ず null チェックする (テストホストと
+    /// デザイナでは常に null)。
+    /// </summary>
+    public static BackupService? Backup { get; private set; }
+
     public static void SaveSettings() => SettingsStore.Save(Settings);
 
     protected override void OnStartup(StartupEventArgs e)
@@ -163,6 +170,15 @@ public partial class App : System.Windows.Application
             Store = new ItemStore(DataDir);
             Store.Load();
 
+            // (4a) Backup (v1.6): built right after the store it copies from, before the restart
+            // purge below -- its constructor also sweeps a leftover tmp\ from a previous crash,
+            // which is startup housekeeping that should happen whether or not anything else runs.
+            // Store.Saved drives the once-a-day automatic backup (see OnStoreSaved); SessionEnding
+            // and OnExit cover the shutdown/sign-out paths.
+            Backup = new BackupService(DataDir, Store);
+            Store.Saved += OnStoreSaved;
+            SessionEnding += OnSessionEnding;
+
             // (4b) Restart purge (v1.2 Task E): if the user asked for it, drop every unpinned item
             // right after Load, before anything else (tray, shelf, pipeline) can read the store.
             // Counted up front rather than trusting RemoveAll's return value (it has none) --
@@ -189,6 +205,7 @@ public partial class App : System.Windows.Application
             // driftable copy of "what changing incognito mode does".
             _trayIcon.IncognitoChanged += SetIncognitoMode;
             _trayIcon.OpenSettingsRequested += OnOpenSettingsRequested;
+            _trayIcon.BackupDialogRequested += OnBackupDialogRequested;
             _trayIcon.ExitRequested += OnExitRequested;
 
             Sounds = new SoundService(() => Settings.SoundsEnabled);
@@ -290,6 +307,24 @@ public partial class App : System.Windows.Application
         _autoDelete?.Dispose();
 
         Store?.Save();
+
+        // Exit-time backup (v1.6, 設計書 §4). Runs after the Save above so the ZIP contains what
+        // the user actually leaves behind. Store.Save() may already have produced today's auto
+        // backup through OnStoreSaved; a second CreateBackup(Auto) on the same day simply
+        // overwrites that same file, so the double fire is harmless. Guarded: OnExit also runs on
+        // the second-instance path, where Settings/Backup were never assigned.
+        try
+        {
+            if (Settings?.AutoBackupEnabled == true)
+            {
+                Backup?.CreateBackup(BackupKind.Auto);
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.Instance?.Warn("backup", $"exit backup failed: {ex.Message}");
+        }
+
         _trayIcon?.Dispose();
         Monitor?.Dispose();
         ReleaseSingleInstanceMutex();
@@ -937,6 +972,205 @@ public partial class App : System.Windows.Application
         Settings.AutoStartEnabled = enabled;
         AutoStart.SetEnabled(enabled);
         SaveSettings();
+    }
+
+    // ---- Backup / restore / migration (v1.6) ------------------------------------------------
+
+    /// <summary>
+    /// 日次自動バックアップ (設計書 §4)。その日最初の Save 成功後に 1 回だけ走る。
+    /// <para><see cref="ItemStore.Saved"/> はロックの外・Save() を呼んだスレッドで発火する。ここが
+    /// 呼ぶのは ZIP 化 (ファイルコピー) と settings.json の書き込みだけで <see cref="ItemStore.Save"/>
+    /// を呼び返さないので、再入もループもしない。</para>
+    /// <para>失敗しても通常動作は止めない: <see cref="BackupService.CreateBackup"/> は自分でログを
+    /// 出して null を返し、その場合 <see cref="AppSettings.LastAutoBackupDate"/> を進めないので
+    /// 同じ日の次の Save で再試行される。</para>
+    /// </summary>
+    private static void OnStoreSaved()
+    {
+        // Settings?. : OnStartup が Settings を代入した後にしか購読しないので実際には非 null だが、
+        // SetPinnedExpanded / SetShelfPinned と同じ防御を静的エントリポイントとして揃える。
+        if (Settings?.AutoBackupEnabled != true)
+        {
+            return;
+        }
+
+        var today = DateTime.Now.ToString("yyyy-MM-dd");
+        if (Settings.LastAutoBackupDate == today)
+        {
+            return;
+        }
+
+        if (Backup?.CreateBackup(BackupKind.Auto) is not null)
+        {
+            Settings.LastAutoBackupDate = today;
+            SaveSettings();
+        }
+    }
+
+    /// <summary>
+    /// シャットダウン / サインアウト / 再起動 (設計書 §4)。Windows がプロセスを落としにかかる
+    /// 数秒しかないので、失敗してもリトライしない — 翌日の日次バックアップが拾う。
+    /// <para>ハンドラ自身は決して throw しない: SessionEnding から漏れた例外は
+    /// DispatcherUnhandledException 経由でログには残るが、シャットダウン中に MessageBox のような
+    /// 副作用を招く余地を残さないため、ここで握って警告ログに落とす。</para>
+    /// </summary>
+    private void OnSessionEnding(object sender, SessionEndingCancelEventArgs e)
+    {
+        try
+        {
+            Store?.Save();
+
+            if (Settings?.AutoBackupEnabled == true)
+            {
+                Backup?.CreateBackup(BackupKind.Auto);
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.Instance?.Warn("backup", $"session-ending backup failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>自動バックアップの ON/OFF (v1.6)。他の Set* と同じく永続化のみ — 実際の契機は
+    /// <see cref="OnStoreSaved"/> / <see cref="OnSessionEnding"/> / OnExit が毎回 Settings を
+    /// 読むので、live windows へ押し出すものがない。</summary>
+    public static void SetAutoBackupEnabled(bool value)
+    {
+        Settings.AutoBackupEnabled = value;
+        SaveSettings();
+    }
+
+    /// <summary>
+    /// バックアップ ZIP からの復元 (設計書 §5)。成功で true。
+    /// <see cref="BackupRestoreException"/> はそのまま呼び出し元へ抜ける — 文言化は
+    /// BackupDialog の責務 (RolledBack の 2 通りの意味をここで UI 文言に潰さない)。
+    /// </summary>
+    public static bool RunRestore(string zipPath) => RunReplacing(() => Backup!.RestoreFrom(zipPath));
+
+    /// <summary>別 PC からのエクスポート ZIP の取り込み (設計書 §6.2)。契約は
+    /// <see cref="RunRestore"/> と同じ。</summary>
+    public static bool RunImport(string srcPath, string password) =>
+        RunReplacing(() => Backup!.ImportFrom(srcPath, password));
+
+    /// <summary>
+    /// データ差し替え (リストア / インポート) の共通オーケストレーション (設計書 §5 手順 4〜5)。
+    /// 取り込みを止める → 差し替える → ディスクの設定を読み直して全 UI に再適用する。
+    /// <para>履歴一覧そのものは再適用の対象ではない: <see cref="ItemStore.ReplaceDataFrom"/> が
+    /// <see cref="ItemStore.Changed"/> を発火し、ShelfViewModel の既存購読が並べ直す。</para>
+    /// <para>設定ウィンドウを先に閉じるのは、開いたままだと差し替え前の値を握った UI が次の
+    /// チェック操作で settings.json に書き戻して復元結果を上書きするため。</para>
+    /// </summary>
+    private static bool RunReplacing(Action replace)
+    {
+        if (System.Windows.Application.Current is not App app || Backup is null || Monitor is null)
+        {
+            return false;
+        }
+
+        app._settingsWindow?.Close();
+
+        Monitor.Paused = true;
+        try
+        {
+            replace();
+            ReloadAllSettingsFromDisk();
+            return true;
+        }
+        finally
+        {
+            // 差し替え「後」の設定に従う。復元前の一時停止状態 (シークレットの ON/OFF) を戻すのでは
+            // なく、いま読み込んだ IncognitoMode を正とする。ReloadAllSettingsFromDisk も同じ行を
+            // 持つが、replace() が throw した経路ではそちらに到達しないのでここが最後の砦になる。
+            Monitor.Paused = Settings.IncognitoMode;
+        }
+    }
+
+    /// <summary>
+    /// settings.json を読み直し、OnStartup が設定ロード後に行っている適用処理をやり直す
+    /// (設計書 §5 手順 5)。復元 / インポートで settings.json ごと入れ替わった後に呼ぶ。
+    /// <para>再適用しない設定は、利用箇所が毎回 <c>App.Settings</c> を読み直すもの:
+    /// SoundsEnabled (SoundService の Func)、AutoDelete (AutoDeleteService の Func)、
+    /// HistoryCapacity (CapturePipeline の Func)、MoveToTopOnCopy / PasteOnClick
+    /// (ShelfWindow が毎クリック読む)、IndicatorStyle / IndicatorEnabled
+    /// (<see cref="FlashIndicator"/> が毎回読む)、PurgeUnpinnedOnRestart (次回起動時のみ)。
+    /// PinnedExpanded / ShelfPinned / RetractDelayMs は
+    /// <see cref="ShelfWindow.ApplySettings"/> が拾うので (5) に含まれる。</para>
+    /// <para>適用側を丸ごと try で囲うのは、差し替え自体は成功しているのに UI 再適用の失敗で
+    /// <see cref="RunReplacing"/> が「復元失敗」を投げ返すのを防ぐため。個々の窓の失敗を握って
+    /// ログに落とす方針は <see cref="ReapplyPlacement"/> と同じ。</para>
+    /// </summary>
+    private static void ReloadAllSettingsFromDisk()
+    {
+        // SettingsStore.Load は自分で例外を握ってデフォルトを返すので、ここは throw しない。
+        Settings = SettingsStore.Load();
+
+        try
+        {
+            // (1) UI カルチャ (OnStartup 手順 3 / SetLanguage 相当)。既に構築済みの文言は
+            //     差し替わらない (言語変更は再起動が必要という既存仕様のまま) が、以後読まれる
+            //     文字列とバルーン/メッセージが復元後の言語に揃う。
+            ApplyUiCulture(Settings.Language);
+
+            if (System.Windows.Application.Current is not App app)
+            {
+                return;
+            }
+
+            // (2) 文字サイズ (OnStartup 手順 3 / SetTextScale 相当)。
+            TextScaleMap.Apply(Settings.TextScale, app.Resources);
+
+            // (3) トレイのチェック状態とツールチップ (OnStartup 手順 5)。
+            app._trayIcon?.SetHoverEnabled(Settings.HoverEnabled);
+            app._trayIcon?.SetIncognito(Settings.IncognitoMode);
+
+            // (4) 取り込みの一時停止 (OnStartup 手順 5 / SetIncognitoMode 相当)。
+            Monitor.Paused = Settings.IncognitoMode;
+
+            // (5) シェルフ / トリガーの配置と保持設定 (= ReapplyPlacement の中身 = OnStartup 手順 6)。
+            ReapplyPlacement();
+
+            // (5b) ホバー起動の表示状態 (SetHoverEnabled の伝播部分)。ApplySettings は位置しか
+            //      直さないので、復元でホバーが OFF になった場合にバンドを引っ込めるのはここ。
+            //      フルスクリーン中に出し直さない条件も SetHoverEnabled と同一。
+            if (Settings.HoverEnabled)
+            {
+                if (app._fullscreenDetector?.IsFullscreen != true)
+                {
+                    app._edgeTrigger?.Show();
+                }
+            }
+            else
+            {
+                app._edgeTrigger?.Hide();
+                app._shelf?.SlideOut();
+            }
+
+            // (7) エッジヒント (SetEdgeHintEnabled の伝播部分)。
+            app._edgeTrigger?.SetHintEnabled(Settings.EdgeHintEnabled);
+
+            // (6) インジケーターの色と不透明度 (SetIndicatorColor / SetIndicatorOpacityPercent の
+            //     伝播部分)。両方とも同じ ApplyPalette 1 回で反映される。
+            Indicator?.ApplyPalette();
+
+            // (8) 自動起動のレジストリ Run 値 (SetAutoStartEnabled の伝播部分)。AutoStart.SetEnabled
+            //     は自分で例外を握ってログに落とすので、ここでの追加ガードは要らない。
+            AutoStart.SetEnabled(Settings.AutoStartEnabled);
+
+            FileLogger.Instance?.Info(Module, "settings reloaded from disk and re-applied");
+        }
+        catch (Exception ex)
+        {
+            FileLogger.Instance?.Error(Module, "failed to re-apply reloaded settings", ex);
+        }
+    }
+
+    /// <summary>
+    /// バックアップ・移行ダイアログを開く。中身は Task 7 (BackupDialog) で差し替える —
+    /// いまはトレイ項目からイベントが届いていることをログで確認できるだけのスタブ。
+    /// </summary>
+    private void OnBackupDialogRequested()
+    {
+        FileLogger.Instance?.Info("backup", "dialog requested");
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

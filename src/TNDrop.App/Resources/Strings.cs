@@ -24,6 +24,7 @@ internal static class Strings
     public static string TrayIncognito => Get(nameof(TrayIncognito));
     public static string TrayTooltipIncognitoSuffix => Get(nameof(TrayTooltipIncognitoSuffix));
     public static string TraySettings => Get(nameof(TraySettings));
+    public static string TrayBackup => Get(nameof(TrayBackup));
     public static string TrayAbout => Get(nameof(TrayAbout));
     public static string TrayExit => Get(nameof(TrayExit));
     public static string StoreLoadFailed => Get(nameof(StoreLoadFailed));

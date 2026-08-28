@@ -20,6 +20,10 @@ public sealed class TrayIcon : IDisposable
     private bool _disposed;
 
     public event Action? OpenSettingsRequested;
+
+    /// <summary>v1.6: バックアップ・移行ダイアログを開く要求。</summary>
+    public event Action? BackupDialogRequested;
+
     public event Action? ExitRequested;
     public event Action<bool>? HoverEnabledChanged;
     public event Action<bool>? IncognitoChanged;
@@ -46,6 +50,9 @@ public sealed class TrayIcon : IDisposable
         var settingsItem = new ToolStripMenuItem(Strings.TraySettings);
         settingsItem.Click += (_, _) => OpenSettingsRequested?.Invoke();
 
+        var backupItem = new ToolStripMenuItem(Strings.TrayBackup);
+        backupItem.Click += (_, _) => BackupDialogRequested?.Invoke();
+
         var aboutItem = new ToolStripMenuItem(Strings.TrayAbout);
         aboutItem.Click += (_, _) => ShowAbout();
 
@@ -57,6 +64,7 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(_incognitoItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(settingsItem);
+        menu.Items.Add(backupItem);
         menu.Items.Add(aboutItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exitItem);
