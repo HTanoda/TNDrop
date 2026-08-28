@@ -257,6 +257,32 @@ public class BackupServiceTests : IDisposable
         Assert.Equal("{\"Edge\":\"Left\"}", File.ReadAllText(Path.Combine(_dir, "settings.json")));
     }
 
+    // 不変条件: CreateBackup が作ったものは必ず Validate を通り、復元もできる。
+    // 真新しいプロファイル (items.dat も settings.json も未作成、blobs は空) が最も危ない —
+    // 何も同梱されず、後から「自分で作ったのに NotABackup」になりうる。
+    [Fact]
+    public void CreateBackup_OnFreshDataDir_IsValidAndRestorable()
+    {
+        Assert.False(File.Exists(Path.Combine(_dir, "items.dat")));
+        Assert.False(File.Exists(Path.Combine(_dir, "settings.json")));
+        Assert.Empty(Directory.GetFiles(_store.BlobsDir));
+
+        var path = _svc.CreateBackup(BackupKind.Manual);
+
+        Assert.NotNull(path);
+        using (var zip = ZipFile.OpenRead(path!))
+        {
+            Assert.NotNull(zip.GetEntry("manifest.json"));
+            Assert.NotNull(zip.GetEntry("items.dat"));
+            Assert.NotNull(zip.GetEntry("settings.json"));
+        }
+
+        Assert.Equal(BackupValidation.Ok, _svc.Validate(path!));
+
+        _svc.RestoreFrom(path!);
+        Assert.Empty(_store.Items);
+    }
+
     // 中間ファイルは dataDir\tmp\ 配下にしか作らず、成功・失敗どちらの経路でも finally で
     // 自分の分を消す (§6.1 手順 4: 平文を残さない)。失敗経路も含めて 1 本で通す。
     [Fact]

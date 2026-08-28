@@ -126,7 +126,7 @@ public sealed class BackupService
 
             staging = NewTmpDirectory("backup");
             _store.CopyDataTo(staging);
-            CopySettingsInto(staging);
+            EnsureBackupEntries(staging);
             WriteManifest(staging, BackupPruning.KindName(kind), dataDir: "");
 
             tmpZip = Path.Combine(EnsureTmpRoot(), $"backup-{Guid.NewGuid():N}.zip");
@@ -626,6 +626,37 @@ public sealed class BackupService
         if (File.Exists(settings))
         {
             File.Copy(settings, Path.Combine(stagingDir, SettingsFileName), overwrite: true);
+        }
+    }
+
+    /// <summary>
+    /// INVARIANT: <b>すべてのバックアップ ZIP は manifest.json + items.dat + settings.json を必ず含む</b> —
+    /// つまり <see cref="CreateBackup"/> が作ったものは常に <see cref="Validate"/> を通る。
+    ///
+    /// 真新しいプロファイル (履歴を 1 件も保存していない = items.dat が無い、設定画面を一度も
+    /// 開いていない = settings.json が無い) では <see cref="ItemStore.CopyDataTo"/> も
+    /// <see cref="CopySettingsInto"/> も何もコピーしないため、放置すると「自分で作ったのに
+    /// 復元候補として NotABackup 扱いになるバックアップ」が生まれる。欠けている側を
+    /// 「空だが正しい」内容で埋めてこの不変条件を守る:
+    /// items.dat は空配列 <c>[]</c> を DPAPI で暗号化したもの (=履歴 0 件。Validate の
+    /// CanDecrypt も通り、復元すると履歴が空になる)、settings.json は <c>{}</c>
+    /// (SettingsStore.Load は解釈できない JSON を既定値にフォールバックするので、
+    /// 復元後は既定設定になる)。
+    /// </summary>
+    private void EnsureBackupEntries(string stagingDir)
+    {
+        CopySettingsInto(stagingDir);
+
+        var stagedSettings = Path.Combine(stagingDir, SettingsFileName);
+        if (!File.Exists(stagedSettings))
+        {
+            File.WriteAllText(stagedSettings, "{}");
+        }
+
+        var stagedItems = Path.Combine(stagingDir, ItemsFileName);
+        if (!File.Exists(stagedItems))
+        {
+            ItemStore.WriteEncryptedJson(stagedItems, "[]");
         }
     }
 
