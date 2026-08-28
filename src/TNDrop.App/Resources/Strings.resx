@@ -452,4 +452,111 @@
   <data name="FlyoutSplitOneTooltip" xml:space="preserve">
     <value>1 件だけ独立</value>
   </data>
+
+  <!-- Backup/migration dialog + password dialog (v1.6 Task 7). -->
+  <data name="BackupDialogTitle" xml:space="preserve">
+    <value>データのバックアップ・移行</value>
+  </data>
+  <data name="BackupListLabel" xml:space="preserve">
+    <value>バックアップ一覧 (履歴・ピン・設定を含む)</value>
+  </data>
+  <data name="BackupManualButton" xml:space="preserve">
+    <value>手動バックアップ(_C)</value>
+  </data>
+  <data name="BackupRestoreButton" xml:space="preserve">
+    <value>リストア(_R)</value>
+  </data>
+  <data name="BackupDeleteButton" xml:space="preserve">
+    <value>削除(_D)</value>
+  </data>
+  <data name="BackupKindAuto" xml:space="preserve">
+    <value>[自動]</value>
+  </data>
+  <data name="BackupKindManual" xml:space="preserve">
+    <value>[手動]</value>
+  </data>
+  <data name="BackupKindSafety" xml:space="preserve">
+    <value>[退避]</value>
+  </data>
+  <data name="BackupAutoHintOn" xml:space="preserve">
+    <value>自動バックアップ: 有効 (日次 + 終了時、7 世代保持) — 変更は設定画面から</value>
+  </data>
+  <data name="BackupAutoHintOff" xml:space="preserve">
+    <value>自動バックアップ: 無効 — 変更は設定画面から</value>
+  </data>
+  <data name="BackupMigrationLabel" xml:space="preserve">
+    <value>別の PC への移行 (パスワード付き暗号化ファイル)</value>
+  </data>
+  <data name="BackupExportButton" xml:space="preserve">
+    <value>エクスポート(_E)...</value>
+  </data>
+  <data name="BackupImportButton" xml:space="preserve">
+    <value>インポート(_I)...</value>
+  </data>
+  <data name="BackupRestoreConfirm" xml:space="preserve">
+    <value>現在の履歴・ピン・設定は選択したバックアップの内容で置き換えられます。実行前に現在の状態を自動退避します。よろしいですか?</value>
+  </data>
+  <data name="BackupDeleteConfirm" xml:space="preserve">
+    <value>選択したバックアップを削除します。よろしいですか?</value>
+  </data>
+  <data name="BackupManualFailed" xml:space="preserve">
+    <value>バックアップの作成に失敗しました。詳細はログを確認してください。</value>
+  </data>
+  <data name="BackupRestoreDone" xml:space="preserve">
+    <value>復元しました。</value>
+  </data>
+  <data name="BackupRestoreFailedRolledBack" xml:space="preserve">
+    <value>リストアに失敗しました。元の状態に戻しました。詳細はログを確認してください。</value>
+  </data>
+  <data name="BackupRestoreFailedFatalFormat" xml:space="preserve">
+    <value>リストアに失敗し、巻き戻しにも失敗しました。退避ファイル: {0}。詳細はログを確認してください。</value>
+  </data>
+  <data name="BackupWrongEnvironment" xml:space="preserve">
+    <value>このバックアップは別の PC または別のユーザーで作成されたため復元できません。別の PC への移行にはエクスポート機能を使ってください。</value>
+  </data>
+  <data name="BackupNotABackup" xml:space="preserve">
+    <value>TNDrop のバックアップファイルではありません。</value>
+  </data>
+  <data name="ExportDoneFormat" xml:space="preserve">
+    <value>エクスポートしました: {0}</value>
+  </data>
+  <data name="ExportFailed" xml:space="preserve">
+    <value>エクスポートに失敗しました。詳細はログを確認してください。</value>
+  </data>
+  <data name="ImportWrongPassword" xml:space="preserve">
+    <value>パスワードが違うか、ファイルが壊れています。</value>
+  </data>
+  <data name="ImportNotExportFile" xml:space="preserve">
+    <value>TNDrop のエクスポートファイルではありません。</value>
+  </data>
+  <data name="ExportPasswordTitle" xml:space="preserve">
+    <value>エクスポートのパスワード設定</value>
+  </data>
+  <data name="ImportPasswordTitle" xml:space="preserve">
+    <value>パスワードの入力</value>
+  </data>
+  <data name="PasswordLabel" xml:space="preserve">
+    <value>パスワード (8 文字以上)</value>
+  </data>
+  <data name="PasswordConfirmLabel" xml:space="preserve">
+    <value>パスワード (確認)</value>
+  </data>
+  <data name="PasswordHint" xml:space="preserve">
+    <value>覚えやすい言葉の組み合わせで 8 文字以上にしてください。</value>
+  </data>
+  <data name="PasswordTooShort" xml:space="preserve">
+    <value>パスワードは 8 文字以上にしてください。</value>
+  </data>
+  <data name="PasswordMismatch" xml:space="preserve">
+    <value>確認用のパスワードが一致しません。</value>
+  </data>
+  <data name="PasswordOk" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="PasswordCancel" xml:space="preserve">
+    <value>キャンセル</value>
+  </data>
+  <data name="ExportFileFilter" xml:space="preserve">
+    <value>TNDrop エクスポート (*.tndexport)|*.tndexport</value>
+  </data>
 </root>

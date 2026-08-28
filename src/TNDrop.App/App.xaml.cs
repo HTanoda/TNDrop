@@ -42,6 +42,7 @@ public partial class App : System.Windows.Application
     private AutoDeleteService? _autoDelete;
     private FullscreenDetector? _fullscreenDetector;
     private SettingsWindow? _settingsWindow;
+    private BackupDialog? _backupDialog;
 
     /// <summary>
     /// How long a resume-from-sleep or unlock keeps <see cref="ClipboardMonitor.IgnoreUntil"/>
@@ -1224,12 +1225,29 @@ public partial class App : System.Windows.Application
     }
 
     /// <summary>
-    /// バックアップ・移行ダイアログを開く。中身は Task 7 (BackupDialog) で差し替える —
-    /// いまはトレイ項目からイベントが届いていることをログで確認できるだけのスタブ。
+    /// バックアップ・移行ダイアログを開く、または既に開いている 1 個をアクティブ化する
+    /// (v1.6 Task 7)。<see cref="OnOpenSettingsRequested"/> と同じ単一インスタンスパターン:
+    /// トレイの「データのバックアップ・移行...」を連打しても、同じウインドウが前面に来るだけで
+    /// 複数開かない。
     /// </summary>
     private void OnBackupDialogRequested()
     {
-        FileLogger.Instance?.Info("backup", "dialog requested");
+        if (_backupDialog is null)
+        {
+            _backupDialog = new BackupDialog();
+
+            // ウインドウが閉じたら (X ボタン、Alt+F4) フィールドをクリアする。しないと次の
+            // クリックが破棄済みウインドウを Activate() してしまう。
+            _backupDialog.Closed += (_, _) => _backupDialog = null;
+        }
+
+        if (_backupDialog.WindowState == WindowState.Minimized)
+        {
+            _backupDialog.WindowState = WindowState.Normal;
+        }
+
+        _backupDialog.Show();
+        _backupDialog.Activate();
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

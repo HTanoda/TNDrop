@@ -1,0 +1,145 @@
+<Window x:Class="TNDrop.UI.BackupDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="480"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        Background="#FF1A1A1F"
+        TextOptions.TextFormattingMode="Ideal"
+        UseLayoutRounding="True">
+
+    <!--
+        Standard window chrome (v1.6 Task 7), same reasoning as SettingsWindow/PasswordDialog:
+        real activation and normal keyboard focus for the ListBox and buttons, unlike the
+        click-through overlay windows elsewhere in this app.
+    -->
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Overlay scrollbar (v1.2 Task F), shared with SettingsWindow/ShelfWindow. -->
+                <ResourceDictionary Source="Scrollbars.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <SolidColorBrush x:Key="Dlg.Foreground" Color="#FFF2F2F7" />
+            <SolidColorBrush x:Key="Dlg.SubForeground" Color="#FFA5A5AD" />
+            <SolidColorBrush x:Key="Dlg.Border" Color="#22FFFFFF" />
+            <SolidColorBrush x:Key="Dlg.HoverBorder" Color="#55FFFFFF" />
+            <SolidColorBrush x:Key="Dlg.FieldBackground" Color="#FF232329" />
+
+            <Style TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{StaticResource Dlg.Foreground}" />
+                <Setter Property="FontSize" Value="13" />
+            </Style>
+
+            <Style x:Key="Dlg.SectionLabel" TargetType="TextBlock">
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Margin" Value="0,0,0,8" />
+            </Style>
+
+            <Style x:Key="Dlg.HintText" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="Foreground" Value="{StaticResource Dlg.SubForeground}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+
+            <Style x:Key="Dlg.Button" TargetType="Button">
+                <Setter Property="Background" Value="#FF2A2A31" />
+                <Setter Property="Foreground" Value="{StaticResource Dlg.Foreground}" />
+                <Setter Property="BorderBrush" Value="{StaticResource Dlg.Border}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="14,7" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Margin" Value="0,0,0,8" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bg"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6">
+                                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                   HorizontalAlignment="Center"
+                                                   RecognizesAccessKey="True" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource Dlg.HoverBorder}" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!--
+                Re-templated for the same reason every other input control in this app is (see
+                SettingsWindow.xaml's ComboBox/CheckBox comments): ListBox's default chrome tracks
+                the OS visual style/SystemColors, not this window's permanent dark palette.
+            -->
+            <Style TargetType="ListBox">
+                <Setter Property="Background" Value="{StaticResource Dlg.FieldBackground}" />
+                <Setter Property="BorderBrush" Value="{StaticResource Dlg.Border}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Foreground" Value="{StaticResource Dlg.Foreground}" />
+                <Setter Property="Padding" Value="2" />
+            </Style>
+
+            <Style TargetType="ListBoxItem">
+                <Setter Property="Foreground" Value="{StaticResource Dlg.Foreground}" />
+                <Setter Property="Padding" Value="8,5" />
+                <Style.Triggers>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="#FF34343D" />
+                    </Trigger>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#1EFFFFFF" />
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <StackPanel Margin="20">
+        <TextBlock x:Name="ListLabelText" Style="{StaticResource Dlg.SectionLabel}" />
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <ListBox x:Name="BackupList" Grid.Column="0" Height="160" Margin="0,0,10,0" />
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Top">
+                <Button x:Name="ManualButton" Style="{StaticResource Dlg.Button}" MinWidth="150" Click="OnManualClick" />
+                <Button x:Name="RestoreButton" Style="{StaticResource Dlg.Button}" MinWidth="150" Click="OnRestoreClick" />
+                <Button x:Name="DeleteButton" Style="{StaticResource Dlg.Button}" MinWidth="150" Margin="0" Click="OnDeleteClick" />
+            </StackPanel>
+        </Grid>
+
+        <TextBlock x:Name="AutoHintText" Style="{StaticResource Dlg.HintText}" Margin="0,8,0,0" />
+
+        <!--
+            A themed Border rather than <Separator>: Separator's default WPF chrome is drawn from
+            two SystemColors-based sunken-line brushes, the same "ambient theme, not this window's
+            own palette" trap SettingsWindow's ComboBox comment documents - a plain Background
+            Setter on Separator does not reliably override it. One flat 1px line is simpler and
+            guaranteed to render the same on every Windows theme.
+        -->
+        <Border Height="1" Background="{StaticResource Dlg.Border}" Margin="0,16" />
+
+        <TextBlock x:Name="MigrationLabelText" Style="{StaticResource Dlg.SectionLabel}" />
+        <StackPanel Orientation="Horizontal">
+            <Button x:Name="ExportButton" Style="{StaticResource Dlg.Button}" MinWidth="150" Margin="0,0,10,0" Click="OnExportClick" />
+            <Button x:Name="ImportButton" Style="{StaticResource Dlg.Button}" MinWidth="150" Margin="0" Click="OnImportClick" />
+        </StackPanel>
+    </StackPanel>
+</Window>

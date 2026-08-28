@@ -178,6 +178,43 @@ internal static class Strings
     public static string FlyoutUngroupAll => Get(nameof(FlyoutUngroupAll));
     public static string FlyoutSplitOneTooltip => Get(nameof(FlyoutSplitOneTooltip));
 
+    // Backup/migration dialog + password dialog (v1.6 Task 7). See BackupDialog/PasswordDialog.
+    public static string BackupDialogTitle => Get(nameof(BackupDialogTitle));
+    public static string BackupListLabel => Get(nameof(BackupListLabel));
+    public static string BackupManualButton => Get(nameof(BackupManualButton));
+    public static string BackupRestoreButton => Get(nameof(BackupRestoreButton));
+    public static string BackupDeleteButton => Get(nameof(BackupDeleteButton));
+    public static string BackupKindAuto => Get(nameof(BackupKindAuto));
+    public static string BackupKindManual => Get(nameof(BackupKindManual));
+    public static string BackupKindSafety => Get(nameof(BackupKindSafety));
+    public static string BackupAutoHintOn => Get(nameof(BackupAutoHintOn));
+    public static string BackupAutoHintOff => Get(nameof(BackupAutoHintOff));
+    public static string BackupMigrationLabel => Get(nameof(BackupMigrationLabel));
+    public static string BackupExportButton => Get(nameof(BackupExportButton));
+    public static string BackupImportButton => Get(nameof(BackupImportButton));
+    public static string BackupRestoreConfirm => Get(nameof(BackupRestoreConfirm));
+    public static string BackupDeleteConfirm => Get(nameof(BackupDeleteConfirm));
+    public static string BackupManualFailed => Get(nameof(BackupManualFailed));
+    public static string BackupRestoreDone => Get(nameof(BackupRestoreDone));
+    public static string BackupRestoreFailedRolledBack => Get(nameof(BackupRestoreFailedRolledBack));
+    public static string BackupRestoreFailedFatalFormat => Get(nameof(BackupRestoreFailedFatalFormat));
+    public static string BackupWrongEnvironment => Get(nameof(BackupWrongEnvironment));
+    public static string BackupNotABackup => Get(nameof(BackupNotABackup));
+    public static string ExportDoneFormat => Get(nameof(ExportDoneFormat));
+    public static string ExportFailed => Get(nameof(ExportFailed));
+    public static string ImportWrongPassword => Get(nameof(ImportWrongPassword));
+    public static string ImportNotExportFile => Get(nameof(ImportNotExportFile));
+    public static string ExportPasswordTitle => Get(nameof(ExportPasswordTitle));
+    public static string ImportPasswordTitle => Get(nameof(ImportPasswordTitle));
+    public static string PasswordLabel => Get(nameof(PasswordLabel));
+    public static string PasswordConfirmLabel => Get(nameof(PasswordConfirmLabel));
+    public static string PasswordHint => Get(nameof(PasswordHint));
+    public static string PasswordTooShort => Get(nameof(PasswordTooShort));
+    public static string PasswordMismatch => Get(nameof(PasswordMismatch));
+    public static string PasswordOk => Get(nameof(PasswordOk));
+    public static string PasswordCancel => Get(nameof(PasswordCancel));
+    public static string ExportFileFilter => Get(nameof(ExportFileFilter));
+
     private static string Get(string key) =>
         Manager.GetString(key, CultureInfo.CurrentUICulture) ?? key;
 }

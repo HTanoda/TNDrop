@@ -452,4 +452,111 @@
   <data name="FlyoutSplitOneTooltip" xml:space="preserve">
     <value>Split off this file only</value>
   </data>
+
+  <!-- Backup/migration dialog + password dialog (v1.6 Task 7). -->
+  <data name="BackupDialogTitle" xml:space="preserve">
+    <value>Back up and migrate data</value>
+  </data>
+  <data name="BackupListLabel" xml:space="preserve">
+    <value>Backups (history, pins and settings)</value>
+  </data>
+  <data name="BackupManualButton" xml:space="preserve">
+    <value>Back up now(_C)</value>
+  </data>
+  <data name="BackupRestoreButton" xml:space="preserve">
+    <value>Restore(_R)</value>
+  </data>
+  <data name="BackupDeleteButton" xml:space="preserve">
+    <value>Delete(_D)</value>
+  </data>
+  <data name="BackupKindAuto" xml:space="preserve">
+    <value>[Auto]</value>
+  </data>
+  <data name="BackupKindManual" xml:space="preserve">
+    <value>[Manual]</value>
+  </data>
+  <data name="BackupKindSafety" xml:space="preserve">
+    <value>[Safety]</value>
+  </data>
+  <data name="BackupAutoHintOn" xml:space="preserve">
+    <value>Auto backup: on (daily + on exit, keeps 7) - change in Settings</value>
+  </data>
+  <data name="BackupAutoHintOff" xml:space="preserve">
+    <value>Auto backup: off - change in Settings</value>
+  </data>
+  <data name="BackupMigrationLabel" xml:space="preserve">
+    <value>Migrate to another PC (password-protected file)</value>
+  </data>
+  <data name="BackupExportButton" xml:space="preserve">
+    <value>Export(_E)...</value>
+  </data>
+  <data name="BackupImportButton" xml:space="preserve">
+    <value>Import(_I)...</value>
+  </data>
+  <data name="BackupRestoreConfirm" xml:space="preserve">
+    <value>Current history, pins and settings will be replaced by the selected backup. The current state is saved as a safety backup first. Continue?</value>
+  </data>
+  <data name="BackupDeleteConfirm" xml:space="preserve">
+    <value>Delete the selected backup?</value>
+  </data>
+  <data name="BackupManualFailed" xml:space="preserve">
+    <value>Backup failed. See the log for details.</value>
+  </data>
+  <data name="BackupRestoreDone" xml:space="preserve">
+    <value>Restored.</value>
+  </data>
+  <data name="BackupRestoreFailedRolledBack" xml:space="preserve">
+    <value>Restore failed. Your previous data was recovered. See the log for details.</value>
+  </data>
+  <data name="BackupRestoreFailedFatalFormat" xml:space="preserve">
+    <value>Restore failed and rollback also failed. Safety file: {0}. See the log for details.</value>
+  </data>
+  <data name="BackupWrongEnvironment" xml:space="preserve">
+    <value>This backup was made on another PC or user account and cannot be restored here. Use Export to migrate between PCs.</value>
+  </data>
+  <data name="BackupNotABackup" xml:space="preserve">
+    <value>Not a TNDrop backup file.</value>
+  </data>
+  <data name="ExportDoneFormat" xml:space="preserve">
+    <value>Exported: {0}</value>
+  </data>
+  <data name="ExportFailed" xml:space="preserve">
+    <value>Export failed. See the log for details.</value>
+  </data>
+  <data name="ImportWrongPassword" xml:space="preserve">
+    <value>Wrong password, or the file is corrupted.</value>
+  </data>
+  <data name="ImportNotExportFile" xml:space="preserve">
+    <value>Not a TNDrop export file.</value>
+  </data>
+  <data name="ExportPasswordTitle" xml:space="preserve">
+    <value>Set export password</value>
+  </data>
+  <data name="ImportPasswordTitle" xml:space="preserve">
+    <value>Enter password</value>
+  </data>
+  <data name="PasswordLabel" xml:space="preserve">
+    <value>Password (8+ characters)</value>
+  </data>
+  <data name="PasswordConfirmLabel" xml:space="preserve">
+    <value>Password (confirm)</value>
+  </data>
+  <data name="PasswordHint" xml:space="preserve">
+    <value>Use a memorable combination of words, 8 characters or longer.</value>
+  </data>
+  <data name="PasswordTooShort" xml:space="preserve">
+    <value>Password must be at least 8 characters.</value>
+  </data>
+  <data name="PasswordMismatch" xml:space="preserve">
+    <value>Passwords do not match.</value>
+  </data>
+  <data name="PasswordOk" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="PasswordCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ExportFileFilter" xml:space="preserve">
+    <value>TNDrop export (*.tndexport)|*.tndexport</value>
+  </data>
 </root>
