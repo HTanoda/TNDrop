@@ -123,6 +123,8 @@ internal static class Strings
     public static string SettingsPixelFormat => Get(nameof(SettingsPixelFormat));
     public static string SettingsMillisecondsFormat => Get(nameof(SettingsMillisecondsFormat));
     public static string SettingsHoverEnabled => Get(nameof(SettingsHoverEnabled));
+    public static string SettingsAutoBackup => Get(nameof(SettingsAutoBackup));
+    public static string SettingsOpenBackupDialog => Get(nameof(SettingsOpenBackupDialog));
 
     // Shelf header + footer (v1.1 Task C): the ⚙/× buttons' tooltips and the card-count line.
     public static string HeaderSettingsTooltip => Get(nameof(HeaderSettingsTooltip));

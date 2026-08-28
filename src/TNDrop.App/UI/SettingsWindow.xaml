@@ -464,6 +464,46 @@
             </Setter>
         </Style>
 
+        <!-- Bordered content-area action button (v1.6 Task 8), for OpenBackupDialogButton: distinct
+             from Settings.NavButton above (that one is the borderless left-sidebar nav item).
+             Same shape as BackupDialog.xaml's own Dlg.Button - bordered box, hover-brightened
+             border, half-opacity when disabled - rebuilt against this window's own Settings.*
+             resources (Foreground/Border/HoverBorder/FocusVisual) instead of BackupDialog's Dlg.*
+             ones, since the two windows keep separate resource dictionaries. -->
+        <Style x:Key="Settings.Button" TargetType="Button">
+            <Setter Property="Background" Value="#FF2A2A31" />
+            <Setter Property="Foreground" Value="{StaticResource Settings.Foreground}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Settings.Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource Settings.FocusVisual}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                               HorizontalAlignment="Center"
+                                               RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource Settings.HoverBorder}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Circular color swatch (v1.5): a RadioButton whose Background carries the preset
              color (set per instance in code-behind, where the swatches are built from the same
              preset table that maps hex to name). Re-templated for the same reason as
@@ -546,6 +586,14 @@
                         <StackPanel>
                             <CheckBox x:Name="HoverCheckBox" Margin="0,0,0,2" />
                             <TextBlock x:Name="HoverDescText" Style="{StaticResource Settings.HintText}" Margin="20,0,0,14" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <!-- 自動バックアップ (v1.6 Task 8): トグル + ダイアログ入口ボタン。他の項目と
+                             違い専用の説明テキストは持たず、チェックボックスのラベル文言自体が
+                             説明を兼ねる (Strings.SettingsAutoBackup)。 -->
+                        <StackPanel Margin="0,0,0,14">
+                            <CheckBox x:Name="AutoBackupCheckBox" Margin="0,0,0,2" />
+                            <Button x:Name="OpenBackupDialogButton" Style="{StaticResource Settings.Button}" HorizontalAlignment="Left" Margin="0,8,0,0" />
                         </StackPanel>
 
                         <StackPanel Style="{StaticResource Settings.FieldGroup}">

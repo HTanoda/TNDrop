@@ -1250,6 +1250,21 @@ public partial class App : System.Windows.Application
         _backupDialog.Activate();
     }
 
+    /// <summary>
+    /// Public static entry point (v1.6 Task 8) so SettingsWindow's own 動作 タブのボタンが
+    /// トレイの「データのバックアップ・移行...」と全く同じ単一インスタンスのダイアログを開く --
+    /// <see cref="OpenSettingsWindow"/> と同じ理由・同じ形: <see cref="OnBackupDialogRequested"/>
+    /// 自体は private のまま (トレイの直接イベントハンドラでもあるので)、これで
+    /// 「ダイアログを開く/前面化する方法を知っている場所」が 1 箇所のまま保たれる。
+    /// </summary>
+    public static void OpenBackupDialog()
+    {
+        if (System.Windows.Application.Current is App app)
+        {
+            app.OnBackupDialogRequested();
+        }
+    }
+
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         FileLogger.Instance?.Error(Module, "Unhandled dispatcher exception", e.Exception);

@@ -164,6 +164,14 @@ public partial class SettingsWindow : Window
         WireCheckBox(PasteOnClickCheckBox, settings.PasteOnClick, global::TNDrop.App.SetPasteOnClick);
         WireCheckBox(HoverCheckBox, settings.HoverEnabled, global::TNDrop.App.SetHoverEnabled);
 
+        // 自動バックアップ (v1.6 Task 8): トグルは永続化のみ (App.SetAutoBackupEnabled)。ボタンは
+        // トレイの「データのバックアップ・移行...」と同じ単一インスタンスの入口 (App.OpenBackupDialog)
+        // を通す -- ここから直接 new BackupDialog() しない。
+        AutoBackupCheckBox.Content = Strings.SettingsAutoBackup;
+        WireCheckBox(AutoBackupCheckBox, settings.AutoBackupEnabled, global::TNDrop.App.SetAutoBackupEnabled);
+        OpenBackupDialogButton.Content = Strings.SettingsOpenBackupDialog;
+        OpenBackupDialogButton.Click += (_, _) => global::TNDrop.App.OpenBackupDialog();
+
         AutoDeleteLabelText.Text = Strings.SettingsAutoDelete;
         AutoDeleteDescText.Text = Strings.SettingsAutoDeleteDesc;
         var autoDeleteOptions = new[]
@@ -232,11 +240,11 @@ public partial class SettingsWindow : Window
 
         RetractDelayLabelText.Text = Strings.SettingsRetractDelay;
         RetractDelayDescText.Text = Strings.SettingsRetractDelayDesc;
-        RetractDelaySlider.Minimum = 300;
+        RetractDelaySlider.Minimum = 100;
         RetractDelaySlider.Maximum = 2000;
         RetractDelaySlider.TickFrequency = 100;
         RetractDelaySlider.IsSnapToTickEnabled = true;
-        var retractDelay = Math.Clamp(settings.RetractDelayMs, 300, 2000);
+        var retractDelay = Math.Clamp(settings.RetractDelayMs, 100, 2000);
         RetractDelaySlider.Value = retractDelay;
         UpdateRetractDelayText(retractDelay);
         RetractDelaySlider.ValueChanged += (_, e) =>

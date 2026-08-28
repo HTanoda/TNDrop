@@ -350,6 +350,12 @@
   <data name="SettingsHoverEnabled" xml:space="preserve">
     <value>Hover activation</value>
   </data>
+  <data name="SettingsAutoBackup" xml:space="preserve">
+    <value>Auto backup (daily + on exit, keeps 7)</value>
+  </data>
+  <data name="SettingsOpenBackupDialog" xml:space="preserve">
+    <value>Back up and migrate data...</value>
+  </data>
   <data name="HeaderSettingsTooltip" xml:space="preserve">
     <value>Open settings</value>
   </data>

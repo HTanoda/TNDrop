@@ -350,6 +350,12 @@
   <data name="SettingsHoverEnabled" xml:space="preserve">
     <value>ホバー表示</value>
   </data>
+  <data name="SettingsAutoBackup" xml:space="preserve">
+    <value>自動バックアップ (日次 + 終了時、7 世代保持)</value>
+  </data>
+  <data name="SettingsOpenBackupDialog" xml:space="preserve">
+    <value>データのバックアップ・移行...</value>
+  </data>
   <data name="HeaderSettingsTooltip" xml:space="preserve">
     <value>設定を開く</value>
   </data>
