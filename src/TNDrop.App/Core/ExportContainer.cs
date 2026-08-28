@@ -33,12 +33,16 @@ public static class ExportContainer
     private static readonly byte[] Magic = Encoding.ASCII.GetBytes("TNDX");
     private const int SaltSize = 16;
     private const int IvSize = 16;
+    private const int AesBlockSize = 16;
     private const int MacSize = 32;
     private const int Pbkdf2Iterations = 600_000;
     private const int HeaderSize = 4 + 1 + SaltSize + IvSize;
 
     public static byte[] Encrypt(byte[] plaintext, string password)
     {
+        if (password.Length < MinPasswordLength)
+            throw new ArgumentException($"password must be at least {MinPasswordLength} characters", nameof(password));
+
         var salt = RandomNumberGenerator.GetBytes(SaltSize);
         var iv = RandomNumberGenerator.GetBytes(IvSize);
         var (aesKey, macKey) = DeriveKeys(password, salt);
@@ -60,9 +64,17 @@ public static class ExportContainer
         return ms.ToArray();
     }
 
+    /// <remarks>
+    /// あえて <see cref="MinPasswordLength"/> のチェックをしない。将来別のポリシーでエクスポート
+    /// されたファイルでも復号できるよう、インポート側は寛容に保つ (長さ検証は UI 側の責務)。
+    /// 短いパスワードでも、正しければ復号でき、誤っていれば <see cref="ExportPasswordException"/>
+    /// になる (通常の誤りパスワードと同じ扱い)。
+    /// </remarks>
     public static byte[] Decrypt(byte[] container, string password)
     {
-        if (container.Length < HeaderSize + MacSize)
+        // ciphertext は AES-CBC/PKCS7 なので最低 1 ブロック (16B) 必要。それ未満は
+        // ヘッダーだけの断片であり、HMAC/AES の経路に進めても有効な暗号文になり得ない。
+        if (container.Length < HeaderSize + AesBlockSize + MacSize)
             throw new ExportFormatException("container too short");
         if (!container.AsSpan(0, 4).SequenceEqual(Magic))
             throw new ExportFormatException("bad magic");

@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 using TNDrop.Core;
 
@@ -63,5 +64,30 @@ public class ExportContainerTests
     public void MinPasswordLength_IsEight()
     {
         Assert.Equal(8, ExportContainer.MinPasswordLength);
+    }
+
+    [Fact]
+    public void Encrypt_ShortPassword_ThrowsArgumentException()
+    {
+        Assert.Throws<ArgumentException>(() => ExportContainer.Encrypt(Payload, "1234567"));
+    }
+
+    [Fact]
+    public void Decrypt_ShortWrongPassword_ThrowsPasswordException_NotArgumentException()
+    {
+        // Decrypt はあえて MinPasswordLength を検証しない (import 側は寛容に保つ)。
+        // 短いパスワードでも ArgumentException にはならず、誤りパスワードと同じ
+        // ExportPasswordException になることを確認する。
+        var container = ExportContainer.Encrypt(Payload, "correct horse");
+        Assert.Throws<ExportPasswordException>(() => ExportContainer.Decrypt(container, "short"));
+    }
+
+    [Fact]
+    public void ContainerShorterThanOneAesBlock_ThrowsFormatException()
+    {
+        // HeaderSize(37) + MacSize(32) = 69B はヘッダー+MAC ちょうどで、ciphertext が
+        // 0 バイトになり AES-CBC/PKCS7 として無効。70B でもまだ 1 AES ブロック (16B) に
+        // 満たないため、too-short として弾かれるべき。
+        Assert.Throws<ExportFormatException>(() => ExportContainer.Decrypt(new byte[70], "correct horse"));
     }
 }
