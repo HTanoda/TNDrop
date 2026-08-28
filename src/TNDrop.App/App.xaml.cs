@@ -1045,6 +1045,9 @@ public partial class App : System.Windows.Application
     /// 数秒しかないので、失敗してもリトライしない — 翌日の日次バックアップが拾う。
     /// <para>ここでの ZIP 化は <see cref="OnStoreSaved"/> と違って<b>同期のまま</b>: OS の締め切りが
     /// ある経路なので、スレッドプールに逃がすとプロセス終了に追い越されて何も残らない。</para>
+    /// <para>このイベントは「終了する」ではなく「終了してよいか」であり、<b>取り消されうる</b>
+    /// (他アプリが WM_QUERYENDSESSION を拒否した場合)。そのため日次トリガーの購読解除は
+    /// このハンドラの実行中だけに限定し、finally で必ず張り直す — 詳細は finally のコメント。</para>
     /// <para>ハンドラ自身は決して throw しない: SessionEnding から漏れた例外は
     /// DispatcherUnhandledException 経由でログには残るが、シャットダウン中に MessageBox のような
     /// 副作用を招く余地を残さないため、ここで握って警告ログに落とす。</para>
@@ -1055,7 +1058,7 @@ public partial class App : System.Windows.Application
         {
             // OnExit と同じ理由で Save の前に外す: これから取る同期バックアップが正であり、
             // Save 由来の日次バックアップ (= 同じ内容の二度目の ZIP 化 + 終了に競り負ける
-            // バックグラウンドタスク) をここで確定的に断つ。
+            // バックグラウンドタスク) をこのハンドラの実行中は確定的に断つ。
             if (Store is not null)
             {
                 Store.Saved -= OnStoreSaved;
@@ -1071,6 +1074,19 @@ public partial class App : System.Windows.Application
         catch (Exception ex)
         {
             FileLogger.Instance?.Warn("backup", $"session-ending backup failed: {ex.Message}");
+        }
+        finally
+        {
+            // 必ず張り直す。WM_QUERYENDSESSION は拒否できる: 別のアプリがログオフ/シャットダウンを
+            // 取り消すと、このプロセスはそのまま動き続ける。外しっぱなしにすると再購読の経路が
+            // どこにも無いため、そのセッションの残りは日次自動バックアップが黙って死ぬ。
+            // 逆に終了がそのまま進む場合はプロセスごと消えるので、張り直しは無意味なだけで無害。
+            // 直前の -= が必ず先に走っているので、これで二重購読になることはない
+            // (OnExit は取り消し不能な終了でしか走らないので、あちらは張り直さない)。
+            if (Store is not null)
+            {
+                Store.Saved += OnStoreSaved;
+            }
         }
     }
 
