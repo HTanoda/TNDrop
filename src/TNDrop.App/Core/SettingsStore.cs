@@ -11,11 +11,13 @@ public sealed class SettingsStore
 {
     private readonly string _dataDir;
     private readonly string _settingsPath;
+    private readonly string _tmpPath;
 
     public SettingsStore(string dataDir)
     {
         _dataDir = dataDir;
         _settingsPath = Path.Combine(_dataDir, "settings.json");
+        _tmpPath = Path.Combine(_dataDir, "settings.tmp");
     }
 
     public AppSettings Load()
@@ -62,6 +64,18 @@ public sealed class SettingsStore
         }
     }
 
+    /// <summary>
+    /// settings.json を書き出す。
+    ///
+    /// <para>v1.6 最終レビュー修正: 宛先へ直接 <c>File.WriteAllText</c> せず、同じフォルダの
+    /// <c>settings.tmp</c> に全部書いてから差し替える (<see cref="ItemStore.Save"/> の
+    /// items.tmp → File.Replace と同じ形)。v1.6 の日次自動バックアップは
+    /// <c>LastAutoBackupDate</c> の更新のために**このファイルを毎日書き換える**ので、
+    /// 書き込み途中のクラッシュ (電源断・強制終了) で settings.json が切り詰められる機会が
+    /// 増えた。直接書きだと、その中断が「壊れた settings.json」= 全設定の消失 (Load は壊れた
+    /// JSON を既定値へフォールバックする) を意味する。差し替えなら、落ちても settings.json は
+    /// 常に「前回の完全な内容」か「今回の完全な内容」のどちらかになる。</para>
+    /// </summary>
     public void Save(AppSettings s)
     {
         try
@@ -73,7 +87,17 @@ public sealed class SettingsStore
                 Converters = { new JsonStringEnumConverter() }
             };
             var json = JsonSerializer.Serialize(s, options);
-            File.WriteAllText(_settingsPath, json, new System.Text.UTF8Encoding(false));
+
+            File.WriteAllText(_tmpPath, json, new System.Text.UTF8Encoding(false));
+
+            if (File.Exists(_settingsPath))
+            {
+                File.Replace(_tmpPath, _settingsPath, null);
+            }
+            else
+            {
+                File.Move(_tmpPath, _settingsPath);
+            }
         }
         catch
         {

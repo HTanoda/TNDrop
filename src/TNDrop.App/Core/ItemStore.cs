@@ -739,22 +739,22 @@ public sealed partial class ItemStore
         {
             Directory.CreateDirectory(destDir);
 
-            // items.dat が無いときは items.bak を items.dat として出す -- Load() がまったく同じ
-            // フォールバックをしている (items.dat が読めなければ items.bak から復旧する) ので、
-            // 「この店の現在の履歴は何か」の答えをここで別に定義しない。Save() の File.Replace
-            // 中のクラッシュや items.dat の外部削除で .bak しか残っていない状態でバックアップを
-            // 取ると、これが無ければ「履歴 0 件のバックアップ」を作ってしまい、それを使った
-            // 巻き戻しが Load() なら復旧できたはずの履歴を静かに消す (v1.6 Task 5 レビュー修正)。
-            // .bak も items.dat という名前で置くのは、復元側 (ReplaceDataFrom) と
-            // BackupService.Validate が items.dat だけを見るため。
-            if (File.Exists(_itemsPath))
+            // items.dat が無いときは items.bak を items.dat として出す -- 解決は
+            // ResolveCurrentItemsPath 1 箇所 (Load() のフォールバックと同じ答え) に任せる。
+            // Save() の File.Replace 中のクラッシュや items.dat の外部削除で .bak しか残って
+            // いない状態でバックアップを取ると、これが無ければ「履歴 0 件のバックアップ」を
+            // 作ってしまい、それを使った巻き戻しが Load() なら復旧できたはずの履歴を静かに消す
+            // (v1.6 Task 5 レビュー修正)。.bak も items.dat という名前で置くのは、復元側
+            // (ReplaceDataFrom) と BackupService.Validate が items.dat だけを見るため。
+            var currentItemsPath = ResolveCurrentItemsPath();
+            if (currentItemsPath is not null)
             {
-                File.Copy(_itemsPath, Path.Combine(destDir, "items.dat"), overwrite: true);
-            }
-            else if (File.Exists(_bakPath))
-            {
-                File.Copy(_bakPath, Path.Combine(destDir, "items.dat"), overwrite: true);
-                FileLogger.Instance?.Warn("store", "items.dat missing; backed up items.bak instead");
+                File.Copy(currentItemsPath, Path.Combine(destDir, "items.dat"), overwrite: true);
+
+                if (!string.Equals(currentItemsPath, _itemsPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    FileLogger.Instance?.Warn("store", "items.dat missing; backed up items.bak instead");
+                }
             }
 
             var destBlobsDir = Path.Combine(destDir, "blobs");
@@ -773,27 +773,55 @@ public sealed partial class ItemStore
         }
     }
 
-    // Returns the plaintext JSON items.dat decrypts to (DPAPI, CurrentUser scope -- same
-    // protection TryLoadFrom/Save use), or null when items.dat does not exist. Used by Task 5's
-    // BackupService to embed the current history into an export container without going through
-    // a second serialize of _items (this reads the file Save() already wrote, rather than
+    // Returns the plaintext JSON the current items file decrypts to (DPAPI, CurrentUser scope --
+    // same protection TryLoadFrom/Save use), or null when there is no history file at all. Used by
+    // Task 5's BackupService to embed the current history into an export container without going
+    // through a second serialize of _items (this reads the file Save() already wrote, rather than
     // re-serializing the in-memory snapshot, so an export always reflects exactly what is on
     // disk). A decrypt failure is NOT swallowed here -- it propagates to the caller, unlike
     // Load()'s "unreadable means empty" tolerance, because a caller asking to read out an
     // existing file for export/inspection needs to know it failed, not silently get null.
+    //
+    // v1.6 最終レビュー修正 (Fix 3): 「どのファイルが現在の履歴か」は Load() と同じ
+    // ResolveCurrentItemsPath に聞く。items.dat が無く items.bak だけがある状態 (Load() が
+    // 復旧できる状態、CopyDataTo もフォールバックする状態) でここだけ null を返すと、
+    // BackupService.ExportTo がその null を "[]" に潰し、**復旧可能な履歴が空のエクスポート
+    // ファイルになる** -- それを取り込んだ移行先は履歴を失う。
     public string? ReadDecryptedJson()
     {
         lock (_lock)
         {
-            if (!File.Exists(_itemsPath))
+            var path = ResolveCurrentItemsPath();
+            if (path is null)
             {
                 return null;
             }
 
-            var protectedBytes = File.ReadAllBytes(_itemsPath);
+            if (!string.Equals(path, _itemsPath, StringComparison.OrdinalIgnoreCase))
+            {
+                FileLogger.Instance?.Warn("store", "items.dat missing; read items.bak instead");
+            }
+
+            var protectedBytes = File.ReadAllBytes(path);
             var jsonBytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
             return Encoding.UTF8.GetString(jsonBytes);
         }
+    }
+
+    // 「Load() なら今どのファイルを履歴として読むか」の唯一の解決点: items.dat があればそれ、
+    // 無ければ items.bak (Load() の復旧フォールバックと同じ順序)、どちらも無ければ null。
+    // CopyDataTo (バックアップ) と ReadDecryptedJson (エクスポート) はどちらもこれを使うので、
+    // 「バックアップは .bak を拾うのにエクスポートは空になる」という食い違いが構造上作れない。
+    // 呼び出し側は _lock の中から呼ぶこと (ファイルの有無を見てから読むまでの間に Save() が
+    // 割り込むと答えが変わるため)。
+    private string? ResolveCurrentItemsPath()
+    {
+        if (File.Exists(_itemsPath))
+        {
+            return _itemsPath;
+        }
+
+        return File.Exists(_bakPath) ? _bakPath : null;
     }
 
     // Encrypts `json` with DPAPI (CurrentUser scope, matching Save()/TryLoadFrom) and writes it

@@ -20,21 +20,33 @@ public sealed record BackupEntry(string FilePath, BackupKind Kind, DateTime Crea
 public enum BackupValidation { Ok, NotABackup, WrongEnvironment }
 
 /// <summary>
-/// リストア / インポートの失敗 (設計書 §5 手順 6)。
-/// <see cref="RolledBack"/> は「退避 ZIP から元の状態へ巻き戻した」ことを表す。
-/// false は 2 通りある: (a) 差し替えを始める前に中断した (取り込み元を展開できない /
-/// 退避の作成に失敗した) ので現在のデータは無傷、(b) 差し替え後の巻き戻しにも失敗した
-/// (致命的。退避 ZIP のパスを ERROR ログに残す)。UI はこの真偽だけで文言を決めず、
-/// どの経路で来たかをメッセージ / ログと合わせて扱うこと。
+/// リストア / インポートが失敗したときの、利用者にとっての**データの状態** (設計書 §5 手順 6)。
+/// <list type="bullet">
+/// <item><c>AbortedClean</c>: 差し替えを始める前に中断した (取り込み元を展開できない /
+/// 退避の作成に失敗した / 取り込み元の items.dat が読めない)。現在のデータは無傷。</item>
+/// <item><c>RolledBack</c>: 差し替えに失敗し、退避 ZIP から元の状態へ巻き戻した。</item>
+/// <item><c>RollbackFailed</c>: 差し替えにも巻き戻しにも失敗した (致命的。退避 ZIP のパスを
+/// ERROR ログに残す)。</item>
+/// </list>
+/// v1.6 最終レビュー修正: 以前は bool RolledBack 1 つで、false が「無傷」と「致命的」の
+/// 2 通りを兼ねていた。UI がその false を致命的側に倒していたため、**何も壊れていない
+/// 中断でも「巻き戻しにも失敗しました」と表示していた**。3 状態に分けて、状態と文言を
+/// 1 対 1 にする。
+/// </summary>
+public enum RestoreFailure { AbortedClean, RolledBack, RollbackFailed }
+
+/// <summary>
+/// リストア / インポートの失敗 (設計書 §5 手順 6)。<see cref="Failure"/> がデータの状態を
+/// 表し、UI の文言はその 3 状態から一意に決まる (<see cref="RestoreFailure"/>)。
 /// </summary>
 public sealed class BackupRestoreException : Exception
 {
-    public bool RolledBack { get; }
+    public RestoreFailure Failure { get; }
 
-    public BackupRestoreException(string message, bool rolledBack, Exception? inner = null)
+    public BackupRestoreException(string message, RestoreFailure failure, Exception? inner = null)
         : base(message, inner)
     {
-        RolledBack = rolledBack;
+        Failure = failure;
     }
 }
 
@@ -274,7 +286,7 @@ public sealed class BackupService
         try
         {
             // 展開は退避バックアップより先。開けもしない ZIP のために safety-*.zip を 1 世代
-            // 消費しない、かつ失敗しても現在のデータは無傷 (RolledBack=false の (a) 経路)。
+            // 消費しない、かつ失敗しても現在のデータは無傷 (= AbortedClean)。
             try
             {
                 staging = ExtractToStaging(zipPath, "restore");
@@ -282,7 +294,7 @@ public sealed class BackupService
             catch (Exception ex)
             {
                 FileLogger.Instance?.Error("backup", "restore aborted: backup could not be extracted", ex);
-                throw new BackupRestoreException("backup could not be extracted", rolledBack: false, ex);
+                throw new BackupRestoreException("backup could not be extracted", RestoreFailure.AbortedClean, ex);
             }
 
             RestoreFromStaging(staging);
@@ -420,7 +432,7 @@ public sealed class BackupService
         if (safety is null)
         {
             // 手順 2: 退避に失敗したら中断する。まだ何も触っていない。
-            throw new BackupRestoreException("safety backup could not be created", rolledBack: false);
+            throw new BackupRestoreException("safety backup could not be created", RestoreFailure.AbortedClean);
         }
 
         try
@@ -434,11 +446,11 @@ public sealed class BackupService
             // **何も触っていない**。ここで巻き戻すと、現在の blobs を消してから退避 ZIP の
             // 中身で貼り直すという破壊的な往復を「最も起きやすい失敗 (利用者が壊れた
             // バックアップを選んだ)」のたびに行うことになる。何も変わっていないのだから
-            // 巻き戻さず即座に失敗させる。RolledBack=false はここでは
-            // 「差し替えを始める前に中断した = 現在のデータは無傷」の意味 (§BackupRestoreException)。
+            // 巻き戻さず即座に失敗させる。状態は AbortedClean =
+            // 「差し替えを始める前に中断した = 現在のデータは無傷」(<see cref="RestoreFailure"/>)。
             FileLogger.Instance?.Warn(
                 "backup", $"restore aborted: the backup's items.dat could not be read ({ex.GetType().Name}); nothing was changed");
-            throw new BackupRestoreException("backup contents could not be read", rolledBack: false, ex);
+            throw new BackupRestoreException("backup contents could not be read", RestoreFailure.AbortedClean, ex);
         }
         catch (Exception ex)
         {
@@ -452,10 +464,14 @@ public sealed class BackupService
                 // 不変条件: 前進側の手順は (a) ReplaceDataFrom → (b) settings.json のコピー の 2 つで、
                 // (b) の後には何も無い。したがって巻き戻しに入るのは (b) の途中か、それより前の
                 // 失敗に限られ、**巻き戻し時点の settings.json は必ず元のまま**である
-                // (= 戻す必要が無い)。それどころか、ここでコピーを試みると
+                // (= 戻す必要が無い)。v1.6 最終レビュー修正で (b) は「一時ファイルへコピー →
+                // File.Replace/Move で差し替え」の**原子的なコミット**になった
+                // (<see cref="CopySettingsFromStaging"/>) ので、この不変条件はさらに強くなった:
+                // 「半分だけ書けた settings.json」という中間状態が存在せず、(b) は丸ごと成功したか
+                // 元のままかのどちらかしかない。それどころか、ここでコピーを試みると
                 // 「(b) を失敗させた原因そのもの (例: settings.json が別プロセスにロックされている)」を
                 // もう一度踏むことになり、履歴と blobs は正しく戻っているのに
-                // 「復元も巻き戻しも失敗」(RolledBack=false = 致命的) と報告してしまう。
+                // 「復元も巻き戻しも失敗」(RollbackFailed = 致命的) と報告してしまう。
                 // (b) の後に処理を足すときは、この不変条件を壊していないか確認すること。
                 rollback = ExtractToStaging(safety, "rollback");
                 _store.ReplaceDataFrom(rollback);
@@ -464,7 +480,7 @@ public sealed class BackupService
             {
                 FileLogger.Instance?.Error(
                     "backup", $"rollback failed; the safety backup is kept at {safety}", rollbackEx);
-                throw new BackupRestoreException("restore failed and rollback failed", rolledBack: false, ex);
+                throw new BackupRestoreException("restore failed and rollback failed", RestoreFailure.RollbackFailed, ex);
             }
             finally
             {
@@ -472,7 +488,7 @@ public sealed class BackupService
             }
 
             FileLogger.Instance?.Info("backup", "rolled back to the state before the restore");
-            throw new BackupRestoreException("restore failed", rolledBack: true, ex);
+            throw new BackupRestoreException("restore failed", RestoreFailure.RolledBack, ex);
         }
     }
 
@@ -711,6 +727,17 @@ public sealed class BackupService
         }
     }
 
+    /// <summary>
+    /// 復元の前進側 手順 (b): 展開済みの settings.json を dataDir へコミットする。
+    ///
+    /// <para>v1.6 最終レビュー修正: 宛先へ直接コピーせず、**同じフォルダの一時ファイルへ
+    /// コピーしてから差し替える** (SettingsStore.Save / ItemStore.Save と同じ形)。宛先へ直接
+    /// 書くと、コピーの途中で落ちた場合に「復元前でも復元後でもない、途中まで書けた
+    /// settings.json」が残りうる — そして巻き戻しは settings.json に触らない設計なので、
+    /// その壊れたファイルは誰も直さない。差し替え方式なら settings.json は
+    /// 「元のまま」か「新しい内容で丸ごと」のどちらかにしかならず、
+    /// <see cref="RestoreFromStaging"/> の巻き戻し不変条件がそのぶん強くなる。</para>
+    /// </summary>
     private void CopySettingsFromStaging(string stagingDir)
     {
         var staged = Path.Combine(stagingDir, SettingsFileName);
@@ -720,7 +747,28 @@ public sealed class BackupService
         }
 
         Directory.CreateDirectory(_dataDir);
-        File.Copy(staged, Path.Combine(_dataDir, SettingsFileName), overwrite: true);
+        var dest = Path.Combine(_dataDir, SettingsFileName);
+        var tmp = dest + ".tmp";
+
+        try
+        {
+            File.Copy(staged, tmp, overwrite: true);
+
+            if (File.Exists(dest))
+            {
+                File.Replace(tmp, dest, null);
+            }
+            else
+            {
+                File.Move(tmp, dest);
+            }
+        }
+        finally
+        {
+            // 成功経路では Replace/Move が tmp を消費済みなので何もしない (File.Exists が false)。
+            // 失敗経路で中途半端な一時ファイルを dataDir に残さないためだけの後始末。
+            TryDeleteFile(tmp);
+        }
     }
 
     private string ExtractToStaging(string zipPath, string purpose)

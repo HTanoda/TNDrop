@@ -79,6 +79,24 @@ public class ItemStoreBackupApiTests : IDisposable
         Assert.Equal("秘密のテキスト", doc.RootElement[0].GetProperty("Text").GetString());
     }
 
+    // items.dat が無く items.bak だけが残る状態は Load() が復旧できる「読める履歴あり」の状態
+    // (CopyDataTo も同じフォールバックを持つ)。ReadDecryptedJson だけが null を返すと、
+    // ExportTo がその null を "[]" に潰して**中身が空のエクスポート**を書き、それを取り込んだ
+    // 移行先の履歴が消える。「Load() が読むファイルはどれか」の答えを 3 箇所で揃える
+    // (v1.6 最終レビュー修正 Fix 3)。
+    [Fact]
+    public void ReadDecryptedJson_FallsBackToItemsBak_WhenItemsDatIsMissing()
+    {
+        var store = NewStoreWithOneItem("recoverable-export");
+        File.Move(Path.Combine(_dir, "items.dat"), Path.Combine(_dir, "items.bak"));
+
+        var json = store.ReadDecryptedJson();
+
+        Assert.NotNull(json);
+        using var doc = JsonDocument.Parse(json!);
+        Assert.Equal("recoverable-export", doc.RootElement[0].GetProperty("Text").GetString());
+    }
+
     [Fact]
     public void ReadDecryptedJson_NoFile_ReturnsNull()
     {

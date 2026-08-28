@@ -284,14 +284,23 @@ public sealed partial class BackupDialog : Window
 
     // ---- Shared helpers ---------------------------------------------------------------------
 
+    /// <summary>
+    /// 失敗の 3 状態 (<see cref="RestoreFailure"/>) を 1 対 1 で文言にする。以前は bool
+    /// RolledBack が false の 2 通り (中断 / 巻き戻しも失敗) を区別できず、**何も壊れていない
+    /// 中断でも「巻き戻しにも失敗しました。退避ファイル: ...」と表示していた** -- 利用者に
+    /// 無傷のデータを壊れたものとして扱わせる、最悪の方向の誤報だった (v1.6 最終レビュー修正)。
+    /// </summary>
     private void ShowRestoreFailure(BackupRestoreException ex)
     {
-        var message = ex.RolledBack
-            ? Strings.BackupRestoreFailedRolledBack
-            : string.Format(
+        var message = ex.Failure switch
+        {
+            RestoreFailure.AbortedClean => Strings.BackupRestoreAborted,
+            RestoreFailure.RolledBack => Strings.BackupRestoreFailedRolledBack,
+            _ => string.Format(
                 CultureInfo.CurrentUICulture,
                 Strings.BackupRestoreFailedFatalFormat,
-                global::TNDrop.App.Backup?.BackupsDir ?? "");
+                global::TNDrop.App.Backup?.BackupsDir ?? ""),
+        };
 
         ShowMessage(message, MessageBoxImage.Error);
     }

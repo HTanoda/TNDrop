@@ -511,6 +511,9 @@
   <data name="BackupRestoreDone" xml:space="preserve">
     <value>復元しました。</value>
   </data>
+  <data name="BackupRestoreAborted" xml:space="preserve">
+    <value>リストアを中断しました。データは変更されていません。詳細はログを確認してください。</value>
+  </data>
   <data name="BackupRestoreFailedRolledBack" xml:space="preserve">
     <value>リストアに失敗しました。元の状態に戻しました。詳細はログを確認してください。</value>
   </data>

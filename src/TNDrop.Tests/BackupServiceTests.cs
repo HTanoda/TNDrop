@@ -1,6 +1,7 @@
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text;
 using TNDrop.Core;
 
 public class BackupServiceTests : IDisposable
@@ -20,9 +21,20 @@ public class BackupServiceTests : IDisposable
         try { Directory.Delete(_dir, true); } catch { }
     }
 
+    // ContentHash は本文から導出する (v1.6 最終レビュー修正 Fix 5)。既定の 0 のままだと
+    // 2 件目の TryAdd が「先頭と同じハッシュ」として**黙って拒否される**ため、2 件を撒く
+    // テストが「消えたこと」を検証しているつもりで空振りする (実際に
+    // RestoreFrom_ReplacesCurrentData_AndWritesSafetyBackup がそうなっていた)。導出は
+    // ItemStore.BuildFileItems が本番で使っているのと同じ Fnv1a。
     private void SeedItem(string text)
     {
-        _store.TryAdd(new ClipItem { Kind = ClipKind.Text, Text = text, CreatedAtUtc = DateTime.UtcNow });
+        _store.TryAdd(new ClipItem
+        {
+            Kind = ClipKind.Text,
+            Text = text,
+            CreatedAtUtc = DateTime.UtcNow,
+            ContentHash = ItemStore.Fnv1a(Encoding.UTF8.GetBytes(text)),
+        });
         _store.Save();
     }
 
@@ -108,6 +120,9 @@ public class BackupServiceTests : IDisposable
         SeedItem("old");
         var backup = _svc.CreateBackup(BackupKind.Manual)!;
         SeedItem("newer-than-backup");
+        // SeedItem がハッシュを本文から導出するようになったので、この 2 件目は実際に履歴へ入る
+        // (以前は ContentHash=0 同士の重複として拒否され、下の DoesNotContain が空振りしていた)。
+        Assert.Contains(_store.Items, i => i.Text == "newer-than-backup");
 
         _svc.RestoreFrom(backup);
 
@@ -119,7 +134,7 @@ public class BackupServiceTests : IDisposable
     // レビュー修正 (fix round 1, item 3): ItemStore.ReplaceDataFrom の契約では
     // InvalidDataException = 「取り込み元が読めず、何も触っていない」。したがってここは
     // 巻き戻しを走らせず即座に失敗する (現在の blobs を消して貼り直す破壊的な往復を、
-    // 最も起きやすい失敗のたびに行わない)。RolledBack=false = 「差し替え前に中断、データは無傷」。
+    // 最も起きやすい失敗のたびに行わない)。AbortedClean = 「差し替え前に中断、データは無傷」。
     [Fact]
     public void RestoreFrom_CorruptItemsDat_FailsFastAndLeavesDataUntouched()
     {
@@ -138,7 +153,7 @@ public class BackupServiceTests : IDisposable
 
         var ex = Assert.Throws<BackupRestoreException>(() => _svc.RestoreFrom(corrupt));
 
-        Assert.False(ex.RolledBack);
+        Assert.Equal(RestoreFailure.AbortedClean, ex.Failure);
         Assert.Contains(_store.Items, i => i.Text == "survives-rollback");
     }
 
@@ -263,7 +278,7 @@ public class BackupServiceTests : IDisposable
 
         var ex = Assert.Throws<BackupRestoreException>(() => _svc.RestoreFrom(MakeCorruptCopy(good)));
 
-        Assert.False(ex.RolledBack);
+        Assert.Equal(RestoreFailure.AbortedClean, ex.Failure);
         Assert.Contains(_store.Items, i => i.Text == "later");
         Assert.Contains(_store.Items, i => i.Text == "orig");
         Assert.Equal("{\"Edge\":\"Right\"}", File.ReadAllText(Path.Combine(_dir, "settings.json")));
@@ -274,7 +289,7 @@ public class BackupServiceTests : IDisposable
     // レビュー修正 (fix round 2): 巻き戻しが実際に成功する経路。前進側の最後の手順である
     // settings.json のコピーだけを失敗させる (宛先を別ハンドルで掴んで書き込みを拒否する)。
     // 巻き戻しは items.dat + blobs だけを戻し settings.json には触らないので、同じロックに
-    // 二度目でぶつかることなく完了し、RolledBack=true になる。
+    // 二度目でぶつかることなく完了し、Failure=RolledBack になる。
     [Fact]
     public void RestoreFrom_SettingsCopyFails_RollsBackItemsAndLeavesSettingsIntact()
     {
@@ -299,7 +314,7 @@ public class BackupServiceTests : IDisposable
             ex = Assert.Throws<BackupRestoreException>(() => _svc.RestoreFrom(backup));
         }
 
-        Assert.True(ex.RolledBack);
+        Assert.Equal(RestoreFailure.RolledBack, ex.Failure);
         // 履歴・blobs は復元前の状態に戻っている
         Assert.Contains(_store.Items, i => i.Text == "pre-restore");
         Assert.Contains(_store.Items, i => i.Text == "in-backup");
@@ -328,7 +343,7 @@ public class BackupServiceTests : IDisposable
 
         // 退避を作れない状態での復元は、現在のデータに触れる前に中断しなければならない
         var ex = Assert.Throws<BackupRestoreException>(() => _svc.RestoreFrom(good));
-        Assert.False(ex.RolledBack);
+        Assert.Equal(RestoreFailure.AbortedClean, ex.Failure);
         Assert.Contains(_store.Items, i => i.Text == "keep");
     }
 
@@ -354,6 +369,33 @@ public class BackupServiceTests : IDisposable
             var otherStore = new ItemStore(otherDir);
             var otherSvc = new BackupService(otherDir, otherStore);
             otherSvc.RestoreFrom(backup!);
+            Assert.Contains(otherStore.Items, i => i.Text == "only-in-bak");
+        }
+        finally
+        {
+            try { Directory.Delete(otherDir, true); } catch { }
+        }
+    }
+
+    // 上と同じ「items.bak しか残っていない」状態の、エクスポート側 (v1.6 最終レビュー修正 Fix 3)。
+    // ReadDecryptedJson が null を返すと ExportTo はそれを "[]" に潰すため、復旧可能な履歴が
+    // **空のエクスポートファイル**になり、それを取り込んだ移行先の履歴が消える。
+    [Fact]
+    public void ExportTo_WithOnlyItemsBak_ExportsTheRecoverableHistory()
+    {
+        Add("only-in-bak", 1);
+        File.Move(Path.Combine(_dir, "items.dat"), Path.Combine(_dir, "items.bak"));
+
+        var exportPath = Path.Combine(_dir, "out.tndexport");
+        _svc.ExportTo(exportPath, "pass-word-8");
+
+        var otherDir = Path.Combine(Path.GetTempPath(), "tndrop-test-" + Guid.NewGuid());
+        try
+        {
+            var otherStore = new ItemStore(otherDir);
+            var otherSvc = new BackupService(otherDir, otherStore);
+            otherSvc.ImportFrom(exportPath, "pass-word-8");
+
             Assert.Contains(otherStore.Items, i => i.Text == "only-in-bak");
         }
         finally

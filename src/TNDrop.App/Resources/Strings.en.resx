@@ -511,6 +511,9 @@
   <data name="BackupRestoreDone" xml:space="preserve">
     <value>Restored.</value>
   </data>
+  <data name="BackupRestoreAborted" xml:space="preserve">
+    <value>Restore was aborted. Your data was not changed. See the log for details.</value>
+  </data>
   <data name="BackupRestoreFailedRolledBack" xml:space="preserve">
     <value>Restore failed. Your previous data was recovered. See the log for details.</value>
   </data>

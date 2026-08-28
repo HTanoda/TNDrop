@@ -198,6 +198,7 @@ internal static class Strings
     public static string BackupDeleteConfirm => Get(nameof(BackupDeleteConfirm));
     public static string BackupManualFailed => Get(nameof(BackupManualFailed));
     public static string BackupRestoreDone => Get(nameof(BackupRestoreDone));
+    public static string BackupRestoreAborted => Get(nameof(BackupRestoreAborted));
     public static string BackupRestoreFailedRolledBack => Get(nameof(BackupRestoreFailedRolledBack));
     public static string BackupRestoreFailedFatalFormat => Get(nameof(BackupRestoreFailedFatalFormat));
     public static string BackupWrongEnvironment => Get(nameof(BackupWrongEnvironment));

@@ -45,6 +45,23 @@ public partial class App : System.Windows.Application
     private BackupDialog? _backupDialog;
 
     /// <summary>
+    /// 走っている (かもしれない) 日次自動バックアップのタスク (v1.6 最終レビュー修正)。
+    /// <see cref="OnStoreSaved"/> が投げたものを終了経路が join するためだけに保持する —
+    /// 追跡していないと、終了時の「正である」バックアップの**後に**バックグラウンドの ZIP 化が
+    /// 着地して同じ auto-YYYYMMDD.zip を古い内容で上書きしうる。
+    /// <see cref="OnStoreSaved"/> が静的なので静的。
+    /// </summary>
+    private static Task? _pendingDailyBackup;
+
+    /// <summary>
+    /// <see cref="OnSessionEnding"/> が終了時バックアップを取り終えたか (v1.6 最終レビュー修正)。
+    /// OS がそのままシャットダウンへ進むと直後に OnExit も走るため、これが無いと OS の締め切りの
+    /// 中で**同じ内容をもう一度 ZIP 化**することになる。トレイからの終了は SessionEnding を
+    /// 通らないので、このフラグは false のままで OnExit が通常どおりバックアップを取る。
+    /// </summary>
+    private bool _sessionEndBackupDone;
+
+    /// <summary>
     /// How long a resume-from-sleep or unlock keeps <see cref="ClipboardMonitor.IgnoreUntil"/>
     /// in the future. Windows fires bogus clipboard-format-listener notifications for a moment
     /// around both events; this window swallows them so a stale clipboard doesn't get re-captured
@@ -325,13 +342,28 @@ public partial class App : System.Windows.Application
         // to the user as "it didn't quit". Nothing in the backup path touches the tray.
         _trayIcon?.Dispose();
 
+        // 有界の join (v1.6 最終レビュー修正)。日次自動バックアップはスレッドプールで走っており、
+        // 終了時バックアップと**同じ auto-YYYYMMDD.zip** を書く。join しないと、保存して数秒後に
+        // 終了した利用者では「古い内容のバックグラウンド ZIP」が「正である終了時バックアップ」の
+        // 後に着地して上書きしうる。先に終わらせてから下の同期バックアップを取れば、書き手が
+        // 同時に 2 つ存在する状況そのものが消えるので、BackupService 側に追加のロックは要らない。
+        // 5 秒で打ち切るのは、ディスクが固まっているときにシャットダウンを止めないため
+        // (打ち切った場合でも、下の同期バックアップが後から書くので最終結果は正しい方が残る)。
+        try { _pendingDailyBackup?.Wait(TimeSpan.FromSeconds(5)); } catch { }
+
         // Exit-time backup (設計書 §4). Runs after the Save above so the ZIP contains what the user
         // actually leaves behind. Synchronous on purpose -- OnExit is the last chance, so this must
         // finish before the process does. Guarded: OnExit also runs on the second-instance path,
         // where Settings/Backup were never assigned.
         try
         {
-            if (Settings?.AutoBackupEnabled == true)
+            if (_sessionEndBackupDone)
+            {
+                // SessionEnding が既に同じ内容を ZIP 化している (OS はそのままシャットダウンへ
+                // 進んだ)。OS の締め切りの中でもう一度回す価値はない。
+                FileLogger.Instance?.Info("backup", "exit backup skipped; the session-ending backup already made it");
+            }
+            else if (Settings?.AutoBackupEnabled == true)
             {
                 Backup?.CreateBackup(BackupKind.Auto);
             }
@@ -1026,7 +1058,9 @@ public partial class App : System.Windows.Application
         Settings.LastAutoBackupDate = today;
         SaveSettings();
 
-        Task.Run(() =>
+        // 終了経路 (OnExit / OnSessionEnding) が join できるようにタスクを保持する。
+        // 詳細は <see cref="_pendingDailyBackup"/>。
+        _pendingDailyBackup = Task.Run(() =>
         {
             try
             {
@@ -1067,9 +1101,19 @@ public partial class App : System.Windows.Application
 
             Store?.Save();
 
+            // OnExit と同じ有界の join (v1.6 最終レビュー修正): 走っているかもしれない日次
+            // バックアップは、これから取る同期バックアップと同じ auto-YYYYMMDD.zip を書く。
+            // 先に終わらせておかないと、古い内容の ZIP が後から着地して上書きしうる。
+            // 5 秒で打ち切るのは、OS のシャットダウン締め切りを自分で使い切らないため。
+            try { _pendingDailyBackup?.Wait(TimeSpan.FromSeconds(5)); } catch { }
+
             if (Settings?.AutoBackupEnabled == true)
             {
-                Backup?.CreateBackup(BackupKind.Auto);
+                // 成功したときだけ OnExit の分を省く (失敗したなら OnExit にもう一度やらせる)。
+                // 既知の割り切り: 他アプリが WM_QUERYENDSESSION を拒否してシャットダウンが
+                // 取り消された場合、このフラグは立ったまま残り、その後のトレイ終了で OnExit の
+                // バックアップが省かれる。二重 ZIP 化を避ける側を優先した判断。
+                _sessionEndBackupDone = Backup?.CreateBackup(BackupKind.Auto) is not null;
             }
         }
         catch (Exception ex)
@@ -1103,7 +1147,7 @@ public partial class App : System.Windows.Application
     /// <summary>
     /// バックアップ ZIP からの復元 (設計書 §5)。成功で true。
     /// <see cref="BackupRestoreException"/> はそのまま呼び出し元へ抜ける — 文言化は
-    /// BackupDialog の責務 (RolledBack の 2 通りの意味をここで UI 文言に潰さない)。
+    /// BackupDialog の責務 (<see cref="RestoreFailure"/> の 3 状態をここで UI 文言に潰さない)。
     /// </summary>
     public static bool RunRestore(string zipPath) => RunReplacing(() => Backup!.RestoreFrom(zipPath));
 
