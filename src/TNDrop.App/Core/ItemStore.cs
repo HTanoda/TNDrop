@@ -64,6 +64,12 @@ public sealed partial class ItemStore
 
     public event Action? Changed;
 
+    // Fires once per successful Save(), OUTSIDE _lock (see Save()'s remarks) so that a handler
+    // is free to call back into CopyDataTo/ReadDecryptedJson (both of which take _lock
+    // themselves) without deadlocking. This is the daily-auto-backup trigger Task 5's
+    // BackupService subscribes to; it never fires when Save() catches and logs a failure.
+    public event Action? Saved;
+
     public bool LoadFailed { get; private set; }
 
     // Cheap pre-check for callers that would otherwise do expensive work (encoding/saving an
@@ -669,6 +675,8 @@ public sealed partial class ItemStore
         // Entire body (snapshot + serialize + encrypt + write + replace) runs
         // under _lock so a concurrent Save() or Load() cannot interleave on
         // the shared items.tmp/.dat/.bak files (see comment on _lock).
+        var ok = false;
+
         lock (_lock)
         {
             try
@@ -689,12 +697,173 @@ public sealed partial class ItemStore
                 {
                     File.Move(_tmpPath, _itemsPath);
                 }
+
+                ok = true;
             }
             catch (Exception ex)
             {
                 FileLogger.Instance?.Error("store", "Failed to save items", ex);
             }
         }
+
+        // Raised outside _lock (see Saved's remarks): a handler that calls CopyDataTo or
+        // ReadDecryptedJson would otherwise re-enter _lock on the same thread and deadlock.
+        if (ok)
+        {
+            Saved?.Invoke();
+        }
+    }
+
+    // Copies the current items.dat (if any) and every file in BlobsDir into destDir, for backup
+    // export. Runs entirely under _lock so it sees a consistent on-disk snapshot with respect to
+    // a concurrent Save()/Load()/ReplaceDataFrom -- same "hold _lock across real disk I/O"
+    // pattern Save() itself uses. destDir (and destDir\blobs) are created if missing. Blob files
+    // are copied flat (BlobsDir never contains subdirectories -- see DeleteBlobsFor's remarks on
+    // the blob-ownership invariant), each overwriting any same-named file already at the
+    // destination.
+    public void CopyDataTo(string destDir)
+    {
+        lock (_lock)
+        {
+            Directory.CreateDirectory(destDir);
+
+            if (File.Exists(_itemsPath))
+            {
+                File.Copy(_itemsPath, Path.Combine(destDir, "items.dat"), overwrite: true);
+            }
+
+            var destBlobsDir = Path.Combine(destDir, "blobs");
+            Directory.CreateDirectory(destBlobsDir);
+
+            foreach (var blobPath in Directory.GetFiles(BlobsDir))
+            {
+                File.Copy(blobPath, Path.Combine(destBlobsDir, Path.GetFileName(blobPath)), overwrite: true);
+            }
+        }
+    }
+
+    // Returns the plaintext JSON items.dat decrypts to (DPAPI, CurrentUser scope -- same
+    // protection TryLoadFrom/Save use), or null when items.dat does not exist. Used by Task 5's
+    // BackupService to embed the current history into an export container without going through
+    // a second serialize of _items (this reads the file Save() already wrote, rather than
+    // re-serializing the in-memory snapshot, so an export always reflects exactly what is on
+    // disk). A decrypt failure is NOT swallowed here -- it propagates to the caller, unlike
+    // Load()'s "unreadable means empty" tolerance, because a caller asking to read out an
+    // existing file for export/inspection needs to know it failed, not silently get null.
+    public string? ReadDecryptedJson()
+    {
+        lock (_lock)
+        {
+            if (!File.Exists(_itemsPath))
+            {
+                return null;
+            }
+
+            var protectedBytes = File.ReadAllBytes(_itemsPath);
+            var jsonBytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
+            return Encoding.UTF8.GetString(jsonBytes);
+        }
+    }
+
+    // Encrypts `json` with DPAPI (CurrentUser scope, matching Save()/TryLoadFrom) and writes it
+    // to `path`. Used to stage a restored/imported items.dat before ReplaceDataFrom picks it up,
+    // and by tests to build a roundtrip fixture -- it is the write-side counterpart of
+    // ReadDecryptedJson, so together they let a caller round-trip an ItemStore's on-disk content
+    // through plain JSON without ever touching a live store's _items list.
+    public static void WriteEncryptedJson(string path, string json)
+    {
+        var protectedBytes = ProtectedData.Protect(Encoding.UTF8.GetBytes(json), null, DataProtectionScope.CurrentUser);
+        File.WriteAllBytes(path, protectedBytes);
+    }
+
+    // Restore-time pre-check: can THIS Windows user account's DPAPI decrypt itemsDatPath at all?
+    // DPAPI keys are per-user, so a items.dat copied from another account (or corrupted) fails
+    // here before ReplaceDataFrom ever touches the live store. Any failure (bad DPAPI blob,
+    // missing/unreadable file) collapses to false -- callers only need a yes/no gate, not the
+    // distinction between "wrong user" and "corrupt bytes".
+    public static bool CanDecrypt(string itemsDatPath)
+    {
+        try
+        {
+            ProtectedData.Unprotect(File.ReadAllBytes(itemsDatPath), null, DataProtectionScope.CurrentUser);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // Restores this store's on-disk files AND in-memory items from srcDir (a backup/import
+    // staging directory laid out like _dataDir itself: items.dat + blobs\). Validation happens
+    // FIRST, before any current file is touched: if srcDir\items.dat exists but fails to
+    // decrypt/deserialize, this throws InvalidDataException and leaves the live store completely
+    // untouched. This intentionally does NOT reuse Load()'s "unreadable means start empty"
+    // tolerance -- that tolerance is right for first-run/corruption at startup, but reused here it
+    // would make restoring a broken backup silently wipe the user's history instead of failing
+    // loudly; Task 5's rollback path relies on catching this exception before anything changes.
+    // The same TryLoadFrom() call that validates srcDir's items.dat also produces the item list
+    // used for the in-memory swap below -- one parse, not a validate-then-reload-again pair.
+    public void ReplaceDataFrom(string srcDir)
+    {
+        var srcItemsPath = Path.Combine(srcDir, "items.dat");
+
+        lock (_lock)
+        {
+            List<ClipItem> newItems;
+
+            if (File.Exists(srcItemsPath))
+            {
+                if (!TryLoadFrom(srcItemsPath, out newItems))
+                {
+                    throw new InvalidDataException(
+                        $"Restore source items.dat could not be decrypted/parsed: {srcItemsPath}");
+                }
+            }
+            else
+            {
+                newItems = new List<ClipItem>();
+            }
+
+            if (File.Exists(_itemsPath))
+            {
+                File.Delete(_itemsPath);
+            }
+
+            if (File.Exists(_bakPath))
+            {
+                File.Delete(_bakPath);
+            }
+
+            if (File.Exists(_tmpPath))
+            {
+                File.Delete(_tmpPath);
+            }
+
+            if (File.Exists(srcItemsPath))
+            {
+                File.Copy(srcItemsPath, _itemsPath, overwrite: true);
+            }
+
+            foreach (var existingBlob in Directory.GetFiles(BlobsDir))
+            {
+                File.Delete(existingBlob);
+            }
+
+            var srcBlobsDir = Path.Combine(srcDir, "blobs");
+            if (Directory.Exists(srcBlobsDir))
+            {
+                foreach (var blobPath in Directory.GetFiles(srcBlobsDir))
+                {
+                    File.Copy(blobPath, Path.Combine(BlobsDir, Path.GetFileName(blobPath)), overwrite: true);
+                }
+            }
+
+            _items = newItems;
+        }
+
+        // Raised outside _lock, matching every other mutator in this file (TryAdd/Remove/etc.).
+        Changed?.Invoke();
     }
 
     public static ulong Fnv1a(ReadOnlySpan<byte> data)

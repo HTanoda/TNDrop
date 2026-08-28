@@ -1,0 +1,120 @@
+using System.IO;
+using System.Text.Json;
+using TNDrop.Core;
+
+public class ItemStoreBackupApiTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "tndrop-test-" + Guid.NewGuid());
+    private readonly string _dest = Path.Combine(Path.GetTempPath(), "tndrop-test-" + Guid.NewGuid());
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_dir, true); } catch { }
+        try { Directory.Delete(_dest, true); } catch { }
+    }
+
+    private ItemStore NewStoreWithOneItem(string text)
+    {
+        var store = new ItemStore(_dir);
+        store.TryAdd(new ClipItem { Kind = ClipKind.Text, Text = text, CreatedAtUtc = DateTime.UtcNow });
+        store.Save();
+        return store;
+    }
+
+    [Fact]
+    public void Saved_RaisedAfterSuccessfulSave()
+    {
+        var store = new ItemStore(_dir);
+        var raised = 0;
+        store.Saved += () => raised++;
+        store.Save();
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public void CopyDataTo_CopiesItemsDatAndBlobs()
+    {
+        var store = NewStoreWithOneItem("hello");
+        File.WriteAllBytes(Path.Combine(store.BlobsDir, "img1.png"), new byte[] { 1, 2, 3 });
+
+        store.CopyDataTo(_dest);
+
+        Assert.True(File.Exists(Path.Combine(_dest, "items.dat")));
+        Assert.True(File.Exists(Path.Combine(_dest, "blobs", "img1.png")));
+    }
+
+    [Fact]
+    public void ReadDecryptedJson_ReturnsJsonContainingItemText()
+    {
+        // System.Text.Json's default encoder escapes non-ASCII characters (e.g. \uXXXX for
+        // Japanese) when it serializes, so the raw text does not appear as a literal substring
+        // of the JSON -- parse it back out instead of doing a Contains() on the raw string.
+        var store = NewStoreWithOneItem("秘密のテキスト");
+        var json = store.ReadDecryptedJson();
+        Assert.NotNull(json);
+
+        using var doc = JsonDocument.Parse(json!);
+        Assert.Equal("秘密のテキスト", doc.RootElement[0].GetProperty("Text").GetString());
+    }
+
+    [Fact]
+    public void ReadDecryptedJson_NoFile_ReturnsNull()
+    {
+        var store = new ItemStore(_dir);
+        Assert.Null(store.ReadDecryptedJson());
+    }
+
+    [Fact]
+    public void WriteEncryptedJson_ProducesFileThatLoadLoads()
+    {
+        var store = NewStoreWithOneItem("roundtrip");
+        var json = store.ReadDecryptedJson()!;
+
+        var otherDir = Path.Combine(_dest, "other");
+        Directory.CreateDirectory(otherDir);
+        ItemStore.WriteEncryptedJson(Path.Combine(otherDir, "items.dat"), json);
+
+        var other = new ItemStore(otherDir);
+        other.Load();
+        Assert.Contains(other.Items, i => i.Text == "roundtrip");
+    }
+
+    [Fact]
+    public void CanDecrypt_TrueForOwnFile_FalseForGarbage()
+    {
+        var store = NewStoreWithOneItem("x");
+        Assert.True(ItemStore.CanDecrypt(Path.Combine(_dir, "items.dat")));
+
+        var garbage = Path.Combine(_dest, "items.dat");
+        Directory.CreateDirectory(_dest);
+        File.WriteAllBytes(garbage, new byte[] { 9, 9, 9, 9 });
+        Assert.False(ItemStore.CanDecrypt(garbage));
+    }
+
+    [Fact]
+    public void ReplaceDataFrom_CorruptItemsDat_Throws()
+    {
+        var source = NewStoreWithOneItem("keep");
+        Directory.CreateDirectory(_dest);
+        File.WriteAllBytes(Path.Combine(_dest, "items.dat"), new byte[] { 1, 2, 3, 4 });
+
+        Assert.Throws<InvalidDataException>(() => source.ReplaceDataFrom(_dest));
+    }
+
+    [Fact]
+    public void ReplaceDataFrom_SwapsContentAndRaisesChanged()
+    {
+        var source = NewStoreWithOneItem("old-content");
+        var stagingStore = new ItemStore(_dest);
+        stagingStore.TryAdd(new ClipItem { Kind = ClipKind.Text, Text = "new-content", CreatedAtUtc = DateTime.UtcNow });
+        stagingStore.Save();
+
+        var changed = false;
+        source.Changed += () => changed = true;
+        source.ReplaceDataFrom(_dest);
+
+        Assert.True(changed);
+        Assert.Contains(source.Items, i => i.Text == "new-content");
+        Assert.DoesNotContain(source.Items, i => i.Text == "old-content");
+    }
+}
