@@ -19,13 +19,44 @@ public static class BackupPruning
     public const int AutoKeep = 7;
     public const int SafetyKeep = 3;
 
+    /// <summary>
+    /// SINGLE RESOLUTION for "what does this kind look like on disk" (v1.6 Task 5): the manifest's
+    /// <c>kind</c> value AND the file-name prefix are both derived from the enum member's own name
+    /// here, so BackupService's naming, this class's pruning rules, and <see cref="TryParseKind"/>
+    /// can never disagree about which files are auto/manual/safety. Never re-hardcode "auto-" etc.
+    /// </summary>
+    public static string KindName(BackupKind kind) => kind.ToString().ToLowerInvariant();
+
+    /// <summary>ファイル名プレフィックス (<c>auto-</c> 等)。<see cref="KindName"/> から導出する。</summary>
+    public static string KindPrefix(BackupKind kind) => KindName(kind) + "-";
+
+    /// <summary>
+    /// ファイル名 (パスではなく名前) から種別を判定する。規則外の名前は false を返し、
+    /// 一覧にも刈り込み対象にも含めない (利用者が backups フォルダに置いた無関係な ZIP を
+    /// TNDrop が消したり復元候補として見せたりしないため)。
+    /// </summary>
+    public static bool TryParseKind(string fileName, out BackupKind kind)
+    {
+        foreach (var candidate in Enum.GetValues<BackupKind>())
+        {
+            if (fileName.StartsWith(KindPrefix(candidate), StringComparison.OrdinalIgnoreCase))
+            {
+                kind = candidate;
+                return true;
+            }
+        }
+
+        kind = default;
+        return false;
+    }
+
     /// <summary>削除すべきファイル名 (パスではなく名前) を返す。呼び出し側が実削除する。</summary>
     public static IReadOnlyList<string> SelectFilesToDelete(IEnumerable<string> fileNames)
     {
         var names = fileNames.ToList();
         var doomed = new List<string>();
-        doomed.AddRange(SelectOverflow(names, "auto-", AutoKeep));
-        doomed.AddRange(SelectOverflow(names, "safety-", SafetyKeep));
+        doomed.AddRange(SelectOverflow(names, KindPrefix(BackupKind.Auto), AutoKeep));
+        doomed.AddRange(SelectOverflow(names, KindPrefix(BackupKind.Safety), SafetyKeep));
         return doomed;
     }
 

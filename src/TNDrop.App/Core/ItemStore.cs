@@ -12,7 +12,12 @@ namespace TNDrop.Core;
 
 public sealed partial class ItemStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    // internal (v1.6 Task 5): BackupService deserializes/reserializes the SAME List<ClipItem>
+    // shape during an import's blob-path rewrite, so it must use these exact options (the
+    // JsonStringEnumConverter in particular -- a second options instance without it would write
+    // Kind as a number and silently produce an items.dat this store cannot read back). One
+    // definition, shared, rather than two that can drift apart.
+    internal static readonly JsonSerializerOptions JsonOptions = new()
     {
         Converters = { new JsonStringEnumConverter() }
     };
