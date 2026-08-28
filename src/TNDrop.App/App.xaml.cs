@@ -306,13 +306,28 @@ public partial class App : System.Windows.Application
         _fullscreenDetector?.Dispose();
         _autoDelete?.Dispose();
 
+        // v1.6: we are shutting down, so the explicit synchronous exit backup below is the
+        // authoritative one. Unsubscribing BEFORE Store.Save() is what makes that true
+        // deterministically: left subscribed, that Save would fire OnStoreSaved and (on a day
+        // whose auto backup had not been made yet) both zip the very same content a second time
+        // AND -- since OnStoreSaved offloads to a thread-pool task -- start a background zip
+        // racing the process teardown right below it.
+        if (Store is not null)
+        {
+            Store.Saved -= OnStoreSaved;
+        }
+
         Store?.Save();
 
-        // Exit-time backup (v1.6, 設計書 §4). Runs after the Save above so the ZIP contains what
-        // the user actually leaves behind. Store.Save() may already have produced today's auto
-        // backup through OnStoreSaved; a second CreateBackup(Auto) on the same day simply
-        // overwrites that same file, so the double fire is harmless. Guarded: OnExit also runs on
-        // the second-instance path, where Settings/Backup were never assigned.
+        // Tray icon first (v1.6): the exit backup below is synchronous and can take a moment with
+        // a large blobs\ folder, and an icon still sitting in the notification area during it reads
+        // to the user as "it didn't quit". Nothing in the backup path touches the tray.
+        _trayIcon?.Dispose();
+
+        // Exit-time backup (設計書 §4). Runs after the Save above so the ZIP contains what the user
+        // actually leaves behind. Synchronous on purpose -- OnExit is the last chance, so this must
+        // finish before the process does. Guarded: OnExit also runs on the second-instance path,
+        // where Settings/Backup were never assigned.
         try
         {
             if (Settings?.AutoBackupEnabled == true)
@@ -325,7 +340,6 @@ public partial class App : System.Windows.Application
             FileLogger.Instance?.Warn("backup", $"exit backup failed: {ex.Message}");
         }
 
-        _trayIcon?.Dispose();
         Monitor?.Dispose();
         ReleaseSingleInstanceMutex();
 
@@ -978,12 +992,18 @@ public partial class App : System.Windows.Application
 
     /// <summary>
     /// 日次自動バックアップ (設計書 §4)。その日最初の Save 成功後に 1 回だけ走る。
-    /// <para><see cref="ItemStore.Saved"/> はロックの外・Save() を呼んだスレッドで発火する。ここが
-    /// 呼ぶのは ZIP 化 (ファイルコピー) と settings.json の書き込みだけで <see cref="ItemStore.Save"/>
-    /// を呼び返さないので、再入もループもしない。</para>
-    /// <para>失敗しても通常動作は止めない: <see cref="BackupService.CreateBackup"/> は自分でログを
-    /// 出して null を返し、その場合 <see cref="AppSettings.LastAutoBackupDate"/> を進めないので
-    /// 同じ日の次の Save で再試行される。</para>
+    /// <para><see cref="ItemStore.Saved"/> はロックの外・Save() を呼んだスレッドで発火する。それは
+    /// 通常キャプチャパイプラインの UI ディスパッチャなので、ZIP 化 (items.dat + 全 blob の同期
+    /// コピー) をその場で回すと履歴が大きいほど「その日最初のコピー」が固まる。よって
+    /// <see cref="Task.Run"/> でスレッドプールに逃がす。</para>
+    /// <para><b>順序と代償</b>: 実行日の記録を先に (楽観的に) 確定させてからバックグラウンドへ投げる。
+    /// これにより同じ日に何度も ZIP 化が走ることはないが、<b>バックグラウンドのバックアップが
+    /// 失敗してもその日は再試行しない</b> — 設計上の割り切りで、その日の分は
+    /// <see cref="OnSessionEnding"/> / OnExit の終了時バックアップが受け持ち、翌日の最初の Save が
+    /// また試みる。<see cref="BackupService.CreateBackup"/> は失敗を自分でログに残して null を
+    /// 返す。</para>
+    /// <para>ここが呼ぶのは ZIP 化と settings.json の書き込みだけで <see cref="ItemStore.Save"/> を
+    /// 呼び返さないので、再入もループもしない。</para>
     /// </summary>
     private static void OnStoreSaved()
     {
@@ -1000,16 +1020,31 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        if (Backup?.CreateBackup(BackupKind.Auto) is not null)
+        // 呼び出しスレッド (通常は UI) 上で先に日付を確定させる。Task.Run の中で書くと、投げてから
+        // 実際に走るまでの間に来た 2 本目・3 本目の Save が同じゲートを抜けて ZIP を多重起動する。
+        Settings.LastAutoBackupDate = today;
+        SaveSettings();
+
+        Task.Run(() =>
         {
-            Settings.LastAutoBackupDate = today;
-            SaveSettings();
-        }
+            try
+            {
+                Backup?.CreateBackup(BackupKind.Auto);
+            }
+            catch (Exception ex)
+            {
+                // CreateBackup は自分で例外を握る契約なのでここには来ない想定。TaskScheduler の
+                // UnobservedTaskException 経由でしか見えない失敗を作らないための二重の備え。
+                FileLogger.Instance?.Warn("backup", $"daily auto backup failed: {ex.Message}");
+            }
+        });
     }
 
     /// <summary>
     /// シャットダウン / サインアウト / 再起動 (設計書 §4)。Windows がプロセスを落としにかかる
     /// 数秒しかないので、失敗してもリトライしない — 翌日の日次バックアップが拾う。
+    /// <para>ここでの ZIP 化は <see cref="OnStoreSaved"/> と違って<b>同期のまま</b>: OS の締め切りが
+    /// ある経路なので、スレッドプールに逃がすとプロセス終了に追い越されて何も残らない。</para>
     /// <para>ハンドラ自身は決して throw しない: SessionEnding から漏れた例外は
     /// DispatcherUnhandledException 経由でログには残るが、シャットダウン中に MessageBox のような
     /// 副作用を招く余地を残さないため、ここで握って警告ログに落とす。</para>
@@ -1018,6 +1053,14 @@ public partial class App : System.Windows.Application
     {
         try
         {
+            // OnExit と同じ理由で Save の前に外す: これから取る同期バックアップが正であり、
+            // Save 由来の日次バックアップ (= 同じ内容の二度目の ZIP 化 + 終了に競り負ける
+            // バックグラウンドタスク) をここで確定的に断つ。
+            if (Store is not null)
+            {
+                Store.Saved -= OnStoreSaved;
+            }
+
             Store?.Save();
 
             if (Settings?.AutoBackupEnabled == true)
