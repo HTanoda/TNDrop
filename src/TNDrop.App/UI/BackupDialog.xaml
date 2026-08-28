@@ -29,12 +29,47 @@
             <SolidColorBrush x:Key="Dlg.HoverBorder" Color="#55FFFFFF" />
             <SolidColorBrush x:Key="Dlg.FieldBackground" Color="#FF232329" />
 
+            <!--
+                Shared FocusVisualStyle (review fix round 1, same as SettingsWindow.xaml's own
+                Settings.FocusVisual): WPF's default FocusVisualStyle draws its dashed keyboard-
+                focus adorner with a SystemColors-tracking brush, near-invisible against this
+                window's permanent #FF1A1A1F background. Both dialogs in this file set ship
+                Alt-mnemonics (BackupManualButton etc.), so keyboard operation without a visible
+                focus ring is a real, not theoretical, gap. Applied below to every focusable
+                control style (Dlg.Button, ListBox, ListBoxItem).
+            -->
+            <Style x:Key="Dlg.FocusVisual">
+                <Setter Property="Control.Template">
+                    <Setter.Value>
+                        <ControlTemplate>
+                            <Rectangle Margin="-2"
+                                       SnapsToDevicePixels="True"
+                                       UseLayoutRounding="True"
+                                       Stroke="#B3FFFFFF"
+                                       StrokeThickness="1.5"
+                                       StrokeDashArray="1 2"
+                                       RadiusX="5" RadiusY="5" />
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <Style TargetType="TextBlock">
                 <Setter Property="Foreground" Value="{StaticResource Dlg.Foreground}" />
                 <Setter Property="FontSize" Value="13" />
             </Style>
 
+            <!--
+                Review fix round 1 (Critical): an explicit Style="{StaticResource Dlg.SectionLabel}"
+                bypasses the implicit TextBlock style above entirely (keyed styles do not merge or
+                inherit without BasedOn), so without its own Foreground/FontSize this rendered the
+                default near-black SystemColors text against the dark window - invisible headings.
+                Same fix shape as SettingsWindow.xaml's Settings.SectionLabel, which re-states both
+                for exactly this reason.
+            -->
             <Style x:Key="Dlg.SectionLabel" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{StaticResource Dlg.Foreground}" />
+                <Setter Property="FontSize" Value="13" />
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Margin" Value="0,0,0,8" />
             </Style>
@@ -54,6 +89,7 @@
                 <Setter Property="FontSize" Value="13" />
                 <Setter Property="Cursor" Value="Hand" />
                 <Setter Property="Margin" Value="0,0,0,8" />
+                <Setter Property="FocusVisualStyle" Value="{StaticResource Dlg.FocusVisual}" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
@@ -90,11 +126,17 @@
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="Foreground" Value="{StaticResource Dlg.Foreground}" />
                 <Setter Property="Padding" Value="2" />
+                <Setter Property="FocusVisualStyle" Value="{StaticResource Dlg.FocusVisual}" />
             </Style>
 
+            <!-- ListBoxItem is a real keyboard-focus target (arrow keys move Keyboard.FocusedElement
+                 onto the highlighted item, same as ComboBoxItem in SettingsWindow.xaml - see that
+                 style's own review-fix comment), not just a mouse-hover row, so it needs the same
+                 FocusVisualStyle as everything else in this file. -->
             <Style TargetType="ListBoxItem">
                 <Setter Property="Foreground" Value="{StaticResource Dlg.Foreground}" />
                 <Setter Property="Padding" Value="8,5" />
+                <Setter Property="FocusVisualStyle" Value="{StaticResource Dlg.FocusVisual}" />
                 <Style.Triggers>
                     <Trigger Property="IsSelected" Value="True">
                         <Setter Property="Background" Value="#FF34343D" />
