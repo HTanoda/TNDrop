@@ -66,6 +66,31 @@ public class BackupServiceTests : IDisposable
         Assert.Equal(2, list.Count);
         Assert.Contains(list, e => e.Kind == BackupKind.Auto);
         Assert.Contains(list, e => e.Kind == BackupKind.Manual);
+
+        // 並び順の権威はファイル名の日時部分 (BackupPruning.SortKey) — manifest の createdUtc では
+        // ない。同日なら auto-yyyyMMdd より manual-yyyyMMdd-HHmmss が後 (= 新しい) と決まる。
+        Assert.Equal(BackupKind.Manual, list[0].Kind);
+        Assert.Equal(
+            list.Select(e => BackupPruning.SortKey(Path.GetFileName(e.FilePath))).OrderByDescending(k => k, StringComparer.OrdinalIgnoreCase),
+            list.Select(e => BackupPruning.SortKey(Path.GetFileName(e.FilePath))));
+    }
+
+    // 刈り込み (ファイル名順) と一覧が別々の鍵で「新しい順」を決めると食い違う。
+    // manifest の createdUtc が今なのにファイル名は 1999 年、という ZIP (持ち回りのコピー) を
+    // 置いて、一覧がファイル名側に従う = 刈り込みが最古とみなすものを先頭に出さないことを見る。
+    [Fact]
+    public void ListBackups_OrdersByFileName_NotByManifestCreatedUtc()
+    {
+        SeedItem("a");
+        var recent = _svc.CreateBackup(BackupKind.Manual)!;
+        var staleName = "manual-19990101-000000.zip";
+        File.Copy(recent, Path.Combine(_svc.BackupsDir, staleName)); // manifest の createdUtc は「今」
+
+        var list = _svc.ListBackups();
+
+        Assert.Equal(2, list.Count);
+        Assert.Equal(staleName, Path.GetFileName(list[^1].FilePath));
+        Assert.Equal(Path.GetFileName(recent), Path.GetFileName(list[0].FilePath));
     }
 
     [Fact]
@@ -91,8 +116,12 @@ public class BackupServiceTests : IDisposable
         Assert.NotEmpty(Directory.GetFiles(_svc.BackupsDir, "safety-*.zip"));
     }
 
+    // レビュー修正 (fix round 1, item 3): ItemStore.ReplaceDataFrom の契約では
+    // InvalidDataException = 「取り込み元が読めず、何も触っていない」。したがってここは
+    // 巻き戻しを走らせず即座に失敗する (現在の blobs を消して貼り直す破壊的な往復を、
+    // 最も起きやすい失敗のたびに行わない)。RolledBack=false = 「差し替え前に中断、データは無傷」。
     [Fact]
-    public void RestoreFrom_CorruptItemsDat_RollsBackAndThrows()
+    public void RestoreFrom_CorruptItemsDat_FailsFastAndLeavesDataUntouched()
     {
         SeedItem("survives-rollback");
         // manifest と settings は正しいが items.dat が DPAPI で読めないバックアップを偽造する。
@@ -109,7 +138,7 @@ public class BackupServiceTests : IDisposable
 
         var ex = Assert.Throws<BackupRestoreException>(() => _svc.RestoreFrom(corrupt));
 
-        Assert.True(ex.RolledBack);
+        Assert.False(ex.RolledBack);
         Assert.Contains(_store.Items, i => i.Text == "survives-rollback");
     }
 
@@ -215,26 +244,85 @@ public class BackupServiceTests : IDisposable
         return corrupt;
     }
 
+    // 上の FailsFast の全面版: 壊れたバックアップを選んでも履歴・blobs・settings.json の
+    // 3 点すべてが「復元を始める前」のまま残ることを実測する (blobs を消して貼り直す
+    // 破壊的な巻き戻しが走っていないことの確認でもある)。
     [Fact]
-    public void RestoreFrom_Rollback_RestoresItemsBlobsAndSettings()
+    public void RestoreFrom_CorruptBackup_LeavesItemsBlobsAndSettingsUntouched()
     {
         Add("orig", 1);
         File.WriteAllText(Path.Combine(_dir, "settings.json"), "{\"Edge\":\"Left\"}");
         File.WriteAllBytes(Path.Combine(_store.BlobsDir, "orig.png"), new byte[] { 9 });
         var good = _svc.CreateBackup(BackupKind.Manual)!;
 
-        // バックアップ後に現在の状態を動かす -> 巻き戻しはこの「動かした後」の状態に戻すべき
+        // バックアップ後に現在の状態を動かす -> 失敗した復元はこの「動かした後」の状態を保つべき
         File.WriteAllText(Path.Combine(_dir, "settings.json"), "{\"Edge\":\"Right\"}");
         File.Delete(Path.Combine(_store.BlobsDir, "orig.png"));
+        File.WriteAllBytes(Path.Combine(_store.BlobsDir, "later.png"), new byte[] { 7 });
         Add("later", 2);
 
         var ex = Assert.Throws<BackupRestoreException>(() => _svc.RestoreFrom(MakeCorruptCopy(good)));
 
-        Assert.True(ex.RolledBack);
+        Assert.False(ex.RolledBack);
         Assert.Contains(_store.Items, i => i.Text == "later");
         Assert.Contains(_store.Items, i => i.Text == "orig");
         Assert.Equal("{\"Edge\":\"Right\"}", File.ReadAllText(Path.Combine(_dir, "settings.json")));
+        Assert.True(File.Exists(Path.Combine(_store.BlobsDir, "later.png")));
         Assert.False(File.Exists(Path.Combine(_store.BlobsDir, "orig.png")));
+    }
+
+    // レビュー修正 (fix round 1, item 1): 時計が巻き戻っている環境では、作ったばかりの ZIP が
+    // 名前順で保持枠から外れて自分の Prune に消されうる。消えたパスを返すと
+    // 「safety is null なら中断」ガードをすり抜け、退避が無いまま差し替えてしまう。
+    [Fact]
+    public void CreateBackup_NeverReturnsAPathItsOwnPruneDeleted()
+    {
+        Add("keep", 1);
+        var good = _svc.CreateBackup(BackupKind.Manual)!; // manual は刈り込み対象外
+
+        // 未来日付の退避が保持枠 (3 件) を埋めている状態を作る
+        foreach (var stamp in new[] { "99990101-000000", "99990102-000000", "99990103-000000" })
+        {
+            File.WriteAllBytes(Path.Combine(_svc.BackupsDir, $"safety-{stamp}.zip"), new byte[] { 0 });
+        }
+
+        var safety = _svc.CreateBackup(BackupKind.Safety);
+        Assert.True(safety is null || File.Exists(safety), "CreateBackup returned a path that no longer exists");
+
+        // 退避を作れない状態での復元は、現在のデータに触れる前に中断しなければならない
+        var ex = Assert.Throws<BackupRestoreException>(() => _svc.RestoreFrom(good));
+        Assert.False(ex.RolledBack);
+        Assert.Contains(_store.Items, i => i.Text == "keep");
+    }
+
+    // レビュー修正 (fix round 1, item 2): Save() の File.Replace 中のクラッシュや items.dat の
+    // 外部削除で items.bak しか残っていない状態でも、バックアップは履歴を含まなければならない
+    // (空の items.dat を作ると、その退避での巻き戻しが Load() なら救えた履歴を静かに消す)。
+    [Fact]
+    public void CreateBackup_WithOnlyItemsBak_BacksUpTheRecoverableHistory()
+    {
+        Add("only-in-bak", 1);
+        var itemsDat = Path.Combine(_dir, "items.dat");
+        File.Move(itemsDat, Path.Combine(_dir, "items.bak"));
+        Assert.False(File.Exists(itemsDat));
+
+        var backup = _svc.CreateBackup(BackupKind.Manual);
+
+        Assert.NotNull(backup);
+        Assert.Equal(BackupValidation.Ok, _svc.Validate(backup!));
+
+        var otherDir = Path.Combine(Path.GetTempPath(), "tndrop-test-" + Guid.NewGuid());
+        try
+        {
+            var otherStore = new ItemStore(otherDir);
+            var otherSvc = new BackupService(otherDir, otherStore);
+            otherSvc.RestoreFrom(backup!);
+            Assert.Contains(otherStore.Items, i => i.Text == "only-in-bak");
+        }
+        finally
+        {
+            try { Directory.Delete(otherDir, true); } catch { }
+        }
     }
 
     [Fact]

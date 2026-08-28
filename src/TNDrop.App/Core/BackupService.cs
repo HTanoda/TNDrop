@@ -138,6 +138,23 @@ public sealed class BackupService
 
             FileLogger.Instance?.Info("backup", $"created backup: {fileName}");
             Prune();
+
+            // 作ったばかりの ZIP を自分の Prune が消してしまう場合がある: 刈り込みはファイル名の
+            // 日時部分の降順で「新しい順 N 件」を残すので、**システム時計が巻き戻っている**環境では
+            // 今日の名前が既存の (未来日付の) ファイルより下位に来て保持枠から外れる
+            // (例: safety-9999xxxx-xxxxxx.zip が 3 件ある状態で今日の safety を作る)。
+            // ここで存在確認せずに finalPath を返すと、RestoreFromStaging の
+            // 「safety is null なら中断」ガードを**存在しないパス**がすり抜け、退避が無いまま
+            // 現在のデータを差し替えてしまう (巻き戻し時に FileNotFoundException となり
+            // 「復元も巻き戻しも失敗」の致命的経路に落ちる)。作成失敗として null を返す。
+            if (!File.Exists(finalPath))
+            {
+                FileLogger.Instance?.Warn(
+                    "backup",
+                    $"backup {fileName} was pruned immediately after creation (system clock skew?); reporting as failure");
+                return null;
+            }
+
             return finalPath;
         }
         catch (Exception ex)
@@ -172,7 +189,13 @@ public sealed class BackupService
             entries.Add(new BackupEntry(path, kind, ReadCreatedLocal(path)));
         }
 
-        return entries.OrderByDescending(e => e.CreatedLocal).ToList();
+        // 並び順の権威は BackupPruning.SortKey (ファイル名の日時部分) — manifest の createdUtc では
+        // ない。刈り込みが名前順、一覧が createdUtc 順だと「一覧の先頭に出したものが刈り込みでは
+        // 最古扱いで消える」という食い違いが起きうる (ZIP をコピーで持ち回った、manifest が
+        // 読めない、時計がずれた、等)。createdUtc は **表示のためだけ** に使う (CreatedLocal)。
+        return entries
+            .OrderByDescending(e => BackupPruning.SortKey(Path.GetFileName(e.FilePath)), StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     /// <summary>
@@ -404,6 +427,18 @@ public sealed class BackupService
         {
             _store.ReplaceDataFrom(staging);
             CopySettingsFromStaging(staging);
+        }
+        catch (InvalidDataException ex)
+        {
+            // ReplaceDataFrom の契約: InvalidDataException = 取り込み元の items.dat が読めず
+            // **何も触っていない**。ここで巻き戻すと、現在の blobs を消してから退避 ZIP の
+            // 中身で貼り直すという破壊的な往復を「最も起きやすい失敗 (利用者が壊れた
+            // バックアップを選んだ)」のたびに行うことになる。何も変わっていないのだから
+            // 巻き戻さず即座に失敗させる。RolledBack=false はここでは
+            // 「差し替えを始める前に中断した = 現在のデータは無傷」の意味 (§BackupRestoreException)。
+            FileLogger.Instance?.Warn(
+                "backup", $"restore aborted: the backup's items.dat could not be read ({ex.GetType().Name}); nothing was changed");
+            throw new BackupRestoreException("backup contents could not be read", rolledBack: false, ex);
         }
         catch (Exception ex)
         {
@@ -642,6 +677,13 @@ public sealed class BackupService
     /// CanDecrypt も通り、復元すると履歴が空になる)、settings.json は <c>{}</c>
     /// (SettingsStore.Load は解釈できない JSON を既定値にフォールバックするので、
     /// 復元後は既定設定になる)。
+    ///
+    /// 重要 (v1.6 Task 5 レビュー修正): ここで空の items.dat を作るのは、items.dat も
+    /// <b>items.bak も</b> 無いときだけである。<see cref="ItemStore.CopyDataTo"/> が
+    /// Load() と同じフォールバックで items.bak を items.dat として出すようになったため、
+    /// 「Save() の途中でクラッシュして .bak しか残っていない」状態でも履歴は同梱される。
+    /// この分岐が .bak を無視して空を書くと、その退避で巻き戻したときに
+    /// Load() なら復旧できた履歴を「復元しました」と言いながら消すことになる。
     /// </summary>
     private void EnsureBackupEntries(string stagingDir)
     {

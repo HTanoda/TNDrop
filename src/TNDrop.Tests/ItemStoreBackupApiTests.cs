@@ -44,6 +44,27 @@ public class ItemStoreBackupApiTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_dest, "blobs", "img1.png")));
     }
 
+    // items.dat が無く items.bak だけが残る状態 (Save() の File.Replace 中のクラッシュ、
+    // items.dat の外部削除) では、Load() は items.bak から復旧する。CopyDataTo も同じ
+    // フォールバックをしなければ、その状態で取ったバックアップが「履歴 0 件」になり、
+    // それで巻き戻すと救えたはずの履歴を消す (v1.6 Task 5 レビュー修正)。
+    [Fact]
+    public void CopyDataTo_FallsBackToItemsBak_WhenItemsDatIsMissing()
+    {
+        var store = NewStoreWithOneItem("recoverable");
+        File.Move(Path.Combine(_dir, "items.dat"), Path.Combine(_dir, "items.bak"));
+
+        store.CopyDataTo(_dest);
+
+        var copied = Path.Combine(_dest, "items.dat");
+        Assert.True(File.Exists(copied));
+        Assert.True(ItemStore.CanDecrypt(copied));
+
+        var reloaded = new ItemStore(_dest);
+        reloaded.Load();
+        Assert.Contains(reloaded.Items, i => i.Text == "recoverable");
+    }
+
     [Fact]
     public void ReadDecryptedJson_ReturnsJsonContainingItemText()
     {

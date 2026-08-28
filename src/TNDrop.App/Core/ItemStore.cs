@@ -725,7 +725,8 @@ public sealed partial class ItemStore
         }
     }
 
-    // Copies the current items.dat (if any) and every file in BlobsDir into destDir, for backup
+    // Copies the current items.dat (or items.bak when items.dat is gone -- see below) and every
+    // file in BlobsDir into destDir, for backup
     // export. Runs entirely under _lock so it sees a consistent on-disk snapshot with respect to
     // a concurrent Save()/Load()/ReplaceDataFrom -- same "hold _lock across real disk I/O"
     // pattern Save() itself uses. destDir (and destDir\blobs) are created if missing. Blob files
@@ -738,9 +739,22 @@ public sealed partial class ItemStore
         {
             Directory.CreateDirectory(destDir);
 
+            // items.dat が無いときは items.bak を items.dat として出す -- Load() がまったく同じ
+            // フォールバックをしている (items.dat が読めなければ items.bak から復旧する) ので、
+            // 「この店の現在の履歴は何か」の答えをここで別に定義しない。Save() の File.Replace
+            // 中のクラッシュや items.dat の外部削除で .bak しか残っていない状態でバックアップを
+            // 取ると、これが無ければ「履歴 0 件のバックアップ」を作ってしまい、それを使った
+            // 巻き戻しが Load() なら復旧できたはずの履歴を静かに消す (v1.6 Task 5 レビュー修正)。
+            // .bak も items.dat という名前で置くのは、復元側 (ReplaceDataFrom) と
+            // BackupService.Validate が items.dat だけを見るため。
             if (File.Exists(_itemsPath))
             {
                 File.Copy(_itemsPath, Path.Combine(destDir, "items.dat"), overwrite: true);
+            }
+            else if (File.Exists(_bakPath))
+            {
+                File.Copy(_bakPath, Path.Combine(destDir, "items.dat"), overwrite: true);
+                FileLogger.Instance?.Warn("store", "items.dat missing; backed up items.bak instead");
             }
 
             var destBlobsDir = Path.Combine(destDir, "blobs");

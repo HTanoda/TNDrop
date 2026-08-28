@@ -50,6 +50,32 @@ public static class BackupPruning
         return false;
     }
 
+    /// <summary>
+    /// SINGLE ORDERING AUTHORITY (v1.6 Task 5 レビュー修正): バックアップの新旧を決める鍵は
+    /// **ファイル名の日時部分** であって manifest の createdUtc ではない。刈り込み
+    /// (<see cref="SelectFilesToDelete"/>) と一覧の並び (<c>BackupService.ListBackups</c>) は
+    /// どちらもこの関数を鍵に使う — 別々の規則で「新しい順」を決めると、一覧の 1 件目が
+    /// 刈り込みで消される側だった、という食い違いが静かに起きる。
+    ///
+    /// 返すのは種別プレフィックスと拡張子を除いた部分 (auto は <c>yyyyMMdd</c>、manual/safety は
+    /// <c>yyyyMMdd-HHmmss</c>)。プレフィックスを含めた丸ごとのファイル名で並べないのは、
+    /// 序数比較だと safety- &gt; manual- &gt; auto- の順に**種別で塊になり**、日時順でなくなるため
+    /// (刈り込みは同一プレフィックス内でしか比較しないので、その中では丸ごと比較と同値)。
+    /// </summary>
+    public static string SortKey(string fileName)
+    {
+        var name = fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+            ? fileName.Substring(0, fileName.Length - 4)
+            : fileName;
+
+        if (TryParseKind(fileName, out var kind) && name.Length >= KindPrefix(kind).Length)
+        {
+            return name.Substring(KindPrefix(kind).Length);
+        }
+
+        return name;
+    }
+
     /// <summary>削除すべきファイル名 (パスではなく名前) を返す。呼び出し側が実削除する。</summary>
     public static IReadOnlyList<string> SelectFilesToDelete(IEnumerable<string> fileNames)
     {
@@ -60,10 +86,13 @@ public static class BackupPruning
         return doomed;
     }
 
+    // 並び替えの鍵は SortKey (= ファイル名の日時部分)。同一プレフィックス内での比較なので
+    // 従来のファイル名まるごとの序数比較と結果は同値だが、鍵の定義を 1 つにしておくことで
+    // BackupService.ListBackups の「新しい順」と必ず一致する。
     private static IEnumerable<string> SelectOverflow(List<string> names, string prefix, int keep) =>
         names
             .Where(n => n.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
                         && n.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(n => n, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(SortKey, StringComparer.OrdinalIgnoreCase)
             .Skip(keep);
 }
