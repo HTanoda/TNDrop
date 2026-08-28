@@ -271,6 +271,43 @@ public class BackupServiceTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_store.BlobsDir, "orig.png")));
     }
 
+    // レビュー修正 (fix round 2): 巻き戻しが実際に成功する経路。前進側の最後の手順である
+    // settings.json のコピーだけを失敗させる (宛先を別ハンドルで掴んで書き込みを拒否する)。
+    // 巻き戻しは items.dat + blobs だけを戻し settings.json には触らないので、同じロックに
+    // 二度目でぶつかることなく完了し、RolledBack=true になる。
+    [Fact]
+    public void RestoreFrom_SettingsCopyFails_RollsBackItemsAndLeavesSettingsIntact()
+    {
+        var settingsPath = Path.Combine(_dir, "settings.json");
+
+        Add("in-backup", 1);
+        File.WriteAllText(settingsPath, "{\"Edge\":\"Left\"}");
+        var backup = _svc.CreateBackup(BackupKind.Manual)!;
+
+        // 復元対象とは別の「現在の状態」を作る
+        Add("pre-restore", 2);
+        File.WriteAllText(settingsPath, "{\"Edge\":\"Right\"}");
+        File.WriteAllBytes(Path.Combine(_store.BlobsDir, "pre-restore.png"), new byte[] { 5 });
+
+        BackupRestoreException ex;
+        // FileShare.Read: 退避バックアップ側の「settings.json を読んで staging へコピー」は通しつつ、
+        // 前進側の「settings.json へ上書き」だけを IOException にする。FileShare.None にすると
+        // 退避作成そのものが失敗し (CreateBackup が null)、差し替え前中断の経路に落ちて
+        // 巻き戻しを踏めない。
+        using (var _ = new FileStream(settingsPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            ex = Assert.Throws<BackupRestoreException>(() => _svc.RestoreFrom(backup));
+        }
+
+        Assert.True(ex.RolledBack);
+        // 履歴・blobs は復元前の状態に戻っている
+        Assert.Contains(_store.Items, i => i.Text == "pre-restore");
+        Assert.Contains(_store.Items, i => i.Text == "in-backup");
+        Assert.True(File.Exists(Path.Combine(_store.BlobsDir, "pre-restore.png")));
+        // settings.json は一度も書き換わっていない (だからこそ巻き戻しで戻す必要が無い)
+        Assert.Equal("{\"Edge\":\"Right\"}", File.ReadAllText(settingsPath));
+    }
+
     // レビュー修正 (fix round 1, item 1): 時計が巻き戻っている環境では、作ったばかりの ZIP が
     // 名前順で保持枠から外れて自分の Prune に消されうる。消えたパスを返すと
     // 「safety is null なら中断」ガードをすり抜け、退避が無いまま差し替えてしまう。

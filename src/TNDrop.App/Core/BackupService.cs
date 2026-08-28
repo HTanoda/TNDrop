@@ -447,9 +447,18 @@ public sealed class BackupService
             string? rollback = null;
             try
             {
+                // 巻き戻しは items.dat + blobs だけを戻す。settings.json は **意図的に触らない**。
+                //
+                // 不変条件: 前進側の手順は (a) ReplaceDataFrom → (b) settings.json のコピー の 2 つで、
+                // (b) の後には何も無い。したがって巻き戻しに入るのは (b) の途中か、それより前の
+                // 失敗に限られ、**巻き戻し時点の settings.json は必ず元のまま**である
+                // (= 戻す必要が無い)。それどころか、ここでコピーを試みると
+                // 「(b) を失敗させた原因そのもの (例: settings.json が別プロセスにロックされている)」を
+                // もう一度踏むことになり、履歴と blobs は正しく戻っているのに
+                // 「復元も巻き戻しも失敗」(RolledBack=false = 致命的) と報告してしまう。
+                // (b) の後に処理を足すときは、この不変条件を壊していないか確認すること。
                 rollback = ExtractToStaging(safety, "rollback");
                 _store.ReplaceDataFrom(rollback);
-                CopySettingsFromStaging(rollback);
             }
             catch (Exception rollbackEx)
             {
