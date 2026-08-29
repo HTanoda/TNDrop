@@ -219,6 +219,48 @@ public sealed partial class ItemStore
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// Saves an edit made in the EditDialog (v1.7). Updates the THREE fields that must stay
+    /// consistent with each other in ONE resolution: Text (the new content), Kind (re-classified
+    /// with the same <see cref="UrlDetector.IsUrl"/> the capture paths use, so an edited URL
+    /// becomes a Link card and vice versa), and ContentHash (same Fnv1a-of-UTF8 derivation as
+    /// CapturePipeline). Deciding any of these elsewhere would let them silently disagree.
+    /// Id / CreatedAtUtc / Pinned are deliberately untouched (an edit is a correction, not a
+    /// new capture). Does NOT call Save() itself -- like SetPinned/MoveToTop, the caller
+    /// persists right after. Returns false (and changes nothing) when the id is unknown or the
+    /// item is not a Text/Link card; the UI never offers Edit on other kinds, so false there
+    /// means the card was deleted while the dialog was open.
+    /// </summary>
+    public bool UpdateText(string id, string newText)
+    {
+        if (string.IsNullOrWhiteSpace(newText))
+        {
+            // The dialog disables Save on blank input; this is second-line defence so a
+            // programming error can never blank out a card's content.
+            throw new ArgumentException("edited text must not be blank", nameof(newText));
+        }
+
+        var updated = false;
+        lock (_lock)
+        {
+            var item = _items.FirstOrDefault(i => i.Id == id);
+            if (item is { Kind: ClipKind.Text or ClipKind.Link })
+            {
+                item.Text = newText;
+                item.Kind = UrlDetector.IsUrl(newText) ? ClipKind.Link : ClipKind.Text;
+                item.ContentHash = Fnv1a(Encoding.UTF8.GetBytes(newText));
+                updated = true;
+            }
+        }
+
+        if (updated)
+        {
+            Changed?.Invoke();
+        }
+
+        return updated;
+    }
+
     // Succeeds only when both items are Kind==Files: appends source's paths to
     // target's (duplicates excluded). Fails without changing anything if the
     // combined count would exceed 10. On success, source is removed and
