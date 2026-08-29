@@ -967,6 +967,12 @@ public partial class ShelfWindow : Window
 
         switch (button.Tag as string)
         {
+            case "Edit":
+                // Opens (or fronts) the editor; nothing in the store changed yet, so skip the
+                // unconditional Save() below - it exists for Pin/Delete which mutate immediately.
+                global::TNDrop.App.OpenEditDialog(card.Id, card.Item.Text ?? "");
+                e.Handled = true;
+                return;
             case "Pin":
                 _itemStore.SetPinned(card.Id, !card.Pinned);
                 break;

@@ -491,6 +491,26 @@
                         Visibility="Collapsed">
                     <StackPanel Orientation="Horizontal" Margin="4,2">
                         <Button Tag="Pin" Style="{StaticResource Card.PinActionButtonStyle}" Margin="0" />
+                        <!-- Edit action (v1.7): only Text/Link cards can be edited, so the button collapses on
+                             Image/Files cards instead of being disabled - a disabled button would still widen the
+                             pill and invite "why is this greyed out" on cards where editing has no meaning. -->
+                        <Button Content="&#9998;" Tag="Edit" Margin="0"
+                                ToolTip="{x:Static res:Strings.ActionEdit}"
+                                AutomationProperties.Name="{x:Static res:Strings.ActionEdit}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource Card.ActionButton}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Kind}" Value="Text">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Kind}" Value="Link">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                         <!-- Subtle separator ahead of Delete (design brief: "delete stays visually
                              distinct, rightmost, subtle separation", to cut down on accidental
                              hits) - a 1px divider plus its own margin, rather than just a wider
