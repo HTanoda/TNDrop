@@ -8,7 +8,8 @@
         ResizeMode="CanResize"
         Background="#FF1A1A1F"
         TextOptions.TextFormattingMode="Ideal"
-        UseLayoutRounding="True">
+        UseLayoutRounding="True"
+        PreviewKeyDown="OnWindowPreviewKeyDown">
 
     <!--
         Standard window chrome (same reasoning as PasswordDialog/SettingsWindow's own comment):
@@ -112,7 +113,7 @@
             <Button x:Name="SaveButton" Style="{StaticResource Dlg.Button}" MinWidth="96"
                     IsDefault="False" Click="OnSaveClick" />
             <Button x:Name="CancelButton" Style="{StaticResource Dlg.Button}" MinWidth="96" Margin="8,0,0,0"
-                    IsCancel="True" />
+                    IsCancel="True" Click="OnCancelClick" />
         </StackPanel>
     </Grid>
 </Window>

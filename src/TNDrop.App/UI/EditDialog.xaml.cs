@@ -1,7 +1,9 @@
 using System;
 using System.Windows;
+using System.Windows.Input;
 using TNDrop.Resources;
 using MessageBox = System.Windows.MessageBox;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace TNDrop.UI;
 
@@ -56,6 +58,25 @@ public sealed partial class EditDialog : Window
             // 編集中にカードが削除された (手動削除・自動削除・リストア)。設計書 §4。
             MessageBox.Show(this, Strings.EditItemGone, Strings.EditDialogTitle,
                 MessageBoxButton.OK, MessageBoxImage.Information);
+            Close();
+        }
+    }
+
+    // IsCancel="True" on CancelButton only auto-closes a window opened with ShowDialog() -- this
+    // window is opened with Show() (App's single-instance pattern, App.OnEditDialogRequested), so
+    // WPF's IsCancel/Esc auto-close never fires here. An explicit Click handler is required for
+    // the button, and a Window-level PreviewKeyDown handler is required for Esc (review round 1
+    // fix, v1.7 Task 2). Kept IsCancel="True" in the XAML anyway -- harmless, and it still
+    // documents intent for anyone reading the markup.
+    private void OnCancelClick(object sender, RoutedEventArgs e) => Close();
+
+    // AcceptsReturn="True" makes BodyTextBox swallow Enter (needed for multi-line editing), but it
+    // does not swallow Esc, so this handler at the Window level still sees it regardless of which
+    // control has focus.
+    private void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
             Close();
         }
     }
