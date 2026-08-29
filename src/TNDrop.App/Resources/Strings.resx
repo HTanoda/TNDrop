@@ -137,6 +137,9 @@
   <data name="ActionDelete" xml:space="preserve">
     <value>削除</value>
   </data>
+  <data name="ActionEdit" xml:space="preserve">
+    <value>編集</value>
+  </data>
   <data name="FileMissing" xml:space="preserve">
     <value>ファイルが見つかりません</value>
   </data>
@@ -567,5 +570,19 @@
   </data>
   <data name="ExportFileFilter" xml:space="preserve">
     <value>TNDrop エクスポート (*.tndexport)|*.tndexport</value>
+  </data>
+
+  <!-- Edit dialog (v1.7 Task 2). See EditDialog. -->
+  <data name="EditDialogTitle" xml:space="preserve">
+    <value>テキストの編集</value>
+  </data>
+  <data name="EditSaveButton" xml:space="preserve">
+    <value>保存(_S)</value>
+  </data>
+  <data name="EditCancelButton" xml:space="preserve">
+    <value>キャンセル</value>
+  </data>
+  <data name="EditItemGone" xml:space="preserve">
+    <value>このカードは既に削除されています。</value>
   </data>
 </root>

@@ -43,6 +43,7 @@ public partial class App : System.Windows.Application
     private FullscreenDetector? _fullscreenDetector;
     private SettingsWindow? _settingsWindow;
     private BackupDialog? _backupDialog;
+    private EditDialog? _editDialog;
 
     /// <summary>
     /// 走っている (かもしれない) 日次自動バックアップのタスク (v1.6 最終レビュー修正)。
@@ -1326,6 +1327,34 @@ public partial class App : System.Windows.Application
         {
             app.OnBackupDialogRequested();
         }
+    }
+
+    /// <summary>ShelfWindow のカード編集ボタンから呼ぶ (v1.7)。単一インスタンス:
+    /// 既に開いている場合は前面化のみで、ターゲットは差し替えない (未保存の編集内容を
+    /// 黙って捨てないため — 設計書 §4)。</summary>
+    public static void OpenEditDialog(string itemId, string currentText)
+    {
+        if (System.Windows.Application.Current is App app)
+        {
+            app.OnEditDialogRequested(itemId, currentText);
+        }
+    }
+
+    private void OnEditDialogRequested(string itemId, string currentText)
+    {
+        if (_editDialog is null)
+        {
+            _editDialog = new EditDialog(itemId, currentText);
+            _editDialog.Closed += (_, _) => _editDialog = null;
+        }
+
+        if (_editDialog.WindowState == WindowState.Minimized)
+        {
+            _editDialog.WindowState = WindowState.Normal;
+        }
+
+        _editDialog.Show();
+        _editDialog.Activate();
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

@@ -48,6 +48,7 @@ internal static class Strings
     public static string ActionPin => Get(nameof(ActionPin));
     public static string ActionUnpin => Get(nameof(ActionUnpin));
     public static string ActionDelete => Get(nameof(ActionDelete));
+    public static string ActionEdit => Get(nameof(ActionEdit));
     public static string FileMissing => Get(nameof(FileMissing));
     public static string StackLimit => Get(nameof(StackLimit));
     public static string SelectAll => Get(nameof(SelectAll));
@@ -217,6 +218,12 @@ internal static class Strings
     public static string PasswordOk => Get(nameof(PasswordOk));
     public static string PasswordCancel => Get(nameof(PasswordCancel));
     public static string ExportFileFilter => Get(nameof(ExportFileFilter));
+
+    // Edit dialog (v1.7 Task 2). See EditDialog.
+    public static string EditDialogTitle => Get(nameof(EditDialogTitle));
+    public static string EditSaveButton => Get(nameof(EditSaveButton));
+    public static string EditCancelButton => Get(nameof(EditCancelButton));
+    public static string EditItemGone => Get(nameof(EditItemGone));
 
     private static string Get(string key) =>
         Manager.GetString(key, CultureInfo.CurrentUICulture) ?? key;

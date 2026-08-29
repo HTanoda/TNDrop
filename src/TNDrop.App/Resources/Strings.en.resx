@@ -137,6 +137,9 @@
   <data name="ActionDelete" xml:space="preserve">
     <value>Delete</value>
   </data>
+  <data name="ActionEdit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
   <data name="FileMissing" xml:space="preserve">
     <value>File not found</value>
   </data>
@@ -567,5 +570,19 @@
   </data>
   <data name="ExportFileFilter" xml:space="preserve">
     <value>TNDrop export (*.tndexport)|*.tndexport</value>
+  </data>
+
+  <!-- Edit dialog (v1.7 Task 2). See EditDialog. -->
+  <data name="EditDialogTitle" xml:space="preserve">
+    <value>Edit text</value>
+  </data>
+  <data name="EditSaveButton" xml:space="preserve">
+    <value>Save(_S)</value>
+  </data>
+  <data name="EditCancelButton" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="EditItemGone" xml:space="preserve">
+    <value>This card has already been deleted.</value>
   </data>
 </root>
