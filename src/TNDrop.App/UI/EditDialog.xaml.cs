@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Input;
 using TNDrop.Resources;
+using TNDrop.Services;
 using MessageBox = System.Windows.MessageBox;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
@@ -42,6 +43,7 @@ public sealed partial class EditDialog : Window
         var store = global::TNDrop.App.Store;
         if (store is null)
         {
+            FileLogger.Instance?.Warn("edit", "save skipped: store unavailable (shutdown?)");
             Close();
             return;
         }
@@ -78,6 +80,9 @@ public sealed partial class EditDialog : Window
         if (e.Key == Key.Escape)
         {
             Close();
+            // Mark handled so the closing window's IsCancel button doesn't also see this Esc
+            // and call Close() a second time.
+            e.Handled = true;
         }
     }
 }

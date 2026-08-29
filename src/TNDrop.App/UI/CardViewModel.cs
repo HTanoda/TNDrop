@@ -12,8 +12,10 @@ namespace TNDrop.UI;
 
 /// <summary>
 /// Display wrapper around a single <see cref="ClipItem"/>. Title/Subtitle are computed once at
-/// construction (the item itself is immutable from the VM's point of view -- a changed item means
-/// a new ClipItem instance and therefore a new CardViewModel, rebuilt by <see cref="ShelfViewModel"/>).
+/// construction. The store rebuilds VMs on every Changed, but a <see cref="ClipItem"/>'s own
+/// fields can be mutated in place in the meantime (e.g. ItemStore.SetPinned, ItemStore.UpdateText)
+/// -- so never cache a CardViewModel (or its computed Title/Subtitle) by ClipItem instance
+/// identity; treat it as valid only for the Changed generation that produced it.
 /// Thumbnail is lazily loaded on first access so scrolling past collapsed/virtualized cards never
 /// touches disk.
 /// </summary>
