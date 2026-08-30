@@ -108,11 +108,13 @@ public class ShelfRetractTests
         Assert.True(ShelfRetract.CursorHolds(x, y, Shelf, TriggerInside));
     }
 
-    [Fact]
-    public void CursorHolds_InsideTriggerButOutsideShelf_True()
+    [Theory]
+    [InlineData(1, 10)]  // シェルフ上端 (Y=30) より上・トリガー帯 (Y=0..100) の中: トリガー矩形の項が拾う
+    [InlineData(3, 0)]   // トリガー矩形自身の右上角 (X=W, Y=0)。境界は内側扱い、かつシェルフの外
+                          // (Y=0 < シェルフ上端 30) -- この修正が存在する理由そのものの項を固定する
+    public void CursorHolds_InsideTriggerButOutsideShelf_True(double x, double y)
     {
-        // シェルフ上端 (Y=30) より上・トリガー帯 (Y=0..100) の中: トリガー矩形の項が拾う
-        Assert.True(ShelfRetract.CursorHolds(1, 10, Shelf, TriggerSticksOut));
+        Assert.True(ShelfRetract.CursorHolds(x, y, Shelf, TriggerSticksOut));
     }
 
     [Theory]

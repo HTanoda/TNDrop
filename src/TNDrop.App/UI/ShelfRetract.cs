@@ -75,9 +75,9 @@ public static class ShelfRetract
     public static bool CursorHolds(double cursorX, double cursorY,
         ShelfPlacement.Rect shelfRect, ShelfPlacement.Rect triggerRect)
     {
-        return Contains(shelfRect, cursorX, cursorY) || Contains(triggerRect, cursorX, cursorY);
+        // StackGestures.Contains is the single point-in-rect authority (also used by
+        // IsCursorOverShelf) -- delegate rather than re-deriving the same inclusive-bounds test.
+        return StackGestures.Contains(shelfRect, cursorX, cursorY) ||
+               StackGestures.Contains(triggerRect, cursorX, cursorY);
     }
-
-    private static bool Contains(ShelfPlacement.Rect r, double x, double y) =>
-        x >= r.X && x <= r.X + r.W && y >= r.Y && y <= r.Y + r.H;
 }

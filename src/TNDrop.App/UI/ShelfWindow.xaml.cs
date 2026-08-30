@@ -333,10 +333,12 @@ public partial class ShelfWindow : Window
 
         _area = area;
         _rect = rect;
-        _placed = true;
         _holdTriggerRect = ShelfPlacement.TriggerRect(
             new ShelfPlacement.Rect(area.X, area.Y, area.W, area.H),
             s.Edge, s.TriggerProximityPx, s.HotZonePercent, s.TriggerAlign);
+        // _placed は幾何情報が揃った後で真にする -- 途中の default(Rect) は (0,0) を
+        // 「含む」ため、真にするのが早いと IsCursorHoldingShelf が未初期化の矩形で判定しうる。
+        _placed = true;
         _shownX = rect.X;
         _hiddenX = ShelfPlacement.HiddenX(rect, _edge);
 
