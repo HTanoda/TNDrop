@@ -56,4 +56,28 @@ public static class ShelfRetract
 
         return !pointerInside || dragOpenGraceActive;
     }
+
+    /// <summary>
+    /// v1.7.1: "is the cursor PHYSICALLY over the shelf or the trigger band right now?" --
+    /// answered from coordinates, not mouse events. A stationary cursor generates no
+    /// WM_MOUSEMOVE, so a shelf that slides in underneath it never receives MouseEnter and
+    /// every event-derived term of IsPointerInside stays false; the retract tick then slides
+    /// the shelf out from under a cursor that is sitting on it, the trigger band comes back,
+    /// and the loop repeats (same failure class StackFlyout measured and fixed with
+    /// CursorOverShelf). This is the tick-side suppression term only -- arming is untouched,
+    /// so the timer keeps running as the poll that re-asks this every tick.
+    /// <para>The trigger rect is checked as well as the shelf rect because Top/Bottom align
+    /// with a large hot zone can push the band outside the shelf's vertical span; "the cursor
+    /// is parked on the trigger" must hold the shelf open in every configuration.</para>
+    /// <para>Boundaries count as inside: erring toward "holding" keeps the shelf open one
+    /// tick longer, which is the harmless direction.</para>
+    /// </summary>
+    public static bool CursorHolds(double cursorX, double cursorY,
+        ShelfPlacement.Rect shelfRect, ShelfPlacement.Rect triggerRect)
+    {
+        return Contains(shelfRect, cursorX, cursorY) || Contains(triggerRect, cursorX, cursorY);
+    }
+
+    private static bool Contains(ShelfPlacement.Rect r, double x, double y) =>
+        x >= r.X && x <= r.X + r.W && y >= r.Y && y <= r.Y + r.H;
 }

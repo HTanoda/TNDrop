@@ -89,4 +89,39 @@ public class ShelfRetractTests
         Assert.False(ShelfRetract.ShouldArm(
             isVisible: false, pinned: true, pointerInside: false, dragOpenGraceActive: false));
     }
+
+    // --- v1.7.1 CursorHolds: 静止カーソルの物理チェック (設計書 §3) ---
+    // shelf = (0, 30, 340, 540)、trigger = (0, 200, 3, 240) : 左端・トリガーはシェルフに包含
+    // trigger2 = (0, 0, 3, 100) : シェルフ上端より上にはみ出すトリガー (Top align + 大ホットゾーン相当)
+
+    private static readonly ShelfPlacement.Rect Shelf = new(0, 30, 340, 540);
+    private static readonly ShelfPlacement.Rect TriggerInside = new(0, 200, 3, 240);
+    private static readonly ShelfPlacement.Rect TriggerSticksOut = new(0, 0, 3, 100);
+
+    [Theory]
+    [InlineData(170, 300)]  // シェルフ中央
+    [InlineData(1, 210)]    // トリガー帯内 (シェルフにも含まれる)
+    [InlineData(0, 30)]     // シェルフ左上角 (境界は内側扱い)
+    [InlineData(340, 570)]  // シェルフ右下角 (境界は内側扱い)
+    public void CursorHolds_InsideShelf_True(double x, double y)
+    {
+        Assert.True(ShelfRetract.CursorHolds(x, y, Shelf, TriggerInside));
+    }
+
+    [Fact]
+    public void CursorHolds_InsideTriggerButOutsideShelf_True()
+    {
+        // シェルフ上端 (Y=30) より上・トリガー帯 (Y=0..100) の中: トリガー矩形の項が拾う
+        Assert.True(ShelfRetract.CursorHolds(1, 10, Shelf, TriggerSticksOut));
+    }
+
+    [Theory]
+    [InlineData(341, 300)]  // シェルフの右外
+    [InlineData(170, 29)]   // シェルフの上外 (トリガーも外)
+    [InlineData(170, 571)]  // シェルフの下外
+    [InlineData(4, 10)]     // はみ出しトリガーの右外・シェルフの上外
+    public void CursorHolds_OutsideBoth_False(double x, double y)
+    {
+        Assert.False(ShelfRetract.CursorHolds(x, y, Shelf, TriggerSticksOut));
+    }
 }

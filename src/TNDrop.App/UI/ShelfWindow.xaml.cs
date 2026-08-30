@@ -122,6 +122,11 @@ public partial class ShelfWindow : Window
     private MonitorGeometry.WorkArea _area;
     private ShelfPlacement.Rect _rect;
     private bool _placed;
+
+    // v1.7.1: トリガー帯の矩形キャッシュ。Place() でのみ更新 (EdgeTriggerWindow の
+    // _hintTriggerRect と同じ流儀 -- tick の hot path で TriggerRect を再計算しない)。
+    // 算出は EdgeTriggerWindow.Place と同じ唯一の関数 ShelfPlacement.TriggerRect。
+    private ShelfPlacement.Rect _holdTriggerRect;
     private bool _pointerInside;
     private bool _slidingOut;
     private bool _applying;
@@ -329,6 +334,9 @@ public partial class ShelfWindow : Window
         _area = area;
         _rect = rect;
         _placed = true;
+        _holdTriggerRect = ShelfPlacement.TriggerRect(
+            new ShelfPlacement.Rect(area.X, area.Y, area.W, area.H),
+            s.Edge, s.TriggerProximityPx, s.HotZonePercent, s.TriggerAlign);
         _shownX = rect.X;
         _hiddenX = ShelfPlacement.HiddenX(rect, _edge);
 
@@ -590,11 +598,12 @@ public partial class ShelfWindow : Window
             return;
         }
 
-        if (IsPointerInside)
+        if (IsPointerInside || IsCursorHoldingShelf())
         {
             // Suppressed, not cancelled. Re-arm rather than drop the timer: if IsPointerInside is
             // wrong (or the MouseLeave that would normally re-arm never arrives), dropping it here
-            // is what wedges the shelf open permanently.
+            // is what wedges the shelf open permanently. IsCursorHoldingShelf は静止カーソル対策
+            // (v1.7.1): イベントが死んでいても座標で「上にいる」を検知する。
             _retractTimer.Stop();
             _retractTimer.Start();
             return;
@@ -602,6 +611,30 @@ public partial class ShelfWindow : Window
 
         _retractTimer.Stop();
         SlideOut();
+    }
+
+    /// <summary>
+    /// v1.7.1: the retract tick's physical-cursor term. See ShelfRetract.CursorHolds for the
+    /// full rationale (stationary cursor = no mouse events = every event-derived term dead).
+    /// Win32/geometry failure returns false so behaviour degrades to the pre-v1.7.1 rules
+    /// rather than pinning the shelf open.
+    /// </summary>
+    private bool IsCursorHoldingShelf()
+    {
+        if (!_placed)
+        {
+            return false;
+        }
+
+        try
+        {
+            var (cursorX, cursorY) = MonitorGeometry.CursorDip(_area);
+            return ShelfRetract.CursorHolds(cursorX, cursorY, _rect, _holdTriggerRect);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void OnDpiChanged(object sender, System.Windows.DpiChangedEventArgs e)
