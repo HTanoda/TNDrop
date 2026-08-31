@@ -161,6 +161,16 @@ public partial class ShelfWindow : Window
     private StackFlyout? _stackFlyout;
     private Border? _mergeHighlight;
 
+    // v1.8.1: set just before a store mutation that is EXPECTED to close the flyout as a side
+    // effect (split / ungroup-all), so its Closed handler can tell that self-inflicted close
+    // apart from an outside click, the hover timeout, or a background change. Must be set
+    // BEFORE the store call, not after: SplitText/SplitFile/SplitAll/SplitAllTexts fire the
+    // store's Changed event SYNCHRONOUSLY inside the call, which reaches OnStoreRebuilt ->
+    // CloseIfStale -> flyout.Closed before the store call returns. Consumed (reset to false)
+    // by the first Closed it explains; a refused mutation (null return, no Changed raised)
+    // resets it immediately so it does not wrongly suppress some later, unrelated close.
+    private bool _suppressNextFlyoutCloseArm;
+
     // Id of the card the flyout was showing when the press landed, read when the release decides
     // whether the click is an open or a close. It cannot be re-derived at release time: see
     // OnCardPreviewMouseLeftButtonDown. An Id rather than a bool so the latch can only ever answer
@@ -1428,7 +1438,23 @@ public partial class ShelfWindow : Window
 
         // Closing (outside click, the flyout's own hover timeout, a stale stack) drops the
         // IsPointerInside term that was suppressing the countdown; nothing else would re-arm it.
-        flyout.Closed += (_, _) => ArmRetractIfPointerOutside();
+        // Exception (v1.8.1): a close caused by the user's own split/ungroup-all inside this
+        // flyout is NOT an outside click or a timeout -- the cursor is sitting on the flyout's
+        // former screen position, outside the shelf rect and trigger band, about to keep
+        // working with the cards that just split out. Arming here would retract the shelf out
+        // from under them after the delay. _suppressNextFlyoutCloseArm marks exactly that one
+        // close; every other reason to close still re-arms as before. The shelf then re-arms
+        // normally the next time the cursor enters and leaves it.
+        flyout.Closed += (_, _) =>
+        {
+            if (_suppressNextFlyoutCloseArm)
+            {
+                _suppressNextFlyoutCloseArm = false;
+                return;
+            }
+
+            ArmRetractIfPointerOutside();
+        };
 
         _stackFlyout = flyout;
         return flyout;
@@ -1656,12 +1682,21 @@ public partial class ShelfWindow : Window
         }
 
         var stack = _itemStore.Items.FirstOrDefault(i => i.Id == stackId);
+
+        // Must be set BEFORE the store call: SplitText/SplitFile raise the store's Changed event
+        // synchronously from inside the call (Changed -> OnStoreRebuilt -> CloseIfStale -> this
+        // flyout's Closed), so setting the flag after the call would already be too late to
+        // reach the handler. See the field comment on _suppressNextFlyoutCloseArm.
+        _suppressNextFlyoutCloseArm = true;
         var card = stack?.IsTextStack == true
             ? _itemStore.SplitText(stackId, key)
             : _itemStore.SplitFile(stackId, key);
 
         if (card is null)
         {
+            // Refused: no mutation, so no Changed and no flyout close. Reset the flag so it does
+            // not linger and wrongly suppress the arm on some later, unrelated close.
+            _suppressNextFlyoutCloseArm = false;
             FileLogger.Instance?.Warn(Module, "split refused: the row is no longer part of that stack");
             return;
         }
@@ -1684,12 +1719,22 @@ public partial class ShelfWindow : Window
         }
 
         var stack = _itemStore.Items.FirstOrDefault(i => i.Id == stackId);
+
+        // Must be set BEFORE the store call: SplitAll/SplitAllTexts raise the store's Changed
+        // event synchronously from inside the call (Changed -> OnStoreRebuilt -> CloseIfStale ->
+        // this flyout's Closed), so setting the flag after the call would already be too late to
+        // reach the handler. See the field comment on _suppressNextFlyoutCloseArm.
+        _suppressNextFlyoutCloseArm = true;
         var expanded = stack?.IsTextStack == true
             ? _itemStore.SplitAllTexts(stackId)
             : _itemStore.SplitAll(stackId);
 
         if (expanded is null)
         {
+            // Refused: no mutation, so no Changed and no flyout close. Reset the flag so it does
+            // not linger and wrongly suppress the arm on some later, unrelated close.
+            _suppressNextFlyoutCloseArm = false;
+
             // The stack changed under the click (another capture merged it, or it was removed) --
             // same "nothing to tell the user" reasoning as OnStackSplitRequested's own refusal.
             FileLogger.Instance?.Warn(Module, "ungroup-all refused: the stack no longer exists");
