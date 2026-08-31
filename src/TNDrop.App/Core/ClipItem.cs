@@ -32,4 +32,18 @@ public sealed class ClipItem
     /// written in the first place.</remarks>
     [JsonIgnore]
     public bool IsStack => Kind == ClipKind.Files && Paths.Count > 1;
+
+    /// <summary>Text スタック (v1.8) の本文列。単独テキストカードは空のまま (本文は Text が正)。
+    /// スタック化された瞬間から Texts が正で Text は null -- 両方に本文を持たせない
+    /// (one-resolution)。マージ時に完全一致の重複を除外するため、要素は常に一意。</summary>
+    public List<string> Texts { get; set; } = new();
+
+    /// <summary>スタック表示名 (v1.8、テキスト・ファイル共通、任意)。null = 自動タイトル。</summary>
+    public string? Name { get; set; }
+
+    /// <summary>SINGLE RESOLUTION for "is this item a text stack" (v1.8) -- the Texts-side twin of
+    /// <see cref="IsStack"/> above, with the same live-read/no-cache reasoning. Kind stays Text so
+    /// the filter tab and MatchesFilter need no change.</summary>
+    [JsonIgnore]
+    public bool IsTextStack => Kind == ClipKind.Text && Texts.Count > 1;
 }

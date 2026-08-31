@@ -244,11 +244,180 @@ public sealed partial class ItemStore
         lock (_lock)
         {
             var item = _items.FirstOrDefault(i => i.Id == id);
-            if (item is { Kind: ClipKind.Text or ClipKind.Link })
+            if (item is { Kind: ClipKind.Text or ClipKind.Link } && !item.IsTextStack)
             {
                 item.Text = newText;
                 item.Kind = UrlDetector.IsUrl(newText) ? ClipKind.Link : ClipKind.Text;
                 item.ContentHash = Fnv1a(Encoding.UTF8.GetBytes(newText));
+                updated = true;
+            }
+        }
+
+        if (updated)
+        {
+            Changed?.Invoke();
+        }
+
+        return updated;
+    }
+
+    /// <summary>単独テキストカード・テキストスタックのどちらでも「本文列」として読む唯一の
+    /// ヘルパ (v1.8)。単独カードは Text 1 件、スタックは Texts のコピー。</summary>
+    private static List<string> TextsOf(ClipItem item) =>
+        item.IsTextStack ? item.Texts.ToList()
+        : string.IsNullOrEmpty(item.Text) ? new List<string>()
+        : new List<string> { item.Text };
+
+    /// <summary>テキストスタックの ContentHash の唯一の導出 (v1.8): NUL 区切りで連結した UTF8
+    /// の FNV-1a。NUL はクリップボード由来のテキストに現れないため、改行を含む単独テキストや
+    /// 連結一致との衝突を避けられる (設計書 §3.1)。テストも同じ関数で検証する。</summary>
+    public static ulong TextStackHash(IReadOnlyList<string> texts) =>
+        Fnv1a(Encoding.UTF8.GetBytes(string.Join("\0", texts)));
+
+    // TryMergeFiles (264-313 行) のテキスト版 (v1.8)。両方 Kind==Text のみ成功 (Link は
+    // 「ブラウザで開く」の意味論を持つため除外 -- 設計書 §1)。重複本文は除外し、統合結果が
+    // 2 件未満 (全部重複) または 10 件超なら何も変えずに false。Pinned OR / source 削除 /
+    // ハッシュ再計算 / Changed はロックの外、のすべてを TryMergeFiles の確定作法に合わせる。
+    // Name は target 優先で、無名 target に名前付き source を畳んだときだけ引き継ぐ。
+    public bool TryMergeTexts(string targetId, string sourceId)
+    {
+        lock (_lock)
+        {
+            if (targetId == sourceId)
+            {
+                return false;
+            }
+
+            var target = _items.FirstOrDefault(i => i.Id == targetId);
+            var source = _items.FirstOrDefault(i => i.Id == sourceId);
+
+            if (target == null || source == null
+                || target.Kind != ClipKind.Text || source.Kind != ClipKind.Text)
+            {
+                return false;
+            }
+
+            var merged = TextsOf(target);
+            foreach (var text in TextsOf(source))
+            {
+                if (!merged.Contains(text))
+                {
+                    merged.Add(text);
+                }
+            }
+
+            if (merged.Count < 2 || merged.Count > 10)
+            {
+                return false;
+            }
+
+            target.Texts = merged;
+            target.Text = null;
+            target.ContentHash = TextStackHash(merged);
+            target.Pinned |= source.Pinned;
+            target.Name ??= source.Name;
+            _items.Remove(source);
+        }
+
+        Changed?.Invoke();
+        return true;
+    }
+
+    // SplitFile (407-443 行) のテキスト版 (v1.8)。値キー: マージ時の重複除外で Texts 内は
+    // 一意なので、ファイルの path キーと同型に text そのものをキーにできる。ファイル版と
+    // 唯一違うのは「残り 1 件で単独カードの正規形 (Text) へ戻す」こと -- 1 件だけの
+    // テキストスタックという状態を作らない (設計書 §3.2)。スタック解消時は Name も消す
+    // (SplitAll でスタックごと消えるのと同じ扱い)。
+    public ClipItem? SplitText(string stackId, string text)
+    {
+        ClipItem? card = null;
+
+        lock (_lock)
+        {
+            var stack = _items.FirstOrDefault(i => i.Id == stackId);
+            if (stack == null || !stack.IsTextStack || !stack.Texts.Contains(text))
+            {
+                return null;
+            }
+
+            stack.Texts = stack.Texts.Where(t => t != text).ToList();
+            if (stack.Texts.Count == 1)
+            {
+                stack.Text = stack.Texts[0];
+                stack.Texts = new List<string>();
+                stack.Name = null;
+                stack.ContentHash = Fnv1a(Encoding.UTF8.GetBytes(stack.Text));
+            }
+            else
+            {
+                stack.ContentHash = TextStackHash(stack.Texts);
+            }
+
+            card = new ClipItem
+            {
+                Kind = ClipKind.Text,
+                Text = text,
+                CreatedAtUtc = _utcClock(),
+                ContentHash = Fnv1a(Encoding.UTF8.GetBytes(text)),
+                Pinned = stack.Pinned
+            };
+            _items.Insert(0, card);
+        }
+
+        Changed?.Invoke();
+        return card;
+    }
+
+    // SplitAll (462-497 行) のテキスト版 (v1.8)。全展開 + 元スタック削除を 1 回の Changed で。
+    public List<ClipItem>? SplitAllTexts(string stackId)
+    {
+        List<ClipItem> created;
+
+        lock (_lock)
+        {
+            var stack = _items.FirstOrDefault(i => i.Id == stackId);
+            if (stack == null || !stack.IsTextStack)
+            {
+                return null;
+            }
+
+            var texts = stack.Texts.ToList();
+            _items.Remove(stack);
+
+            created = new List<ClipItem>();
+            var insertIndex = 0;
+            foreach (var text in texts)
+            {
+                var card = new ClipItem
+                {
+                    Kind = ClipKind.Text,
+                    Text = text,
+                    CreatedAtUtc = _utcClock(),
+                    ContentHash = Fnv1a(Encoding.UTF8.GetBytes(text)),
+                    Pinned = stack.Pinned
+                };
+                _items.Insert(insertIndex, card);
+                insertIndex++;
+                created.Add(card);
+            }
+        }
+
+        Changed?.Invoke();
+        return created;
+    }
+
+    /// <summary>スタック名の設定/クリア (v1.8、RenameDialog の保存先)。null/空白 = クリア。
+    /// 種別は問わない (テキスト・ファイルどちらのスタックにも使う。UI がスタック以外に
+    /// Rename を出さない)。SetPinned と同じ作法。</summary>
+    public bool SetName(string id, string? name)
+    {
+        var updated = false;
+        lock (_lock)
+        {
+            var item = _items.FirstOrDefault(i => i.Id == id);
+            if (item != null)
+            {
+                item.Name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
                 updated = true;
             }
         }
