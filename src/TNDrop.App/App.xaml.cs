@@ -265,6 +265,7 @@ public partial class App : System.Windows.Application
             _edgeTrigger = new EdgeTriggerWindow();
 
             _shelf.ApplySettings(Settings);
+            _shelf.SetIncognitoVisual(Settings.IncognitoMode);
             _shelf.IsVisibleChanged += OnShelfVisibleChanged;
 
             _edgeTrigger.ApplySettings(Settings);
@@ -567,6 +568,7 @@ public partial class App : System.Windows.Application
         Settings.IncognitoMode = value;
         Monitor.Paused = value;
         app._trayIcon?.SetIncognito(value);
+        app._shelf?.SetIncognitoVisual(value);
         SaveSettings();
     }
 
@@ -1246,6 +1248,7 @@ public partial class App : System.Windows.Application
             // (3) トレイのチェック状態とツールチップ (OnStartup 手順 5)。
             app._trayIcon?.SetHoverEnabled(Settings.HoverEnabled);
             app._trayIcon?.SetIncognito(Settings.IncognitoMode);
+            app._shelf?.SetIncognitoVisual(Settings.IncognitoMode);
 
             // (4) 取り込みの一時停止 (OnStartup 手順 5 / SetIncognitoMode 相当)。
             Monitor.Paused = Settings.IncognitoMode;

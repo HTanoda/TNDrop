@@ -537,7 +537,7 @@ public partial class ShelfWindow : Window
         // above, and the accept-border would still be showing the next time the shelf slides in
         // even though nothing is being dragged anymore.
         _isDragOver = false;
-        Panel.BorderBrush = DropIdleBorderBrush;
+        ApplyIdleBorder();
 
         // And the drag-open grace: it is a property of THIS appearance of the shelf. Left standing,
         // it would suppress the retract of the NEXT slide-in for whatever is left of its 3 s.
@@ -686,6 +686,16 @@ public partial class ShelfWindow : Window
         // Settings への書き込み経路はこのハンドラ経由の App.SetShelfPinned だけ。
         HeaderPinButton.Click += (_, _) => OnPinButtonClick();
         UpdatePinButtonVisual();
+
+        // Incognito (v1.8): 書き込みは既存の単一入口 App.SetIncognitoMode だけ。表示更新は
+        // SetIncognitoMode 側から SetIncognitoVisual で戻ってくる (トレイ・設定画面と同じ輪)。
+        HeaderIncognitoButton.ToolTip = Strings.ShelfIncognitoTooltip;
+        System.Windows.Automation.AutomationProperties.SetName(
+            HeaderIncognitoButton, Strings.ShelfIncognitoTooltip);
+        IncognitoBadgeText.Text = Strings.ShelfIncognitoBadge;
+        HeaderIncognitoButton.Click += (_, _) =>
+            global::TNDrop.App.SetIncognitoMode(
+                !(global::TNDrop.App.Settings?.IncognitoMode ?? false));
 
         HeaderSettingsButton.ToolTip = Strings.HeaderSettingsTooltip;
         HeaderSettingsButton.Click += (_, _) => global::TNDrop.App.OpenSettingsWindow();
@@ -1322,7 +1332,7 @@ public partial class ShelfWindow : Window
     private void OnShelfDragLeave(object sender, DragEventArgs e)
     {
         _isDragOver = false;
-        Panel.BorderBrush = DropIdleBorderBrush;
+        ApplyIdleBorder();
         ArmRetractIfPointerOutside();
         e.Handled = true;
     }
@@ -1340,7 +1350,7 @@ public partial class ShelfWindow : Window
     private void OnShelfDrop(object sender, DragEventArgs e)
     {
         _isDragOver = false;
-        Panel.BorderBrush = DropIdleBorderBrush;
+        ApplyIdleBorder();
 
         var clip = DragDropTarget.ClipFromDataObject(e.Data);
         e.Effects = clip is not null ? DragDropEffects.Copy : DragDropEffects.None;
@@ -1365,7 +1375,14 @@ public partial class ShelfWindow : Window
     private void ApplyDragVisual(DragEventArgs e)
     {
         var acceptable = DragDropTarget.HasAcceptablePayload(e.Data);
-        Panel.BorderBrush = acceptable ? DropAcceptBorderBrush : DropIdleBorderBrush;
+        if (acceptable)
+        {
+            Panel.BorderBrush = DropAcceptBorderBrush;
+        }
+        else
+        {
+            ApplyIdleBorder();
+        }
         e.Effects = acceptable ? DragDropEffects.Copy : DragDropEffects.None;
     }
 
@@ -2100,6 +2117,61 @@ public partial class ShelfWindow : Window
             ArmRetractIfPointerOutside();
         }
     }
+
+    // Incognito visual state (v1.8). Written only by SetIncognitoVisual; the single source of
+    // truth stays App.Settings.IncognitoMode via App.SetIncognitoMode.
+    private bool _incognito;
+
+    private static readonly Color PanelNormalColor = Color.FromArgb(0xF0, 0x1A, 0x1A, 0x1F);
+    private static readonly Color PanelIncognitoColor = Color.FromArgb(0xF0, 0x22, 0x1A, 0x2E);
+    private static readonly Brush IncognitoAccentBrush =
+        new SolidColorBrush(Color.FromRgb(0xBF, 0x5A, 0xF2));
+    private static readonly Brush IncognitoBorderBrush =
+        new SolidColorBrush(Color.FromRgb(0x6B, 0x4E, 0x9E));
+
+    /// <summary>トレイの SetIncognito と同型 (v1.8): 表示を合わせるだけで change イベントを
+    /// 再発火しない。App.SetIncognitoMode / OnStartup / ReloadAllSettingsFromDisk の 3 箇所
+    /// から呼ばれる。設計書 §2.2 の 3 信号 (アイコン紫 / バッジ / パネル配色) を一度に更新。</summary>
+    public void SetIncognitoVisual(bool value)
+    {
+        _incognito = value;
+
+        HeaderIncognitoSlash.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+        HeaderIncognitoIcon.Foreground = value
+            ? IncognitoAccentBrush
+            : (Brush)FindResource("Card.Foreground");
+        IncognitoBadge.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+
+        AnimatePanelBackground(value);
+        ApplyIdleBorder();
+    }
+
+    /// <summary>パネル地の紫化/復帰 (v1.8)。状態変化でありジェスチャ由来の運動ではないので
+    /// バウンスなしの ease-out 200ms (設計書 §2.2)。Panel.Background は XAML 由来の
+    /// フリーズ済みブラシのことがあるため、ローカルブラシに差し替えてからアニメする。</summary>
+    private void AnimatePanelBackground(bool incognito)
+    {
+        if (Panel.Background is not SolidColorBrush brush || brush.IsFrozen)
+        {
+            brush = new SolidColorBrush(
+                Panel.Background is SolidColorBrush current ? current.Color : PanelNormalColor);
+            Panel.Background = brush;
+        }
+
+        var animation = new ColorAnimation(
+            incognito ? PanelIncognitoColor : PanelNormalColor,
+            new Duration(TimeSpan.FromMilliseconds(200)))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        };
+        brush.BeginAnimation(SolidColorBrush.ColorProperty, animation);
+    }
+
+    /// <summary>Panel のアイドル時ボーダー (v1.8): シークレット中は紫、通常は従来のアイドル
+    /// ブラシ。ドラッグの受け入れハイライトから戻すすべての箇所がこれを呼ぶ - アイドル色を
+    /// 2 箇所で決めない。</summary>
+    private void ApplyIdleBorder() =>
+        Panel.BorderBrush = _incognito ? IncognitoBorderBrush : DropIdleBorderBrush;
 
     /// <summary>ピンボタンのオン/オフ表示 (v1.5 追補)。ピン中はグリフを E840 (pinned) +
     /// アクセント色にし、うっすら固定背景でトグルのオン状態を常時見せる。ホバー時は

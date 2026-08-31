@@ -374,6 +374,12 @@
   <data name="HeaderPinActiveTooltip" xml:space="preserve">
     <value>ピン止めを解除</value>
   </data>
+  <data name="ShelfIncognitoTooltip" xml:space="preserve">
+    <value>シークレットモード — コピーを登録しません</value>
+  </data>
+  <data name="ShelfIncognitoBadge" xml:space="preserve">
+    <value>シークレット</value>
+  </data>
   <data name="HelpButtonTooltip" xml:space="preserve">
     <value>使い方</value>
   </data>

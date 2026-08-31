@@ -55,20 +55,61 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Text is set in code-behind from Strings.AppName (see ShelfWindow's
-                     constructor), the same pattern TrayIcon.cs uses for its own tooltip: not
-                     hardcoded here, so a locale swap of AppName in the resx does not also need a
-                     XAML edit to stay in sync. -->
-                <TextBlock x:Name="PlaceholderTitle"
-                           Grid.Column="0"
-                           Margin="2,0,0,0"
-                           HorizontalAlignment="Left"
-                           VerticalAlignment="Center"
-                           FontSize="15"
-                           FontWeight="SemiBold"
-                           Foreground="#FFF2F2F7" />
+                <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left"
+                            VerticalAlignment="Center">
+                    <!-- Text is set in code-behind from Strings.AppName (see ShelfWindow's
+                         constructor), the same pattern TrayIcon.cs uses for its own tooltip: not
+                         hardcoded here, so a locale swap of AppName in the resx does not also need a
+                         XAML edit to stay in sync. -->
+                    <TextBlock x:Name="PlaceholderTitle"
+                               Margin="2,0,0,0"
+                               VerticalAlignment="Center"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Foreground="#FFF2F2F7" />
+                    <!-- Incognito badge (v1.8): text, not just color, so the ON state survives
+                         color-blindness and habituation - one of the three redundant signals
+                         (icon tint / this badge / panel tint) the design doc calls for. -->
+                    <Border x:Name="IncognitoBadge"
+                            Visibility="Collapsed"
+                            Background="#FF3A2B52"
+                            CornerRadius="9"
+                            Padding="8,2"
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Center">
+                        <TextBlock x:Name="IncognitoBadgeText"
+                                   FontSize="11"
+                                   Foreground="#FFD5B8F5" />
+                    </Border>
+                </StackPanel>
+
+                <!-- Incognito toggle (v1.8): an eye that stops watching. Glyph E890 (View) from
+                     Segoe MDL2 Assets, same glyph+Foreground pattern as the pin; the ON state adds
+                     a rotated purple slash overlay because MDL2 has no guaranteed slashed-eye
+                     glyph and a 2-element overlay renders identically on Win10/11. -->
+                <Button x:Name="HeaderIncognitoButton"
+                        Grid.Column="1"
+                        Style="{StaticResource Header.IconButtonStyle}">
+                    <Grid>
+                        <TextBlock x:Name="HeaderIncognitoIcon"
+                                   FontFamily="Segoe MDL2 Assets"
+                                   FontSize="13"
+                                   Text="&#xE890;"
+                                   Foreground="{StaticResource Card.Foreground}" />
+                        <Rectangle x:Name="HeaderIncognitoSlash"
+                                   Visibility="Collapsed"
+                                   Width="16" Height="1.6"
+                                   Fill="#FFBF5AF2"
+                                   RenderTransformOrigin="0.5,0.5">
+                            <Rectangle.RenderTransform>
+                                <RotateTransform Angle="-45" />
+                            </Rectangle.RenderTransform>
+                        </Rectangle>
+                    </Grid>
+                </Button>
 
                 <!-- Pin (v1.5 addendum): toggles auto-retract suppression. A Segoe MDL2 Assets
                      glyph (E718 pin / E840 pinned) instead of a text char so Foreground can carry
@@ -76,7 +117,7 @@
                      in code-behind (UpdatePinButtonVisual), same Header.IconButtonStyle as its
                      neighbors. -->
                 <Button x:Name="HeaderPinButton"
-                        Grid.Column="1"
+                        Grid.Column="2"
                         Style="{StaticResource Header.IconButtonStyle}">
                     <TextBlock x:Name="HeaderPinIcon"
                                FontFamily="Segoe MDL2 Assets"
@@ -86,17 +127,17 @@
                 </Button>
 
                 <Button x:Name="HeaderSettingsButton"
-                        Grid.Column="2"
+                        Grid.Column="3"
                         Content="&#9881;"
                         Style="{StaticResource Header.IconButtonStyle}" />
 
                 <Button x:Name="HeaderHelpButton"
-                        Grid.Column="3"
+                        Grid.Column="4"
                         Content="?"
                         Style="{StaticResource Header.IconButtonStyle}" />
 
                 <Button x:Name="HeaderHideButton"
-                        Grid.Column="4"
+                        Grid.Column="5"
                         Content="&#215;"
                         Style="{StaticResource Header.IconButtonStyle}" />
             </Grid>

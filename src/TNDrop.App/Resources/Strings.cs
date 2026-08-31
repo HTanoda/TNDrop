@@ -136,6 +136,11 @@ internal static class Strings
     // UpdatePinButtonVisual, which picks between these two based on _pinned.
     public static string HeaderPinTooltip => Get(nameof(HeaderPinTooltip));
     public static string HeaderPinActiveTooltip => Get(nameof(HeaderPinActiveTooltip));
+
+    // Incognito toggle (v1.8): shelf header button tooltip + ON-state badge text. See
+    // ShelfWindow.SetIncognitoVisual for the three redundant ON signals this feeds.
+    public static string ShelfIncognitoTooltip => Get(nameof(ShelfIncognitoTooltip));
+    public static string ShelfIncognitoBadge => Get(nameof(ShelfIncognitoBadge));
     public static string TotalCountFormat => Get(nameof(TotalCountFormat));
     public static string FilteredCountFormat => Get(nameof(FilteredCountFormat));
 

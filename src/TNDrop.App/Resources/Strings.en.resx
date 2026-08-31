@@ -374,6 +374,12 @@
   <data name="HeaderPinActiveTooltip" xml:space="preserve">
     <value>Unpin the shelf</value>
   </data>
+  <data name="ShelfIncognitoTooltip" xml:space="preserve">
+    <value>Incognito mode — copies are not captured</value>
+  </data>
+  <data name="ShelfIncognitoBadge" xml:space="preserve">
+    <value>Incognito</value>
+  </data>
   <data name="HelpButtonTooltip" xml:space="preserve">
     <value>Help</value>
   </data>
