@@ -98,6 +98,9 @@
   <data name="CardFilesCountFormat" xml:space="preserve">
     <value>ファイル {0} 件</value>
   </data>
+  <data name="TextStackCountFormat" xml:space="preserve">
+    <value>テキスト {0} 件</value>
+  </data>
   <data name="CardCharCountFormat" xml:space="preserve">
     <value>{0} 文字</value>
   </data>

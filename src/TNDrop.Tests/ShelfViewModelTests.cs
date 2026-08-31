@@ -685,4 +685,30 @@ public class ShelfViewModelTests : IDisposable
 
     private static void AssertCountAllEqualsSumOfSubcounts(ShelfViewModel vm) =>
         Assert.Equal(vm.CountAll, vm.CountText + vm.CountLinks + vm.CountImages + vm.CountFiles);
+
+    [StaFact]
+    public void Text_stack_contributes_its_text_count_to_the_text_badge()
+    {
+        Add(ClipKind.Text, "定型文いち");
+        Add(ClipKind.Text, "定型文に");
+        var items = _store.Items;
+        Assert.True(_store.TryMergeTexts(items[1].Id, items[0].Id));
+
+        var vm = new ShelfViewModel(_store);
+        Assert.Equal(2, vm.CountText);
+    }
+
+    [StaFact]
+    public void Search_hits_inside_text_stack_members()
+    {
+        Add(ClipKind.Text, "議会あいさつ");
+        Add(ClipKind.Text, "住民あて送付文");
+        var items = _store.Items;
+        Assert.True(_store.TryMergeTexts(items[1].Id, items[0].Id));
+
+        var vm = new ShelfViewModel(_store);
+        vm.SearchText = "住民あて";
+        Assert.Single(vm.Cards);
+        Assert.True(vm.Cards[0].IsTextStack);
+    }
 }

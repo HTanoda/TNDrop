@@ -187,4 +187,45 @@ public class CardViewModelTests
         // (which Cards.xaml's video-badge trigger reads) is correct regardless of that.
         Assert.Null(card.StackThumbnail);
     }
+
+    private static ClipItem TextStackItem(string? name, params string[] texts) => new()
+    {
+        Kind = ClipKind.Text,
+        Texts = texts.ToList(),
+        Name = name,
+        CreatedAtUtc = DateTime.UtcNow,
+    };
+
+    [StaFact]
+    public void Text_stack_title_prefers_name()
+    {
+        var vm = new CardViewModel(TextStackItem("議会用定例文", "お世話になっております。", "以上です。"));
+        Assert.True(vm.IsTextStack);
+        Assert.Equal("議会用定例文", vm.Title);
+        Assert.Equal(2, vm.StackCount);
+    }
+
+    [StaFact]
+    public void Text_stack_without_name_falls_back_to_first_text_single_lined()
+    {
+        var vm = new CardViewModel(TextStackItem(null, "一行目\r\n二行目", "b"));
+        Assert.Equal("一行目 二行目", vm.Title);
+    }
+
+    [StaFact]
+    public void File_stack_title_prefers_name()
+    {
+        var item = FilesItem(@"C:\a.txt", @"C:\b.txt");
+        item.Name = "配布資料";
+        var vm = new CardViewModel(item);
+        Assert.Equal("配布資料", vm.Title);
+    }
+
+    [StaFact]
+    public void File_stack_without_name_keeps_count_title()
+    {
+        var vm = new CardViewModel(FilesItem(@"C:\a.txt", @"C:\b.txt"));
+        Assert.NotEqual("配布資料", vm.Title); // 従来の「ファイル {0} 件」導出のまま
+        Assert.Equal(2, vm.StackCount);
+    }
 }

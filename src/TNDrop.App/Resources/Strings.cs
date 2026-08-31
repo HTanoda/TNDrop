@@ -35,6 +35,7 @@ internal static class Strings
     // BlobNaming.FriendlyImageFileName appends a local-time timestamp to.
     public static string ScreenshotFileBaseName => Get(nameof(ScreenshotFileBaseName));
     public static string CardFilesCountFormat => Get(nameof(CardFilesCountFormat));
+    public static string TextStackCountFormat => Get(nameof(TextStackCountFormat));
     public static string CardCharCountFormat => Get(nameof(CardCharCountFormat));
     public static string FilterAll => Get(nameof(FilterAll));
     public static string FilterText => Get(nameof(FilterText));

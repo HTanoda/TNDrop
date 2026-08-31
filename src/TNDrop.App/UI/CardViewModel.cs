@@ -186,7 +186,11 @@ public sealed class CardViewModel : INotifyPropertyChanged
 
     public bool IsStack => Item.IsStack;
 
-    public int StackCount => Item.Paths.Count;
+    public bool IsTextStack => Item.IsTextStack;
+
+    /// <summary>スタックバッジの件数 (v1.8 で共通化): ファイルスタックは Paths、テキスト
+    /// スタックは Texts。どちらでもないカードでは XAML が読まない (バッジ非表示)。</summary>
+    public int StackCount => Item.IsTextStack ? Item.Texts.Count : Item.Paths.Count;
 
     /// <summary>What <c>Item.Paths[0]</c> classifies as, for a stack card only --
     /// <see cref="MediaCategory.Other"/> for every non-stack card, computed once at construction
@@ -254,11 +258,22 @@ public sealed class CardViewModel : INotifyPropertyChanged
                 var subtitle = firstPath.Length > 0 ? firstPath : string.Empty;
                 var title = item.Paths.Count == 1
                     ? Path.GetFileName(firstPath)
-                    : string.Format(Strings.CardFilesCountFormat, item.Paths.Count);
+                    : item.Name ?? string.Format(Strings.CardFilesCountFormat, item.Paths.Count);
                 return (title, subtitle);
 
             case ClipKind.Text:
             default:
+                if (item.IsTextStack)
+                {
+                    // Name が主ハンドル (設計書 §3.3)。無ければ先頭テキストを単独カードと
+                    // 同じ導出 (改行を潰して 120 字) で。サブタイトルは件数。
+                    var head = ToSingleLine(item.Texts[0]);
+                    var stackTitle = item.Name
+                        ?? (head.Length > 120 ? head[..120] : head);
+                    return (stackTitle,
+                        string.Format(Strings.TextStackCountFormat, item.Texts.Count));
+                }
+
                 var text = item.Text ?? string.Empty;
                 var singleLine = ToSingleLine(text);
                 var truncated = singleLine.Length > 120 ? singleLine[..120] : singleLine;

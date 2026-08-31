@@ -440,8 +440,15 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
     /// never a cached flag) rather than re-testing Paths.Count here is what keeps this correct
     /// even when a stack shrinks by one path but stays a stack (SplitFile mutates Paths in place
     /// on the same ClipItem instance).</para>
+    ///
+    /// <para>v1.8: the same invariant now also applies to a text stack (<see
+    /// cref="ClipItem.IsTextStack"/>) -- weighted by <see cref="ClipItem.Texts"/>.Count so a
+    /// merge/split of text entries leaves the テキスト badge's total unchanged too.</para>
     /// </summary>
-    private static int Contribution(ClipItem item) => item.IsStack ? item.Paths.Count : 1;
+    private static int Contribution(ClipItem item) =>
+        item.IsStack ? item.Paths.Count
+        : item.IsTextStack ? item.Texts.Count
+        : 1;
 
     /// <summary>
     /// SINGLE RESOLUTION for "does this item count as 画像 instead of ファイル": both
@@ -499,6 +506,15 @@ public sealed class ShelfViewModel : INotifyPropertyChanged
             item.Text.Contains(search, StringComparison.OrdinalIgnoreCase))
         {
             return true;
+        }
+
+        // v1.8: テキストスタックの中身にもヒットさせる (ヒットしたらスタックカードが出る)。
+        foreach (var text in item.Texts)
+        {
+            if (text.Contains(search, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
         }
 
         if (item.Kind == ClipKind.Files)
