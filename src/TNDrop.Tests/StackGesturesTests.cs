@@ -384,6 +384,30 @@ public class StackGesturesTests
         Assert.Equal(("stack-1", a), DragDropTarget.StackRowOf(row));
     }
 
+    /// <summary>Regression for the v1.8 Task 5 review fix: the text branch of
+    /// <see cref="DragDropSource.BuildStackRowDataObject"/> originally set only
+    /// <see cref="DataFormats.UnicodeText"/> and the CardId marker, omitting
+    /// <see cref="DragDropSource.StackPathFormat"/> -- so <see cref="DragDropTarget.IsStackRowDrag"/>
+    /// came back false, <see cref="DragDropTarget.IsCardMergeDrag"/> came back true, and dropping a
+    /// single text row onto another card silently merged the WHOLE parent text stack into it via
+    /// <c>TryMergeTexts</c>. Same shape as <see cref="A_row_drag_is_a_self_drag_but_never_a_merge_drag"/>,
+    /// for the text stack path.</summary>
+    [StaFact]
+    public void A_text_row_drag_is_a_self_drag_but_never_a_merge_drag()
+    {
+        var stack = new ClipItem { Id = "text-stack-1", Kind = ClipKind.Text, Texts = new List<string> { "一行目", "二行目" } };
+        var row = DragDropSource.BuildStackRowDataObject(stack, "一行目")!;
+
+        // It looks like a self-drag (so the shelf's own drag-IN still ignores it: no re-add)...
+        Assert.True(DragDropTarget.IsSelfDrag(row));
+
+        // ...but it must never be treated as a whole-card merge -- the bug this test guards
+        // against would have this pair come back (false, true) instead.
+        Assert.True(DragDropTarget.IsStackRowDrag(row));
+        Assert.False(DragDropTarget.IsCardMergeDrag(row));
+        Assert.Equal(("text-stack-1", "一行目"), DragDropTarget.StackRowOf(row));
+    }
+
     [StaFact]
     public void A_whole_card_drag_is_a_merge_drag_and_carries_no_stack_row()
     {

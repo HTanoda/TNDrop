@@ -233,6 +233,7 @@ public static class DragDropSource
 
             var textData = new DataObject();
             textData.SetData(DataFormats.UnicodeText, path);
+            textData.SetData(StackPathFormat, EncodeStackPath(stack.Id ?? string.Empty, path));
             return Tag(textData, stack);
         }
 
