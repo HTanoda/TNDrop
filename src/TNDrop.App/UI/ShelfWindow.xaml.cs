@@ -169,6 +169,12 @@ public partial class ShelfWindow : Window
     // CloseIfStale -> flyout.Closed before the store call returns. Consumed (reset to false)
     // by the first Closed it explains; a refused mutation (null return, no Changed raised)
     // resets it immediately so it does not wrongly suppress some later, unrelated close.
+    //
+    // v1.8.1 fix round 1: only ever set when _stackFlyout.IsShowing(stackId) is true for the
+    // stack being mutated. OnStackSplitRequested is also reached from BeginCardDrag's "drag the
+    // whole stack card into the edge band" gesture, with no flyout open (or a DIFFERENT stack's
+    // flyout open) -- CloseIfStale does not touch this flyout in that case, so an unconditional
+    // set here would never be consumed and would wrongly suppress the arm on the next real close.
     private bool _suppressNextFlyoutCloseArm;
 
     // Id of the card the flyout was showing when the press landed, read when the release decides
@@ -1687,15 +1693,26 @@ public partial class ShelfWindow : Window
         // synchronously from inside the call (Changed -> OnStoreRebuilt -> CloseIfStale -> this
         // flyout's Closed), so setting the flag after the call would already be too late to
         // reach the handler. See the field comment on _suppressNextFlyoutCloseArm.
-        _suppressNextFlyoutCloseArm = true;
+        //
+        // Guarded to the stack the flyout is CURRENTLY showing (v1.8.1 fix round 1): this handler
+        // also fires from BeginCardDrag's "drag the whole stack card into the edge band" gesture,
+        // which needs no flyout open at all and can run while a DIFFERENT stack's flyout is open.
+        // In neither case does CloseIfStale close (or even look at) this flyout, so an
+        // unconditional flag would go unconsumed and wrongly suppress the arm on the next
+        // unrelated close (hover-leave, outside click).
+        if (_stackFlyout is not null && _stackFlyout.IsShowing(stackId))
+        {
+            _suppressNextFlyoutCloseArm = true;
+        }
+
         var card = stack?.IsTextStack == true
             ? _itemStore.SplitText(stackId, key)
             : _itemStore.SplitFile(stackId, key);
 
         if (card is null)
         {
-            // Refused: no mutation, so no Changed and no flyout close. Reset the flag so it does
-            // not linger and wrongly suppress the arm on some later, unrelated close.
+            // Refused: no mutation, so no Changed and no flyout close. Reset unconditionally --
+            // harmless when the guard above never set it, and simpler than tracking whether it did.
             _suppressNextFlyoutCloseArm = false;
             FileLogger.Instance?.Warn(Module, "split refused: the row is no longer part of that stack");
             return;
@@ -1724,15 +1741,25 @@ public partial class ShelfWindow : Window
         // event synchronously from inside the call (Changed -> OnStoreRebuilt -> CloseIfStale ->
         // this flyout's Closed), so setting the flag after the call would already be too late to
         // reach the handler. See the field comment on _suppressNextFlyoutCloseArm.
-        _suppressNextFlyoutCloseArm = true;
+        //
+        // Guarded to the stack the flyout is CURRENTLY showing (v1.8.1 fix round 1), matching
+        // OnStackSplitRequested's guard. Today this handler is only wired to the flyout's own
+        // "ungroup all" button, so stackId is always the shown stack in practice -- but the guard
+        // costs nothing and keeps this handler safe against a future caller that, like
+        // BeginCardDrag's split gesture, could fire it with no flyout open or a different one.
+        if (_stackFlyout is not null && _stackFlyout.IsShowing(stackId))
+        {
+            _suppressNextFlyoutCloseArm = true;
+        }
+
         var expanded = stack?.IsTextStack == true
             ? _itemStore.SplitAllTexts(stackId)
             : _itemStore.SplitAll(stackId);
 
         if (expanded is null)
         {
-            // Refused: no mutation, so no Changed and no flyout close. Reset the flag so it does
-            // not linger and wrongly suppress the arm on some later, unrelated close.
+            // Refused: no mutation, so no Changed and no flyout close. Reset unconditionally --
+            // harmless when the guard above never set it, and simpler than tracking whether it did.
             _suppressNextFlyoutCloseArm = false;
 
             // The stack changed under the click (another capture merged it, or it was removed) --
