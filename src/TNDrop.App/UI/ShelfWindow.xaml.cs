@@ -1208,11 +1208,12 @@ public partial class ShelfWindow : Window
         {
             OpenLink(card);
         }
-        else if (card.IsStack)
+        else if (card.IsStack || card.IsTextStack)
         {
             // A stack's click expands it instead of re-copying: the whole point of the flyout is
             // that the individual files inside are separately clickable and draggable, and the
-            // stack as a whole is still available by dragging the card itself.
+            // stack as a whole is still available by dragging the card itself. v1.8: a text stack
+            // gets the same flyout-on-click treatment (rows are Task 5's concern).
             ToggleStackFlyout(card, CardRootFrom(e.OriginalSource) ?? (UIElement)this);
         }
         else
@@ -1757,6 +1758,26 @@ public partial class ShelfWindow : Window
 
         var (target, source) = merge.Value;
 
+        // v1.8: Text 同士はテキストスタックへ。TryPrepareCardsForMerge (画像の Files 化) は
+        // ファイル系マージ専用なので通さない。拒否 (統合後 10 件超) はファイル版と同じ
+        // StackLimit + シェイクで応える。
+        if (target.Kind == ClipKind.Text && source.Kind == ClipKind.Text)
+        {
+            if (_itemStore.TryMergeTexts(target.Id, source.Id))
+            {
+                _itemStore.Save();
+            }
+            else
+            {
+                FileLogger.Instance?.Info(Module, "merge refused: the combined text stack would exceed 10 texts");
+                ShowStatus(Strings.StackLimit);
+                ShakeCard(targetBorder);
+            }
+
+            ArmRetractIfPointerOutside();
+            return;
+        }
+
         if (!DragDropSource.TryPrepareCardsForMerge(_itemStore, BlobsDir, target, source))
         {
             FileLogger.Instance?.Info(Module, "merge refused: image content missing");
@@ -1904,12 +1925,18 @@ public partial class ShelfWindow : Window
         {
             case ClipKind.Text:
             case ClipKind.Link:
-                if (!string.IsNullOrEmpty(item.Text))
+                // v1.8: a text stack has no item.Text -- its content lives in Texts -- so derive
+                // the same join("\n") the drag payload uses (DragDropSource.BuildDataObject) to
+                // keep click-copy and drag-out from ever disagreeing. A text stack's card click
+                // actually goes through the flyout branch above, not here; this case stays aligned
+                // in case some future caller reaches CopyCardToClipboard directly.
+                var textPayload = item.IsTextStack ? string.Join("\n", item.Texts) : item.Text;
+                if (!string.IsNullOrEmpty(textPayload))
                 {
                     // Before the write, not after: the clipboard notification can arrive before
                     // SetX returns.
                     global::TNDrop.App.Monitor?.SuppressNext();
-                    ClipboardIo.SetText(item.Text);
+                    ClipboardIo.SetText(textPayload);
                     copied = true;
                 }
 

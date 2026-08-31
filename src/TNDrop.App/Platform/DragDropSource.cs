@@ -70,13 +70,16 @@ public static class DragDropSource
             case ClipKind.Text:
             case ClipKind.Link:
             {
-                if (string.IsNullOrEmpty(item.Text))
+                // v1.8: a text stack has no item.Text -- its content lives in Texts -- so the whole
+                // card drags out as every text joined with a newline (design doc §3.3).
+                var text = item.IsTextStack ? string.Join("\n", item.Texts) : item.Text;
+                if (string.IsNullOrEmpty(text))
                 {
                     return null;
                 }
 
                 var data = new DataObject();
-                data.SetData(DataFormats.UnicodeText, item.Text);
+                data.SetData(DataFormats.UnicodeText, text);
                 return Tag(data, item);
             }
 

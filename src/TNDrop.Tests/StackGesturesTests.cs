@@ -221,14 +221,19 @@ public class StackGesturesTests
         Assert.False(StackGestures.CanAcceptMerge(Files("a", @"C:\1.txt"), Files("a", @"C:\1.txt")));
     }
 
+    // v1.8: Text onto Text is now its own merge path (a text stack, see CanAcceptMerge_accepts_
+    // text_onto_text below), so the same-kind case is no longer uniformly false across every
+    // non-Files/Image kind -- only Link stays refused in every combination, and Text still refuses
+    // crossing into Files.
     [Theory]
-    [InlineData(ClipKind.Text)]
-    [InlineData(ClipKind.Link)]
-    public void CanAcceptMerge_refuses_every_non_mergeable_combination(ClipKind other)
+    [InlineData(ClipKind.Text, true)]
+    [InlineData(ClipKind.Link, false)]
+    public void CanAcceptMerge_refuses_files_crossed_with_text_or_link_and_only_text_pairs_with_itself(
+        ClipKind other, bool sameKindAllowed)
     {
         Assert.False(StackGestures.CanAcceptMerge(Files("a", @"C:\1.txt"), Of("b", other)));
         Assert.False(StackGestures.CanAcceptMerge(Of("a", other), Files("b", @"C:\1.txt")));
-        Assert.False(StackGestures.CanAcceptMerge(Of("a", other), Of("b", other)));
+        Assert.Equal(sameKindAllowed, StackGestures.CanAcceptMerge(Of("a", other), Of("b", other)));
     }
 
     // v1.3 Task B: a clipboard screenshot (Kind=Image) is now a merge candidate too -- it is
@@ -258,6 +263,26 @@ public class StackGesturesTests
         Assert.False(StackGestures.CanAcceptMerge(null, Files("b", @"C:\1.txt")));
         Assert.False(StackGestures.CanAcceptMerge(Files("a", @"C:\1.txt"), null));
         Assert.False(StackGestures.CanAcceptMerge(null, null));
+    }
+
+    [Fact]
+    public void CanAcceptMerge_accepts_text_onto_text()
+    {
+        var a = new ClipItem { Kind = ClipKind.Text, Text = "a" };
+        var b = new ClipItem { Kind = ClipKind.Text, Text = "b" };
+        Assert.True(StackGestures.CanAcceptMerge(a, b));
+    }
+
+    [Fact]
+    public void CanAcceptMerge_rejects_text_cross_kind()
+    {
+        var text = new ClipItem { Kind = ClipKind.Text, Text = "a" };
+        var files = new ClipItem { Kind = ClipKind.Files, Paths = { @"C:\a.txt" } };
+        var link = new ClipItem { Kind = ClipKind.Link, Text = "https://example.com/" };
+        Assert.False(StackGestures.CanAcceptMerge(text, files));
+        Assert.False(StackGestures.CanAcceptMerge(files, text));
+        Assert.False(StackGestures.CanAcceptMerge(text, link));
+        Assert.False(StackGestures.CanAcceptMerge(link, text));
     }
 
     [Fact]

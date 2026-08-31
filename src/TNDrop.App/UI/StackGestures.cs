@@ -104,13 +104,18 @@ public static class StackGestures
     /// (<see cref="ItemStore.TryMergeFiles"/> returning false, which the shelf answers with a shake
     /// and the StackLimit message), rather than the drop silently reading as "not a drop target"
     /// with no explanation.</para>
+    ///
+    /// <para>v1.8: also accepts Text onto Text -- a separate text-stack merge path
+    /// (<see cref="ItemStore.TryMergeTexts"/>) with the same 10-item limit and refusal UX.</para>
     /// </summary>
     public static bool CanAcceptMerge(ClipItem? target, ClipItem? source) =>
         target is not null
         && source is not null
         && !string.Equals(target.Id, source.Id, StringComparison.Ordinal)
-        && IsMergeableKind(target.Kind)
-        && IsMergeableKind(source.Kind);
+        && ((IsMergeableKind(target.Kind) && IsMergeableKind(source.Kind))
+            // v1.8: Text 同士のみテキストスタックとしてマージ可。Link は除外 (設計書 §1)、
+            // Text とファイル系のクロスも不可 (混在グループは作らない)。
+            || (target.Kind == ClipKind.Text && source.Kind == ClipKind.Text));
 
     /// <summary>
     /// v1.3 Task B: a card is a merge candidate when it is Kind==Files (the original v1.2 rule,

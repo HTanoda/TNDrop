@@ -185,6 +185,54 @@
                            MaxHeight="{DynamicResource CardTextMaxHeight}"
                            Visibility="Collapsed" />
 
+                <!-- Text stack (v1.8): the FilesStackContent layered-paper look with a memo glyph
+                     in place of the shell icon. Count badge binds the same StackCount the file
+                     stack badge uses (CardViewModel widened it to Texts.Count for text stacks). -->
+                <Grid x:Name="TextStackContent" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Grid Width="34" Height="34" Margin="0,0,10,0">
+                        <Border Background="{StaticResource Card.StackLayer1}" CornerRadius="4"
+                                Width="26" Height="30" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Margin="8,4,0,0" />
+                        <Border Background="{StaticResource Card.StackLayer2}" CornerRadius="4"
+                                Width="26" Height="30" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Margin="4,2,0,0" />
+                        <Border Background="{StaticResource Card.StackLayer3}" CornerRadius="4"
+                                Width="26" Height="30" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                        <TextBlock Text="&#128221;"
+                                   FontSize="13"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                        <Border Background="{StaticResource Card.Badge}" CornerRadius="8"
+                                Width="16" Height="16" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                            <TextBlock Text="{Binding StackCount}"
+                                       FontSize="9"
+                                       FontWeight="Bold"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Title}"
+                                   ToolTip="{Binding Title}"
+                                   FontSize="{DynamicResource CardFontSize}"
+                                   Foreground="{StaticResource Card.Foreground}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Subtitle}"
+                                   ToolTip="{Binding Subtitle}"
+                                   FontSize="{DynamicResource CardSmallFontSize}"
+                                   Margin="0,4,0,0"
+                                   Foreground="{StaticResource Card.SubForeground}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Grid>
+
                 <!-- Link: chain glyph + bold domain + small full URL -->
                 <StackPanel x:Name="LinkContent" Visibility="Collapsed">
                     <!-- Left-aligned and Transparent-backed on purpose: Left keeps the hotspot as
@@ -573,6 +621,12 @@
             </DataTrigger>
             <DataTrigger Binding="{Binding Kind}" Value="Files">
                 <Setter TargetName="FilesSingleContent" Property="Visibility" Value="Visible" />
+            </DataTrigger>
+            <!-- v1.8: listed after the Kind DataTriggers above so it wins the tie over the plain
+                 Kind=="Text" trigger, same override pattern IsStack uses below for Files. -->
+            <DataTrigger Binding="{Binding IsTextStack}" Value="True">
+                <Setter TargetName="TextContent" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="TextStackContent" Property="Visibility" Value="Visible" />
             </DataTrigger>
             <!-- Listed after the Files DataTrigger above: on a tie, the later trigger's setters
                  win, so a stack (IsStack==true) ends up showing FilesStackContent instead. -->
