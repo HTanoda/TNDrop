@@ -57,7 +57,9 @@ public sealed class StackFileRow : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    /// <summary>Full path, exactly as the stack stores it. This is what a row drag/click carries.</summary>
+    /// <summary>Full path, exactly as the stack stores it. This is what a row drag/click carries.
+    /// For a text-stack row (v1.8) there is no path -- this holds the row's raw text value
+    /// instead, verbatim, including any embedded line feeds.</summary>
     public string Path { get; }
 
     public string FileName { get; }

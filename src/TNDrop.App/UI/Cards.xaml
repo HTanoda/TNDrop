@@ -555,6 +555,14 @@
                                         <DataTrigger Binding="{Binding Kind}" Value="Link">
                                             <Setter Property="Visibility" Value="Visible" />
                                         </DataTrigger>
+                                        <!-- Final review fix (v1.8): a text stack still reports Kind==Text,
+                                             so the trigger above would leave Edit visible on it too - but a
+                                             text stack has no single body to edit. Listed after the Kind
+                                             triggers so it wins the tie, same override pattern as the
+                                             TextStackContent trigger below. -->
+                                        <DataTrigger Binding="{Binding IsTextStack}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Button.Style>

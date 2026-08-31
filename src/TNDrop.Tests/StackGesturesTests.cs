@@ -408,6 +408,26 @@ public class StackGesturesTests
         Assert.Equal(("text-stack-1", "一行目"), DragDropTarget.StackRowOf(row));
     }
 
+    /// <summary>Final review fix (v1.8, Minor 5): a text-stack row whose own value contains
+    /// embedded line feeds must still round-trip whole through
+    /// <see cref="DragDropSource.StackPathFormat"/>. The encoding is "stackId\ntext", and
+    /// <see cref="DragDropTarget.StackRowOf"/> only splits on the FIRST separator -- since
+    /// <see cref="ClipItem.Id"/> is a 32-digit hex GUID and never itself contains a line feed, that
+    /// first separator is always the id/text boundary, so any further line feeds inside the text
+    /// stay part of the decoded value rather than truncating it. Same shape as
+    /// <see cref="A_text_row_drag_is_a_self_drag_but_never_a_merge_drag"/>, for a multi-line value.</summary>
+    [StaFact]
+    public void A_multiline_text_row_drag_round_trips_the_whole_text()
+    {
+        const string multiline = "一行目\n二行目";
+        var stack = new ClipItem { Id = "text-stack-2", Kind = ClipKind.Text, Texts = new List<string> { multiline, "他の行" } };
+        var row = DragDropSource.BuildStackRowDataObject(stack, multiline)!;
+
+        Assert.True(DragDropTarget.IsStackRowDrag(row));
+        Assert.False(DragDropTarget.IsCardMergeDrag(row));
+        Assert.Equal(("text-stack-2", multiline), DragDropTarget.StackRowOf(row));
+    }
+
     [StaFact]
     public void A_whole_card_drag_is_a_merge_drag_and_carries_no_stack_row()
     {

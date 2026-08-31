@@ -115,6 +115,25 @@ public class ItemStoreOperationsTests : IDisposable
     }
 
     [Fact]
+    public void SplitFile_down_to_one_path_clears_the_stack_name()
+    {
+        // Final review fix (v1.8, Minor 7): mirrors SplitText's own
+        // "スタック解消で名前も消える" rule (ItemStoreTextStackTests.
+        // SplitText_last_but_one_normalizes_back_to_a_plain_text_card) -- without this, a named
+        // file stack that shrinks to a single remaining path keeps its Name, and the name comes
+        // back on the next merge even though the stack it belonged to no longer exists.
+        var s = ItemStore.BuildFileItems(new[] { @"C:\x", @"C:\y" }, DateTime.UtcNow)[0];
+        _store.TryAdd(s);
+        _store.SetName(s.Id, "名前");
+
+        Assert.NotNull(_store.SplitFile(s.Id, @"C:\y"));
+
+        var remaining = _store.Items.Single(i => i.Id == s.Id);
+        Assert.Single(remaining.Paths);
+        Assert.Null(remaining.Name);
+    }
+
+    [Fact]
     public void SplitFile_from_pinned_stack_yields_pinned_card()
     {
         // The extracted card must inherit Pinned from the source stack, mirroring TryMergeFiles'

@@ -1624,10 +1624,14 @@ public partial class ShelfWindow : Window
         var stack = stackId is null ? null : _itemStore?.Items.FirstOrDefault(i => i.Id == stackId);
         if (stack?.IsTextStack == true)
         {
-            // カードのクリックコピーと同じ作法: 書き込み前に SuppressNext、確認フラッシュ。
+            // カードのクリックコピーと同じ作法: 書き込み前に SuppressNext、確認フラッシュ、
+            // クリック貼り付け (最終レビュー Important 2: 単独テキストカードのクリックと
+            // 挙動を揃える。CopyCardToClipboard の TryPasteOnClick 呼び出しと同じ関数で、
+            // 既存ガード (前面が自プロセス、検索フォーカス、修飾キー) がそのまま効く)。
             global::TNDrop.App.Monitor?.SuppressNext();
             ClipboardIo.SetText(key);
             ConfirmCopy();
+            TryPasteOnClick(ClipKind.Text);
             return;
         }
 

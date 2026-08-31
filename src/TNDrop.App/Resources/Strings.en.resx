@@ -150,7 +150,7 @@
     <value>File not found</value>
   </data>
   <data name="StackLimit" xml:space="preserve">
-    <value>A stack holds up to 10 files</value>
+    <value>A stack holds up to 10 items</value>
   </data>
   <data name="SelectAll" xml:space="preserve">
     <value>Select All</value>

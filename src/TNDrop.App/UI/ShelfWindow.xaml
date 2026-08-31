@@ -40,13 +40,15 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- Header (v1.1 Task C): app name left, pin (v1.5 addendum, suppresses auto-retract -
-                 see ShelfWindow.OnPinButtonClick), settings (opens the same window the tray's
-                 own "設定..." menu item opens - see App.OpenSettingsWindow), help (v1.3.1, opens
-                 the bundled README.html - see ShelfWindow.OnHelpButtonClick) and hide (SlideOut,
-                 same as the retract timer) right, in that order - matching the "?" button's slot
-                 between the gear and the × in the README's own hero mockup (assets/README.html).
-                 All four buttons use Header.IconButtonStyle (Cards.xaml), which sets
+            <!-- Header (v1.1 Task C): app name left, incognito (v1.8, toggles the "don't record"
+                 mode - see App.SetIncognitoMode, wired up in ShelfWindow's constructor), pin (v1.5 addendum,
+                 suppresses auto-retract - see ShelfWindow.OnPinButtonClick), settings (opens the
+                 same window the tray's own "設定..." menu item opens - see
+                 App.OpenSettingsWindow), help (v1.3.1, opens the bundled README.html - see
+                 ShelfWindow.OnHelpButtonClick) and hide (SlideOut, same as the retract timer)
+                 right, in that order - matching the "?" button's slot between the gear and the ×
+                 in the README's own hero mockup (assets/README.html).
+                 All five buttons use Header.IconButtonStyle (Cards.xaml), which sets
                  Focusable=False so a click never steals keyboard focus. -->
             <Grid Grid.Row="0" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>

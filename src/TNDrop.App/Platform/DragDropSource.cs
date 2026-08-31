@@ -48,8 +48,15 @@ public static class DragDropSource
     public const string StackPathFormat = "TNDrop.StackPath";
 
     /// <summary>
-    /// Separator between the stack id and the path inside a <see cref="StackPathFormat"/> value.
-    /// A line feed is not a legal character in a Windows path, so the split can never be ambiguous.
+    /// Separator between the stack id and the path (or, for a text-stack row, the raw text value)
+    /// inside a <see cref="StackPathFormat"/> value.
+    ///
+    /// <para><see cref="TryDecodeStackPath"/> only needs the FIRST separator to be unambiguous, not
+    /// every one: <see cref="ClipItem.Id"/> is always a 32-digit hex GUID and so never contains a
+    /// line feed, and the decode splits on the first occurrence, taking everything after it as the
+    /// second half verbatim. A multi-line text value (which legitimately contains further line
+    /// feeds) therefore still round-trips whole -- the split point is fixed by the id side, not by
+    /// scanning the text side for the "last" or "only" separator.</para>
     /// </summary>
     public const char StackPathSeparator = '\n';
 

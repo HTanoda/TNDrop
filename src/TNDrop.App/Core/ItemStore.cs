@@ -595,6 +595,12 @@ public sealed partial class ItemStore
             {
                 _items.Remove(stack);
             }
+            else if (stack.Paths.Count == 1)
+            {
+                // 最終レビュー Minor 7: SplitText (:348) と同じく、スタックとして解消される
+                // タイミングで Name もクリアする。ここで消さないと次のマージで名前が復活する。
+                stack.Name = null;
+            }
 
             card = new ClipItem
             {
