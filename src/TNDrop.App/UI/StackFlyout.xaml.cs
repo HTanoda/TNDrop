@@ -152,13 +152,19 @@ public partial class StackFlyout : Popup
 
         _stackItem = stack.Item;
         StackId = stack.Id;
-        _paths = stack.Item.Paths.ToList();
 
-        // Reuses CardFilesCountFormat -- the same "ファイル N 件" phrase a stack card's own title
-        // already shows -- rather than a second, near-duplicate format string.
-        HeaderCountText.Text = string.Format(Strings.CardFilesCountFormat, _paths.Count);
+        // v1.8: 行キーは「パス or テキスト値」。以降の行クリック/ドラッグ/分離はキー文字列を
+        // 運ぶだけで、解釈 (ファイルかテキストか) は受け手が IsTextStack で決める。
+        var isTextStack = stack.Item.IsTextStack;
+        _paths = isTextStack ? stack.Item.Texts.ToList() : stack.Item.Paths.ToList();
 
-        var rows = _paths.Select(StackFileRow.Create).ToList();
+        HeaderCountText.Text = string.Format(
+            isTextStack ? Strings.TextStackCountFormat : Strings.CardFilesCountFormat,
+            _paths.Count);
+
+        var rows = isTextStack
+            ? _paths.Select(StackFileRow.CreateText).ToList()
+            : _paths.Select(StackFileRow.Create).ToList();
         RowsHost.ItemsSource = rows;
         ScheduleThumbnailResolution(rows);
 
@@ -267,7 +273,16 @@ public partial class StackFlyout : Popup
         }
 
         var item = store.Items.FirstOrDefault(i => i.Id == StackId);
-        if (item is null || item.Kind != ClipKind.Files || !item.Paths.SequenceEqual(_paths))
+        if (item is null)
+        {
+            IsOpen = false;
+            return;
+        }
+
+        // v1.8: テキストスタックなら Texts 列、それ以外は従来どおり Paths 列で比較する。
+        var currentKeys = item.IsTextStack ? item.Texts : item.Paths;
+        var validKind = item.IsTextStack || item.Kind == ClipKind.Files;
+        if (!validKind || !currentKeys.SequenceEqual(_paths))
         {
             IsOpen = false;
             return;

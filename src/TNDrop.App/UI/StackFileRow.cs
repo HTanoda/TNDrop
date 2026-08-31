@@ -37,6 +37,7 @@ public sealed class StackFileRow : INotifyPropertyChanged
     private const string FileGlyph = "\U0001F4C4";     // page
     private const string FolderGlyph = "\U0001F4C1";   // folder
     private const string MissingGlyph = "\u26A0";      // warning sign
+    private const string TextGlyph = "\U0001F4DD";     // memo (text stack row, v1.8)
 
     /// <summary>Row thumbnail/icon size (v1.3 Task C), matching the design doc's "32px \u524D\u5F8C".</summary>
     private const int ThumbnailPx = 32;
@@ -120,6 +121,21 @@ public sealed class StackFileRow : INotifyPropertyChanged
         var size = !exists ? Strings.FileMissing : isDirectory ? string.Empty : FormatSize(length);
 
         return new StackFileRow(path, NameOf(path), icon, size, exists, needsThumbnail: exists && !isDirectory);
+    }
+
+    /// <summary>テキストスタックの 1 行 (v1.8)。ディスクは一切触らない: Path にはテキスト値
+    /// そのものが入り (行キー -- ファイル行の「Paths の値がキー」と同型)、FileName は改行を
+    /// 潰したプレビュー、SizeText は文字数。Exists=true / NeedsThumbnail=false なので既存の
+    /// グレーアウト・サムネイル解決はどちらも作動しない。</summary>
+    public static StackFileRow CreateText(string text)
+    {
+        text ??= string.Empty;
+        var singleLine = text.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ');
+        var preview = singleLine.Length > 80 ? singleLine[..80] : singleLine;
+
+        return new StackFileRow(text, preview, TextGlyph,
+            string.Format(Strings.CardCharCountFormat, text.Length),
+            exists: true, needsThumbnail: false);
     }
 
     /// <summary>

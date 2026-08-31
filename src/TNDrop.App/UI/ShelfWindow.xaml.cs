@@ -1612,12 +1612,21 @@ public partial class ShelfWindow : Window
         return CursorDip() is { } cursor && StackGestures.Contains(_rect, cursor.X, cursor.Y);
     }
 
-    /// <summary>A flyout row was clicked: put that one file on the clipboard.</summary>
-    private void OnStackFileActivated(string path)
+    /// <summary>A flyout row was clicked: put that one file or text on the clipboard (v1.8).</summary>
+    private void OnStackFileActivated(string key)
     {
-        // Re-checked at action time rather than trusting the row's snapshot: the flyout may have
-        // been open for a while. Same existence rule the drag payload uses.
-        var paths = DragDropSource.PathExists(path) ? new[] { path } : Array.Empty<string>();
+        var stackId = _stackFlyout?.StackId;
+        var stack = stackId is null ? null : _itemStore?.Items.FirstOrDefault(i => i.Id == stackId);
+        if (stack?.IsTextStack == true)
+        {
+            // カードのクリックコピーと同じ作法: 書き込み前に SuppressNext、確認フラッシュ。
+            global::TNDrop.App.Monitor?.SuppressNext();
+            ClipboardIo.SetText(key);
+            ConfirmCopy();
+            return;
+        }
+
+        var paths = DragDropSource.PathExists(key) ? new[] { key } : Array.Empty<string>();
 
         if (!SetClipboardFiles(paths))
         {
@@ -1630,18 +1639,21 @@ public partial class ShelfWindow : Window
     }
 
     /// <summary>A flyout row was dragged into the edge band: pull it out into its own card.</summary>
-    private void OnStackSplitRequested(string stackId, string path)
+    private void OnStackSplitRequested(string stackId, string key)
     {
         if (_itemStore is null)
         {
             return;
         }
 
-        if (_itemStore.SplitFile(stackId, path) is null)
+        var stack = _itemStore.Items.FirstOrDefault(i => i.Id == stackId);
+        var card = stack?.IsTextStack == true
+            ? _itemStore.SplitText(stackId, key)
+            : _itemStore.SplitFile(stackId, key);
+
+        if (card is null)
         {
-            // The stack changed under the drag (another capture merged it, the file was removed).
-            // Nothing to tell the user: no card moved, and the drop itself did nothing either.
-            FileLogger.Instance?.Warn(Module, "split refused: the path is no longer part of that stack");
+            FileLogger.Instance?.Warn(Module, "split refused: the row is no longer part of that stack");
             return;
         }
 
@@ -1662,7 +1674,12 @@ public partial class ShelfWindow : Window
             return;
         }
 
-        if (_itemStore.SplitAll(stackId) is null)
+        var stack = _itemStore.Items.FirstOrDefault(i => i.Id == stackId);
+        var expanded = stack?.IsTextStack == true
+            ? _itemStore.SplitAllTexts(stackId)
+            : _itemStore.SplitAll(stackId);
+
+        if (expanded is null)
         {
             // The stack changed under the click (another capture merged it, or it was removed) --
             // same "nothing to tell the user" reasoning as OnStackSplitRequested's own refusal.

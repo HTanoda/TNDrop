@@ -221,6 +221,21 @@ public static class DragDropSource
             return null;
         }
 
+        // v1.8: テキストスタックの行はテキストとして持ち出す。membership 再確認の理由は
+        // ファイル行と同じ (古いフライアウトの行を掴んだケース)。
+        if (stack.IsTextStack)
+        {
+            if (!stack.Texts.Contains(path))
+            {
+                FileLogger.Instance?.Warn(Module, "refused to drag a row that is not part of the stack anymore");
+                return null;
+            }
+
+            var textData = new DataObject();
+            textData.SetData(DataFormats.UnicodeText, path);
+            return Tag(textData, stack);
+        }
+
         // Membership is checked here as well as in ItemStore.SplitFile: this is what stops a stale
         // flyout (rows built before a background change) from dragging a path the stack no longer
         // holds and then splitting it back in as a new card.

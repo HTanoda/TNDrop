@@ -73,4 +73,16 @@ public class StackFlyoutTests
         Assert.False(flyout.IsThumbnailResultCurrent(1, "different-id"));
         Assert.False(flyout.IsThumbnailResultCurrent(99, "a"));
     }
+
+    [StaFact]
+    public void CreateText_builds_a_disk_free_row()
+    {
+        var row = StackFileRow.CreateText("一行目\r\n二行目の長い本文");
+
+        Assert.Equal("一行目\r\n二行目の長い本文", row.Path); // 行キー = テキスト値そのもの
+        Assert.Equal("一行目 二行目の長い本文", row.FileName);
+        Assert.True(row.Exists);
+        Assert.False(row.NeedsThumbnail);
+        Assert.Null(row.Thumbnail);
+    }
 }
