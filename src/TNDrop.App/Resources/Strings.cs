@@ -50,6 +50,7 @@ internal static class Strings
     public static string ActionUnpin => Get(nameof(ActionUnpin));
     public static string ActionDelete => Get(nameof(ActionDelete));
     public static string ActionEdit => Get(nameof(ActionEdit));
+    public static string ActionRename => Get(nameof(ActionRename));
     public static string FileMissing => Get(nameof(FileMissing));
     public static string StackLimit => Get(nameof(StackLimit));
     public static string SelectAll => Get(nameof(SelectAll));
@@ -230,6 +231,10 @@ internal static class Strings
     public static string EditSaveButton => Get(nameof(EditSaveButton));
     public static string EditCancelButton => Get(nameof(EditCancelButton));
     public static string EditItemGone => Get(nameof(EditItemGone));
+
+    // Rename dialog (v1.8 Task 6). See RenameDialog.
+    public static string RenameDialogTitle => Get(nameof(RenameDialogTitle));
+    public static string RenameHint => Get(nameof(RenameHint));
 
     private static string Get(string key) =>
         Manager.GetString(key, CultureInfo.CurrentUICulture) ?? key;

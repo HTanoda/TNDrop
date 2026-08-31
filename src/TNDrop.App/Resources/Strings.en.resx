@@ -143,6 +143,9 @@
   <data name="ActionEdit" xml:space="preserve">
     <value>Edit</value>
   </data>
+  <data name="ActionRename" xml:space="preserve">
+    <value>Rename</value>
+  </data>
   <data name="FileMissing" xml:space="preserve">
     <value>File not found</value>
   </data>
@@ -593,5 +596,13 @@
   </data>
   <data name="EditItemGone" xml:space="preserve">
     <value>This card has already been deleted.</value>
+  </data>
+
+  <!-- Rename dialog (v1.8 Task 6). See RenameDialog. -->
+  <data name="RenameDialogTitle" xml:space="preserve">
+    <value>Stack name</value>
+  </data>
+  <data name="RenameHint" xml:space="preserve">
+    <value>Save empty to clear the name and go back to the automatic title.</value>
   </data>
 </root>

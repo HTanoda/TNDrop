@@ -44,6 +44,7 @@ public partial class App : System.Windows.Application
     private SettingsWindow? _settingsWindow;
     private BackupDialog? _backupDialog;
     private EditDialog? _editDialog;
+    private RenameDialog? _renameDialog;
 
     /// <summary>
     /// 走っている (かもしれない) 日次自動バックアップのタスク (v1.6 最終レビュー修正)。
@@ -1358,6 +1359,33 @@ public partial class App : System.Windows.Application
 
         _editDialog.Show();
         _editDialog.Activate();
+    }
+
+    /// <summary>ShelfWindow のスタック Rename ボタンから呼ぶ (v1.8)。単一インスタンス:
+    /// 既に開いている場合は前面化のみ (OpenEditDialog と同じ理由)。</summary>
+    public static void OpenRenameDialog(string itemId, string? currentName)
+    {
+        if (System.Windows.Application.Current is App app)
+        {
+            app.OnRenameDialogRequested(itemId, currentName);
+        }
+    }
+
+    private void OnRenameDialogRequested(string itemId, string? currentName)
+    {
+        if (_renameDialog is null)
+        {
+            _renameDialog = new RenameDialog(itemId, currentName);
+            _renameDialog.Closed += (_, _) => _renameDialog = null;
+        }
+
+        if (_renameDialog.WindowState == WindowState.Minimized)
+        {
+            _renameDialog.WindowState = WindowState.Normal;
+        }
+
+        _renameDialog.Show();
+        _renameDialog.Activate();
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

@@ -1018,6 +1018,11 @@ public partial class ShelfWindow : Window
                 global::TNDrop.App.OpenEditDialog(card.Id, card.Item.Text ?? "");
                 e.Handled = true;
                 return;
+            case "Rename":
+                // Opens (or fronts) the rename dialog; nothing changed in the store yet.
+                global::TNDrop.App.OpenRenameDialog(card.Id, card.Item.Name);
+                e.Handled = true;
+                return;
             case "Pin":
                 _itemStore.SetPinned(card.Id, !card.Pinned);
                 break;

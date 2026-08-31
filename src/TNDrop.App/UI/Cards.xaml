@@ -559,6 +559,26 @@
                                 </Style>
                             </Button.Style>
                         </Button>
+                        <!-- Rename action (v1.8): only stacks (file or text) can be named, so the
+                             button collapses on single cards - same reasoning as the Edit button
+                             above collapsing on non-Text/Link cards. -->
+                        <Button Content="&#127991;" Tag="Rename" Margin="0"
+                                ToolTip="{x:Static res:Strings.ActionRename}"
+                                AutomationProperties.Name="{x:Static res:Strings.ActionRename}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource Card.ActionButton}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsStack}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsTextStack}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                         <!-- Subtle separator ahead of Delete (design brief: "delete stays visually
                              distinct, rightmost, subtle separation", to cut down on accidental
                              hits) - a 1px divider plus its own margin, rather than just a wider

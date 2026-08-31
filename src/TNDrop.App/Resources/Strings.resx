@@ -143,6 +143,9 @@
   <data name="ActionEdit" xml:space="preserve">
     <value>編集</value>
   </data>
+  <data name="ActionRename" xml:space="preserve">
+    <value>名前を変更</value>
+  </data>
   <data name="FileMissing" xml:space="preserve">
     <value>ファイルが見つかりません</value>
   </data>
@@ -593,5 +596,13 @@
   </data>
   <data name="EditItemGone" xml:space="preserve">
     <value>このカードは既に削除されています。</value>
+  </data>
+
+  <!-- Rename dialog (v1.8 Task 6). See RenameDialog. -->
+  <data name="RenameDialogTitle" xml:space="preserve">
+    <value>スタック名</value>
+  </data>
+  <data name="RenameHint" xml:space="preserve">
+    <value>空のまま保存すると名前を消して自動タイトルに戻します。</value>
   </data>
 </root>
