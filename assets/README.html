@@ -1084,7 +1084,7 @@ code{
       </p>
       <p class="note">
         残したくないときは <b>シークレットモード</b>。オンの間はコピーした内容を履歴に保存しません。
-        タスクトレイのアイコンから、いつでも切り替えられます。
+        シェルフ上部の目のボタン、またはタスクトレイのアイコンから、いつでも切り替えられます。
       </p>
     </div>
     <figure class="fig">
@@ -1234,9 +1234,53 @@ code{
     </figure>
   </section>
 
-  <!-- 06 クリックで貼り付け -->
+  <!-- 06 テキストスタック (v1.8) -->
   <section class="feature feature--rev reveal">
-    <p class="feature__no"><b>06</b> &nbsp;PASTE</p>
+    <p class="feature__no"><b>06</b> &nbsp;TEXT STACK</p>
+    <div>
+      <h2 class="h2">テキストも重ねて、まとめて渡せます</h2>
+      <p class="body">
+        テキストのカードを別のテキストカードへドラッグすると、ひとつのスタックにまとまります。
+        件名・本文・署名など、ひとまとまりで使う文面を 1 枚にしておけます
+        (ファイル・画像とは混ざりません)。開いた一覧はクリックでその 1 件だけコピー、
+        行のドラッグで 1 件だけ渡す、端へドラッグして単独カードへ戻す、のいずれもできます。
+      </p>
+      <p class="note">
+        まとめられるのは <b>10 件まで</b>。&#127991; (名前を付ける) を押すと、
+        スタックに分かりやすい名前を付けられます。空にして保存すると自動生成の
+        タイトルへ戻ります。
+      </p>
+    </div>
+    <figure class="fig">
+      <div class="mk f-ungroup" aria-hidden="true">
+        <div class="flyout">
+          <div class="flyout__hd">テキスト 3 件<em class="ibtn" style="font-style:normal;width:1.5em;height:1.5em;font-size:.85em">&#127991;</em><span class="fbtn">すべて展開</span></div>
+          <div class="frow">本日はご対応いただき、ありがとうございました。<span class="sp">&#8599;</span></div>
+          <div class="frow">受付時間は 8:30 から 17:15 までです。<span class="sp">&#8599;</span></div>
+          <div class="frow">庁内ポータル - 様式ダウンロード<span class="sp">&#8599;</span></div>
+        </div>
+        <div class="shelf">
+          <div class="shelf__hd"><b>TNDrop</b><em class="ibtn" style="font-style:normal">&#9881;</em><em class="ibtn" style="font-style:normal">?</em><em class="ibtn" style="font-style:normal">&#215;</em></div>
+          <div class="sbox">検索...</div>
+          <div class="tabs"><span class="tab on">すべて</span><span class="tab">テキスト</span></div>
+          <div class="list">
+            <div class="card card--row" style="background:var(--card-hi)">
+              <span class="stackico"><i></i><i></i><i></i><span class="badge">3</span></span>
+              <span>本日はご対応いただき、ありがとうございました。ほか<span class="sub">テキスト 3 件</span></span>
+            </div>
+            <div class="card">受付時間は 8:30 から 17:15 までです。<div class="sub">23 文字</div></div>
+          </div>
+          <div class="shelf__ft">全 128 件<b>クリア</b></div>
+        </div>
+        <div class="tb"><i></i><i></i><i></i><i></i></div>
+      </div>
+      <figcaption class="fig__cap">行をクリックでその 1 件だけコピー。&#8599; のドラッグで 1 件だけ渡せます。</figcaption>
+    </figure>
+  </section>
+
+  <!-- 07 クリックで貼り付け -->
+  <section class="feature feature--rev reveal">
+    <p class="feature__no"><b>07</b> &nbsp;PASTE</p>
     <div>
       <h2 class="h2">クリックすれば、貼り付きます</h2>
       <p class="body">
@@ -1276,9 +1320,9 @@ code{
     </figure>
   </section>
 
-  <!-- 07 ピン留め -->
+  <!-- 08 ピン留め -->
   <section class="feature reveal">
-    <p class="feature__no"><b>07</b> &nbsp;PIN</p>
+    <p class="feature__no"><b>08</b> &nbsp;PIN</p>
     <div>
       <h2 class="h2">よく使うものはピン留め</h2>
       <p class="body">
@@ -1324,9 +1368,9 @@ code{
     </figure>
   </section>
 
-  <!-- 08 検索とフィルタ -->
+  <!-- 09 検索とフィルタ -->
   <section class="feature feature--rev reveal">
-    <p class="feature__no"><b>08</b> &nbsp;FIND</p>
+    <p class="feature__no"><b>09</b> &nbsp;FIND</p>
     <div>
       <h2 class="h2">増えても、すぐ見つかります</h2>
       <p class="body">
@@ -1364,9 +1408,9 @@ code{
     </figure>
   </section>
 
-  <!-- 09 スクリーンショット -->
+  <!-- 10 スクリーンショット -->
   <section class="feature reveal">
-    <p class="feature__no"><b>09</b> &nbsp;SCREENSHOT</p>
+    <p class="feature__no"><b>10</b> &nbsp;SCREENSHOT</p>
     <div>
       <h2 class="h2">切り取った画面も、カードに</h2>
       <p class="body">
@@ -1407,9 +1451,9 @@ code{
     </figure>
   </section>
 
-  <!-- 10 コピーインジケーター -->
+  <!-- 11 コピーインジケーター -->
   <section class="feature feature--rev reveal">
-    <p class="feature__no"><b>10</b> &nbsp;INDICATOR</p>
+    <p class="feature__no"><b>11</b> &nbsp;INDICATOR</p>
     <div>
       <h2 class="h2">端の光で、保存を知らせます</h2>
       <p class="body">
@@ -1449,9 +1493,9 @@ code{
     </figure>
   </section>
 
-  <!-- 11 テキストの編集 (v1.7) -->
+  <!-- 12 テキストの編集 (v1.7) -->
   <section class="feature reveal">
-    <p class="feature__no"><b>11</b> &nbsp;EDIT</p>
+    <p class="feature__no"><b>12</b> &nbsp;EDIT</p>
     <div>
       <h2 class="h2">その場で書き換えられます</h2>
       <p class="body">
@@ -1484,9 +1528,9 @@ code{
     </figure>
   </section>
 
-  <!-- 12 シークレットモード (v1.8) -->
+  <!-- 13 シークレットモード (v1.8) -->
   <section class="feature feature--rev reveal">
-    <p class="feature__no"><b>12</b> &nbsp;INCOGNITO</p>
+    <p class="feature__no"><b>13</b> &nbsp;INCOGNITO</p>
     <div>
       <h2 class="h2">見せたくない間だけ、記録を止めます</h2>
       <p class="body">
@@ -1524,50 +1568,6 @@ code{
         </div>
       </div>
       <figcaption class="fig__cap">目のアイコン・バッジ・縁取りの 3 か所が紫になり、コピーしても記録されないことが分かります。</figcaption>
-    </figure>
-  </section>
-
-  <!-- 13 テキストスタック (v1.8) -->
-  <section class="feature reveal">
-    <p class="feature__no"><b>13</b> &nbsp;TEXT STACK</p>
-    <div>
-      <h2 class="h2">テキストも重ねて、まとめて渡せます</h2>
-      <p class="body">
-        テキストのカードを別のテキストカードへドラッグすると、ひとつのスタックにまとまります。
-        件名・本文・署名など、ひとまとまりで使う文面を 1 枚にしておけます
-        (ファイル・画像とは混ざりません)。開いた一覧はクリックでその 1 件だけコピー、
-        行のドラッグで 1 件だけ渡す、端へドラッグして単独カードへ戻す、のいずれもできます。
-      </p>
-      <p class="note">
-        まとめられるのは <b>10 件まで</b>。&#127991; (名前を付ける) を押すと、
-        スタックに分かりやすい名前を付けられます。空にして保存すると自動生成の
-        タイトルへ戻ります。
-      </p>
-    </div>
-    <figure class="fig">
-      <div class="mk f-ungroup" aria-hidden="true">
-        <div class="flyout">
-          <div class="flyout__hd">テキスト 3 件<em class="ibtn" style="font-style:normal;width:1.5em;height:1.5em;font-size:.85em">&#127991;</em><span class="fbtn">すべて展開</span></div>
-          <div class="frow">本日はご対応いただき、ありがとうございました。<span class="sp">&#8599;</span></div>
-          <div class="frow">受付時間は 8:30 から 17:15 までです。<span class="sp">&#8599;</span></div>
-          <div class="frow">庁内ポータル - 様式ダウンロード<span class="sp">&#8599;</span></div>
-        </div>
-        <div class="shelf">
-          <div class="shelf__hd"><b>TNDrop</b><em class="ibtn" style="font-style:normal">&#9881;</em><em class="ibtn" style="font-style:normal">?</em><em class="ibtn" style="font-style:normal">&#215;</em></div>
-          <div class="sbox">検索...</div>
-          <div class="tabs"><span class="tab on">すべて</span><span class="tab">テキスト</span></div>
-          <div class="list">
-            <div class="card card--row" style="background:var(--card-hi)">
-              <span class="stackico"><i></i><i></i><i></i><span class="badge">3</span></span>
-              <span>本日はご対応いただき、ありがとうございました。ほか<span class="sub">テキスト 3 件</span></span>
-            </div>
-            <div class="card">受付時間は 8:30 から 17:15 までです。<div class="sub">23 文字</div></div>
-          </div>
-          <div class="shelf__ft">全 128 件<b>クリア</b></div>
-        </div>
-        <div class="tb"><i></i><i></i><i></i><i></i></div>
-      </div>
-      <figcaption class="fig__cap">行をクリックでその 1 件だけコピー。&#8599; のドラッグで 1 件だけ渡せます。</figcaption>
     </figure>
   </section>
 
@@ -1627,7 +1627,7 @@ code{
           <div class="row"><dt>履歴の容量</dt><dd>100 - 1000 件<br>(既定 500 件)</dd></div>
           <div class="row"><dt>自動削除</dt><dd>1 / 6 / 24 時間後<br>7 日後</dd></div>
           <div class="row"><dt>再起動時にピン留め以外を消去</dt><dd>オン / オフ</dd></div>
-          <div class="row"><dt>シークレットモード</dt><dd>トレイから切替</dd></div>
+          <div class="row"><dt>シークレットモード</dt><dd>シェルフの目のボタン / トレイから切替</dd></div>
         </dl>
       </div>
     </div>
