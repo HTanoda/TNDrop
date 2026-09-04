@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using TNDrop.Core;
 using TNDrop.Platform;
@@ -297,6 +298,36 @@ public partial class StackFlyout : Popup
     {
         _hoverMisses = 0;
         _hoverTimer.Start();
+
+        // v1.8.2: same MA_NOACTIVATE answer as ShelfWindow.OnWndProc, for the same reason. The
+        // popup is its own top-level HWND, so a click on a row would otherwise hand it the
+        // thread's keyboard focus, and its content is a logical child of the shelf -- WPF focus
+        // parked here counts as the shelf's IsKeyboardFocusWithin (see ShelfFocus). Popup creates
+        // a fresh HWND every time it opens, so the hook is (re)attached per open; RemoveHook first
+        // keeps a reused source from being hooked twice.
+        if (Child is not null && PresentationSource.FromVisual(Child) is HwndSource source)
+        {
+            _popupHook ??= OnPopupWndProc;
+            source.RemoveHook(_popupHook);
+            source.AddHook(_popupHook);
+        }
+    }
+
+    private const int WM_MOUSEACTIVATE = 0x0021;
+    private const int MA_NOACTIVATE = 3;
+
+    // Field, not a local: HwndSource holds its hooks weakly.
+    private HwndSourceHook? _popupHook;
+
+    private static IntPtr OnPopupWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WM_MOUSEACTIVATE)
+        {
+            handled = true;
+            return new IntPtr(MA_NOACTIVATE);
+        }
+
+        return IntPtr.Zero;
     }
 
     private void OnClosed(object? sender, EventArgs e)

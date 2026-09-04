@@ -3,7 +3,7 @@
 ; ユーザー単位 (管理者権限不要) インストール。本番機はオフライン x64 Windows のため、
 ; [Files] は dotnet publish の self-contained 出力フォルダ (dist\publish) を丸ごと同梱する。
 #define MyAppName       "TNDrop"
-#define MyAppVersion    "1.8.1"
+#define MyAppVersion    "1.8.2"
 #define MyAppPublisher  "HIROKI TANODA (TND)"
 #define MyAppCopyright  "Copyright (c) 2026 HIROKI TANODA (TND). All rights reserved."
 #define MyAppExeName    "TNDrop.exe"

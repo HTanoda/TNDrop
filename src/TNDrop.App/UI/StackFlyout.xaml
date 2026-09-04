@@ -51,6 +51,10 @@
              visible enough to be discoverable (the whole point of Task C) without competing with
              the row content underneath it. -->
         <Style x:Key="Flyout.HeaderButtonStyle" TargetType="Button">
+            <!-- Focusable=False (v1.8.2): the flyout's content is a logical child of the shelf,
+                 so focus on this button counts as the shelf's IsKeyboardFocusWithin (see
+                 ShelfFocus). Same convention as Flyout.RowActionButtonStyle below. -->
+            <Setter Property="Focusable" Value="False" />
             <Setter Property="Background" Value="{StaticResource Flyout.ButtonBackground}" />
             <Setter Property="Foreground" Value="{StaticResource Flyout.Foreground}" />
             <Setter Property="FontSize" Value="11" />

@@ -276,7 +276,23 @@ public partial class ShelfWindow : Window
     /// </summary>
     public bool IsPointerInside =>
         _pointerInside || _isDragging || _isDragOver || IsWithinDragOpenGrace
-        || IsStackFlyoutOpen || IsMouseOver || IsKeyboardFocusWithin;
+        || IsStackFlyoutOpen || IsMouseOver || HasLiveKeyboardFocus;
+
+    /// <summary>
+    /// <see cref="UIElement.IsKeyboardFocusWithin"/> qualified by "and our process is actually in
+    /// the foreground" (v1.8.2, <see cref="ShelfFocus.IsLive"/>). The raw flag goes stale after
+    /// any click on this never-activated window and would otherwise hold the shelf open and block
+    /// click-to-paste for good -- see ShelfFocus for the mechanism. InputSender.IsOwnProcessForeground
+    /// fails closed (reports true when unreadable), which degrades to exactly the old behavior.
+    /// </summary>
+    private bool HasLiveKeyboardFocus =>
+        ShelfFocus.IsLive(IsKeyboardFocusWithin, InputSender.IsOwnProcessForeground());
+
+    private const int WM_MOUSEACTIVATE = 0x0021;
+    private const int MA_NOACTIVATE = 3;
+
+    // Kept in a field so the delegate the HwndSource holds a weak reference to is never collected.
+    private HwndSourceHook? _wndProcHook;
 
     /// <summary>True while a drag-opened shelf is still inside its <see cref="DragOpenGrace"/>.</summary>
     private bool IsWithinDragOpenGrace => DateTime.UtcNow < _dragOpenGraceUntil;
@@ -290,6 +306,28 @@ public partial class ShelfWindow : Window
         // Must run after the HWND exists. WS_EX_NOACTIVATE is what keeps the shelf from stealing
         // focus from whatever the user is typing in when it slides in.
         WindowStyles.MakeToolWindowNoActivate(this);
+
+        // v1.8.2: WS_EX_NOACTIVATE only keeps a click from making the shelf the FOREGROUND window.
+        // The click still makes it the active window of its own thread and hands it that thread's
+        // keyboard focus (WM_MOUSEACTIVATE -> MA_ACTIVATE), which is what let WPF park keyboard
+        // focus inside the shelf with nothing ever taking it back -- see ShelfFocus. Answering
+        // MA_NOACTIVATE declines that thread-local activation too, so a click on a card changes
+        // nothing about focus anywhere. The search box's deliberate exception is unaffected: it
+        // never relied on the click's own activation (WindowStyles.BringToForeground is an
+        // explicit SetForegroundWindow, which activates and focuses regardless of this answer).
+        _wndProcHook = OnWndProc;
+        HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(_wndProcHook);
+    }
+
+    private static IntPtr OnWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WM_MOUSEACTIVATE)
+        {
+            handled = true;
+            return new IntPtr(MA_NOACTIVATE);
+        }
+
+        return IntPtr.Zero;
     }
 
     /// <summary>Recomputes geometry and retract timing from the settings, resolving monitor and DPI.</summary>
@@ -2103,11 +2141,28 @@ public partial class ShelfWindow : Window
         // Resolve, not ShouldPasteOnClick: the suppression-reason log below (Task F, v1.3) has to
         // read off the SAME switch that decides whether to paste, not a second expression that
         // could quietly drift from it -- see ClickPasteResult's own doc comment.
+        // Read the foreground ONCE and feed both the paste rule and the focus rule from it, so the
+        // two cannot disagree about whose window is in front (one-resolution rule).
+        var ownProcessForeground = InputSender.IsOwnProcessForeground();
+
+        // v1.8.2 self-heal: focus "within" while another app is in front is the stale leftover of
+        // a click on this never-activated window (see ShelfFocus), not the user in our search box.
+        // Nothing else will ever clear it -- the thread that would receive WM_KILLFOCUS is not
+        // ours -- so clear it here, at the one moment it would do harm, and paste as intended.
+        // Belt-and-braces with the MA_NOACTIVATE answer in OnSourceInitialized, which stops the
+        // flag from being raised by a click in the first place: this also covers focus handed to
+        // a shelf element while a TNDrop dialog was open and then left behind when it closed.
+        if (ShelfFocus.IsStale(IsKeyboardFocusWithin, ownProcessForeground))
+        {
+            Keyboard.ClearFocus();
+            FileLogger.Instance?.Info(Module, "cleared stale keyboard focus (shelf held WPF focus while another app was in front)");
+        }
+
         var result = ClickPaste.Resolve(
             kind: kind,
             pasteOnClickSetting: global::TNDrop.App.Settings?.PasteOnClick ?? false,
-            ownProcessForeground: InputSender.IsOwnProcessForeground(),
-            keyboardFocusWithin: IsKeyboardFocusWithin,
+            ownProcessForeground: ownProcessForeground,
+            keyboardFocusWithin: ShelfFocus.IsLive(IsKeyboardFocusWithin, ownProcessForeground),
             modifiersDown: InputSender.AnyModifierDown());
 
         if (result != ClickPasteResult.Paste)

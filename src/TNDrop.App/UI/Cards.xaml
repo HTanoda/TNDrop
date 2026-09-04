@@ -61,6 +61,10 @@
          DataContext (the CardViewModel) from the event args, so this dictionary needs no
          code-behind of its own. -->
     <Style x:Key="Card.ActionButton" TargetType="Button">
+        <!-- Focusable=False (v1.8.2): inherited by the pin/edit/rename/delete buttons (BasedOn).
+             ButtonBase calls Focus() on mouse-down, and focus left inside this never-activated
+             shelf is never taken back by Windows (see ShelfFocus). -->
+        <Setter Property="Focusable" Value="False" />
         <Setter Property="Width" Value="24" />
         <Setter Property="Height" Value="24" />
         <Setter Property="Margin" Value="2,0,0,0" />
@@ -756,6 +760,12 @@
          isn't wired up until Task 15), spacing between cards done here rather than baked into
          CardItemTemplate so the same template can be reused edge-to-edge in the pinned deck. -->
     <Style x:Key="Card.ListBoxItemStyle" TargetType="ListBoxItem">
+        <!-- Focusable=False (v1.8.2): ListBoxItem calls Focus() on every mouse-down. On this
+             never-activated shelf that focus is never taken back by Windows (see ShelfFocus), and
+             it was read as "the search box has focus" by click-to-paste and the retract logic.
+             Cards never needed keyboard focus: clicks, drags and selection are all handled in
+             ShelfWindow's own preview handlers, and ListBox selection is not used. -->
+        <Setter Property="Focusable" Value="False" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="0" />
@@ -817,6 +827,9 @@
          factored out here so the four buttons in ShelfWindow's SelectionBar don't each need their
          own inline <Button.Resources> Border-CornerRadius override. -->
     <Style x:Key="SelectionBarButtonStyle" TargetType="Button">
+        <!-- Focusable=False (v1.8.2): same reason as Header.IconButtonStyle - a click must never
+             leave keyboard focus inside the shelf (see ShelfFocus). -->
+        <Setter Property="Focusable" Value="False" />
         <Setter Property="Padding" Value="8,5" />
         <Setter Property="Margin" Value="0,0,6,0" />
         <Setter Property="Background" Value="{StaticResource Card.Background}" />
@@ -847,6 +860,9 @@
          toggled there - kept out of XAML triggers because "which tab is active" isn't a
          property on any single bound object, it's a comparison against ShelfViewModel.Filter. -->
     <Style x:Key="FilterTabButtonStyle" TargetType="Button">
+        <!-- Focusable=False (v1.8.2): same reason as Header.IconButtonStyle - a click must never
+             leave keyboard focus inside the shelf (see ShelfFocus). -->
+        <Setter Property="Focusable" Value="False" />
         <Setter Property="Padding" Value="10,5" />
         <Setter Property="Background" Value="{StaticResource Card.Background}" />
         <Setter Property="Foreground" Value="{StaticResource Card.SubForeground}" />

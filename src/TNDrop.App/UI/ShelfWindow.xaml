@@ -311,6 +311,7 @@
                  unpinned card at scroll offset 0, pill fully rounded and unclipped. -->
             <ListBox x:Name="CardsList"
                      Grid.Row="4"
+                     Focusable="False"
                      Padding="0"
                      ItemsSource="{Binding Cards}"
                      Background="Transparent"
@@ -398,6 +399,7 @@
                            Visibility="Collapsed" />
                 <Button x:Name="ClearButton"
                         Grid.Column="1"
+                        Focusable="False"
                         Padding="10,6"
                         HorizontalAlignment="Right"
                         Background="#2A2A31"
