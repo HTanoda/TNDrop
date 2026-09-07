@@ -317,6 +317,11 @@ public partial class ShelfWindow : Window
         // explicit SetForegroundWindow, which activates and focuses regardless of this answer).
         _wndProcHook = OnWndProc;
         HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(_wndProcHook);
+
+        // Diagnostic (v1.8.2 follow-up): see WindowStyles.DescribeDpiAwareness. Logged once per
+        // process so a "placed on ... (dpi-changed)" storm later in the same log can be read
+        // against the awareness the shelf actually runs with.
+        FileLogger.Instance?.Info(Module, WindowStyles.DescribeDpiAwareness(this));
     }
 
     private static IntPtr OnWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -331,12 +336,13 @@ public partial class ShelfWindow : Window
     }
 
     /// <summary>Recomputes geometry and retract timing from the settings, resolving monitor and DPI.</summary>
-    public void ApplySettings(AppSettings s)
+    public void ApplySettings(AppSettings s, string reason = "unspecified")
     {
         if (s is null)
             return;
 
         _settings = s;
+        _placeReason = reason;
 
         // Pinned accordion (v1.2 Task H). Settings reach this window only through here, so this is
         // where the persisted open/closed state is picked up. Re-read on every ApplySettings (a DPI
@@ -433,8 +439,14 @@ public partial class ShelfWindow : Window
 
         FileLogger.Instance?.Info(Module,
             $"placed on {area.DeviceName} scale {area.ScaleX:0.##}: shown X {_shownX:0}, " +
-            $"hidden X {_hiddenX:0}, {rect.W:0}x{rect.H:0} DIP, retract {_retractTimer.Interval.TotalMilliseconds:0} ms");
+            $"hidden X {_hiddenX:0}, {rect.W:0}x{rect.H:0} DIP, retract {_retractTimer.Interval.TotalMilliseconds:0} ms ({_placeReason})");
     }
+
+    // Diagnostic (v1.8.2 follow-up): which caller asked for this placement -- "startup",
+    // "reapply" (App.ReapplyPlacement: settings/display change) or "dpi-changed" (OnDpiChanged).
+    // The production log showed a placement after every card click with no display change, and
+    // the reason tag is what attributes the next occurrence to its path without guessing.
+    private string _placeReason = "unspecified";
 
     /// <summary>Slides the shelf in from off-screen with a slight overshoot (250 ms, BackEase EaseOut).</summary>
     public void SlideIn()
@@ -695,8 +707,17 @@ public partial class ShelfWindow : Window
 
     private void OnDpiChanged(object sender, System.Windows.DpiChangedEventArgs e)
     {
+        // Diagnostic (v1.8.2 follow-up): the production log showed a "placed on" line after every
+        // card click with no display change, and this handler is the only shelf-only route into
+        // ApplySettings. Old/new DPI, the rect the OS sees and the visibility state are what tell a
+        // genuine monitor crossing apart from a window whose DPI merely disagrees with the monitor
+        // it already sits on. Numbers only, no content.
+        FileLogger.Instance?.Info(Module,
+            $"dpi changed: {e.OldDpi.PixelsPerInchX:0}->{e.NewDpi.PixelsPerInchX:0} dpi, " +
+            $"window Left {Left:0} Top {Top:0} {Width:0}x{Height:0} DIP, visible {IsVisible}, slidingOut {_slidingOut}");
+
         if (_settings is not null)
-            ApplySettings(_settings);
+            ApplySettings(_settings, "dpi-changed");
     }
 
     /// <summary>

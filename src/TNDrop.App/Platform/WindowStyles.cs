@@ -40,6 +40,43 @@ public static class WindowStyles
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindowDpiAwarenessContext(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern int GetAwarenessFromDpiAwarenessContext(IntPtr context);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hWnd);
+
+    /// <summary>
+    /// One log-friendly line describing how Windows treats this window's DPI: the awareness the
+    /// window was created with (0 unaware / 1 system / 2 per-monitor) and its current DPI.
+    /// Diagnostic for the "placed on after every shelf show/hide" report (v1.8.2 follow-up): the
+    /// project declares no DPI awareness, so WPF should run system-aware and never receive
+    /// WM_DPICHANGED, yet the production log shows the shelf's DpiChanged firing. A per-exe
+    /// compatibility override ("高 DPI スケール設定の上書き") silently switches the process to
+    /// per-monitor awareness; this line tells the two apart without the user opening dialogs.
+    /// Returns a short failure note rather than throwing on Windows builds without these APIs.
+    /// </summary>
+    public static string DescribeDpiAwareness(System.Windows.Window w)
+    {
+        try
+        {
+            var hwnd = new WindowInteropHelper(w).Handle;
+            if (hwnd == IntPtr.Zero)
+                return "dpi awareness: no HWND yet";
+
+            var awareness = GetAwarenessFromDpiAwarenessContext(GetWindowDpiAwarenessContext(hwnd));
+            var name = awareness switch { 0 => "unaware", 1 => "system", 2 => "per-monitor", _ => "unknown" };
+            return $"dpi awareness: {name} ({awareness}), window dpi {GetDpiForWindow(hwnd)}";
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return $"dpi awareness: unavailable ({ex.GetType().Name})";
+        }
+    }
+
     /// <summary>
     /// Adds WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE to the window. Safe to call before the
     /// window is shown: the HWND is created on demand. Failures are logged, never thrown.

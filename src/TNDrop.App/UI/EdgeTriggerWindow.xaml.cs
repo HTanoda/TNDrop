@@ -121,12 +121,13 @@ public partial class EdgeTriggerWindow : Window
     }
 
     /// <summary>Recomputes size and position from the settings, resolving the target monitor and its DPI.</summary>
-    public void ApplySettings(AppSettings s)
+    public void ApplySettings(AppSettings s, string reason = "unspecified")
     {
         if (s is null)
             return;
 
         _settings = s;
+        _placeReason = reason;
 
         if (_applying)
         {
@@ -193,8 +194,12 @@ public partial class EdgeTriggerWindow : Window
 
         FileLogger.Instance?.Info(Module,
             $"placed on {area.DeviceName} scale {area.ScaleX:0.##} at " +
-            $"({rect.X:0},{rect.Y:0}) {rect.W:0}x{rect.H:0} DIP");
+            $"({rect.X:0},{rect.Y:0}) {rect.W:0}x{rect.H:0} DIP ({_placeReason})");
     }
+
+    // Diagnostic (v1.8.2 follow-up): same reason tag as ShelfWindow._placeReason, so a placement
+    // storm in the log can be attributed to startup / reapply / dpi-changed per window.
+    private string _placeReason = "unspecified";
 
     /// <summary>
     /// A drag is over the band: ask for the shelf, and refuse the payload.
@@ -399,8 +404,11 @@ public partial class EdgeTriggerWindow : Window
 
     private void OnDpiChanged(object sender, System.Windows.DpiChangedEventArgs e)
     {
+        FileLogger.Instance?.Info(Module,
+            $"dpi changed: {e.OldDpi.PixelsPerInchX:0}->{e.NewDpi.PixelsPerInchX:0} dpi, visible {IsVisible}");
+
         if (_settings is not null)
-            ApplySettings(_settings);
+            ApplySettings(_settings, "dpi-changed");
     }
 }
 

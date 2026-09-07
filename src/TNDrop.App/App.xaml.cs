@@ -265,11 +265,11 @@ public partial class App : System.Windows.Application
             _shelf = new ShelfWindow();
             _edgeTrigger = new EdgeTriggerWindow();
 
-            _shelf.ApplySettings(Settings);
+            _shelf.ApplySettings(Settings, "startup");
             _shelf.SetIncognitoVisual(Settings.IncognitoMode);
             _shelf.IsVisibleChanged += OnShelfVisibleChanged;
 
-            _edgeTrigger.ApplySettings(Settings);
+            _edgeTrigger.ApplySettings(Settings, "startup");
             _edgeTrigger.SetHintEnabled(Settings.EdgeHintEnabled);
             _edgeTrigger.Triggered += OnEdgeTriggered;
             _edgeTrigger.DragTriggered += OnEdgeDragTriggered;
@@ -908,7 +908,7 @@ public partial class App : System.Windows.Application
 
         try
         {
-            app._shelf?.ApplySettings(Settings);
+            app._shelf?.ApplySettings(Settings, "reapply");
         }
         catch (Exception ex)
         {
@@ -917,7 +917,7 @@ public partial class App : System.Windows.Application
 
         try
         {
-            app._edgeTrigger?.ApplySettings(Settings);
+            app._edgeTrigger?.ApplySettings(Settings, "reapply");
         }
         catch (Exception ex)
         {
