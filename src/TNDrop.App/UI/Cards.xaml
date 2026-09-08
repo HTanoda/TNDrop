@@ -827,9 +827,11 @@
          factored out here so the four buttons in ShelfWindow's SelectionBar don't each need their
          own inline <Button.Resources> Border-CornerRadius override. -->
     <Style x:Key="SelectionBarButtonStyle" TargetType="Button">
-        <!-- Focusable=False (v1.8.2): same reason as Header.IconButtonStyle - a click must never
-             leave keyboard focus inside the shelf (see ShelfFocus). -->
-        <Setter Property="Focusable" Value="False" />
+        <!-- Deliberately focusable (v1.8.3, review finding): after the user activates the search
+             box, Tab must still reach these buttons and Space/Enter must still press them. A
+             plain mouse click cannot leave stale focus here any more: ShelfWindow answers
+             WM_MOUSEACTIVATE with MA_NOACTIVATE, and TryPasteOnClick heals any leftover
+             (see ShelfFocus). -->
         <Setter Property="Padding" Value="8,5" />
         <Setter Property="Margin" Value="0,0,6,0" />
         <Setter Property="Background" Value="{StaticResource Card.Background}" />
@@ -860,9 +862,9 @@
          toggled there - kept out of XAML triggers because "which tab is active" isn't a
          property on any single bound object, it's a comparison against ShelfViewModel.Filter. -->
     <Style x:Key="FilterTabButtonStyle" TargetType="Button">
-        <!-- Focusable=False (v1.8.2): same reason as Header.IconButtonStyle - a click must never
-             leave keyboard focus inside the shelf (see ShelfFocus). -->
-        <Setter Property="Focusable" Value="False" />
+        <!-- Deliberately focusable (v1.8.3, review finding): Tab from the search box reaches the
+             filter tabs and Space/Enter switches them, as before v1.8.2. Same reasoning as
+             SelectionBarButtonStyle. -->
         <Setter Property="Padding" Value="10,5" />
         <Setter Property="Background" Value="{StaticResource Card.Background}" />
         <Setter Property="Foreground" Value="{StaticResource Card.SubForeground}" />
