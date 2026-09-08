@@ -404,6 +404,16 @@ public partial class EdgeTriggerWindow : Window
 
     private void OnDpiChanged(object sender, System.Windows.DpiChangedEventArgs e)
     {
+        // v1.8.3: same no-op filter as ShelfWindow.OnDpiChanged (see the rationale there). The
+        // band has not been seen receiving these, but it is placed by the same rules and must not
+        // start re-placing itself if the environment ever aims the notifications at it.
+        if (!ShelfPlacement.DpiActuallyChanged(
+                e.OldDpi.PixelsPerInchX, e.OldDpi.PixelsPerInchY,
+                e.NewDpi.PixelsPerInchX, e.NewDpi.PixelsPerInchY))
+        {
+            return;
+        }
+
         FileLogger.Instance?.Info(Module,
             $"dpi changed: {e.OldDpi.PixelsPerInchX:0}->{e.NewDpi.PixelsPerInchX:0} dpi, visible {IsVisible}");
 

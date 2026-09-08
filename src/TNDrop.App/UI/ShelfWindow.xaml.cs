@@ -707,11 +707,28 @@ public partial class ShelfWindow : Window
 
     private void OnDpiChanged(object sender, System.Windows.DpiChangedEventArgs e)
     {
-        // Diagnostic (v1.8.2 follow-up): the production log showed a "placed on" line after every
-        // card click with no display change, and this handler is the only shelf-only route into
-        // ApplySettings. Old/new DPI, the rect the OS sees and the visibility state are what tell a
-        // genuine monitor crossing apart from a window whose DPI merely disagrees with the monitor
-        // it already sits on. Numbers only, no content.
+        // v1.8.3: Windows re-announces the SAME DPI to this window, hundreds of times a day on a
+        // docked laptop (production log 2026-09-08: 466 notifications, all 120->120, 461 of them
+        // while the shelf sat hidden off-screen at X -340). Nothing about the geometry can have
+        // changed when the DPI has not, and a real monitor/layout change reaches the shelf through
+        // App.OnDisplaySettingsChanged -> ReapplyPlacement anyway. So a no-op notification is
+        // ignored: no re-placement, and no per-event log line (the first one is noted once so the
+        // log still shows the environment does this). A genuine change (a different DPI on either
+        // axis) is logged with the numbers and re-placed exactly as before.
+        if (!ShelfPlacement.DpiActuallyChanged(
+                e.OldDpi.PixelsPerInchX, e.OldDpi.PixelsPerInchY,
+                e.NewDpi.PixelsPerInchX, e.NewDpi.PixelsPerInchY))
+        {
+            if (!_noopDpiNoted)
+            {
+                _noopDpiNoted = true;
+                FileLogger.Instance?.Info(Module,
+                    $"ignoring same-dpi notifications ({e.NewDpi.PixelsPerInchX:0} dpi); further ones are not logged");
+            }
+
+            return;
+        }
+
         FileLogger.Instance?.Info(Module,
             $"dpi changed: {e.OldDpi.PixelsPerInchX:0}->{e.NewDpi.PixelsPerInchX:0} dpi, " +
             $"window Left {Left:0} Top {Top:0} {Width:0}x{Height:0} DIP, visible {IsVisible}, slidingOut {_slidingOut}");
@@ -719,6 +736,8 @@ public partial class ShelfWindow : Window
         if (_settings is not null)
             ApplySettings(_settings, "dpi-changed");
     }
+
+    private bool _noopDpiNoted;
 
     /// <summary>
     /// Wires the card list up to <see cref="TNDrop.App.Store"/>. Guarded against a null store so

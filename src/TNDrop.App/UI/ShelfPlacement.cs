@@ -65,6 +65,16 @@ public static class ShelfPlacement
             ? shelfRect.X - shelfRect.W
             : shelfRect.X + shelfRect.W;
 
+    /// <summary>
+    /// True when a DPI-changed notification carries a different DPI on either axis (v1.8.3).
+    /// Windows re-announces an unchanged DPI to off-screen windows on some docked-laptop setups
+    /// (production log 2026-09-08: 466 notifications, all 120 to 120); those are not changes and
+    /// must not trigger a re-placement. Half a dpi of tolerance absorbs floating-point wobble in
+    /// the doubles WPF hands over, while any real scale step (96/120/144/168) is far larger.
+    /// </summary>
+    public static bool DpiActuallyChanged(double oldX, double oldY, double newX, double newY)
+        => Math.Abs(newX - oldX) >= 0.5 || Math.Abs(newY - oldY) >= 0.5;
+
     /// <summary>Extra margin (DIPs) beyond the trigger band's own proximity width that the hint
     /// beacon reacts to -- "close, but not quite there yet". See <see cref="IsNearTriggerButOutside"/>.
     /// v1.4.1 Task A: widened 8->24 -- at typical sensitivity settings the old margin produced a
